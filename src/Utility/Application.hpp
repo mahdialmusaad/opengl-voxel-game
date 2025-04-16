@@ -2,8 +2,8 @@
 #ifndef _SOURCE_UTILITY_APPLICATION_HDR_
 #define _SOURCE_UTILITY_APPLICATION_HDR_
 
-#include <Player/Player.hpp>
-#include <World/Sky.hpp>
+#include "Player/Player.hpp"
+#include "World/Sky.hpp"
 
 class Badcraft
 {
@@ -12,9 +12,6 @@ public:
 	{
 		Callbacks();
 		Badcraft* app = nullptr;
-
-		// The window is already defined, so no need for the first argument 
-		// (usually GLFWwindow*)
 
 		void KeyPressCallback(int key, int scancode, int action, int mods);
 		void MouseClickCallback(int button, int action, int) noexcept;
@@ -90,4 +87,4 @@ private:
 	TextRenderer::ScreenText *m_infoText, *m_debugText, *m_screenshotText, *m_chatText;
 };
 
-#endif
+#endif // _SOURCE_UTILITY_APPLICATION_HDR_

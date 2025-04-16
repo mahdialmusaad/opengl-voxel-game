@@ -17,10 +17,6 @@ float Math::loopAround(float x, float min, float max) noexcept
 {
 	return (x < min) ? (max - (min - x)) : ((x > max) ? (min + (x - max)) : x);
 }
-int Math::loopAroundInteger(int x, int minInc, int maxExcl) noexcept
-{
-	return minInc + ((maxExcl + x) % maxExcl);
-}
 double Math::lerpIndependent(double a, double b, double max) noexcept
 {
 	double res = b - a;
@@ -176,8 +172,9 @@ void Shader::InitShader()
 
 	// Load all of the vertex and fragment shaders and then create a shader program with them
 	constexpr int numPrograms = static_cast<int>(ShaderID::MAX);
-	const std::string shaderDir = "src/Shaders/";
 
+	const std::string shaderDir = std::filesystem::current_path().parent_path().string() + "/src/Resources/Shaders/";
+    
 	const std::pair<std::string, std::string> shaderPairs[numPrograms] = {
 		{"Cld.vert", "Cld.frag"},
 		{"Inv.vert", "Inv.frag"},
@@ -329,6 +326,6 @@ WorldNoise::WorldNoise(WorldPerlin::NoiseSpline *splines)
 	for (int i = 0; i < numNoises; ++i) {
 		WorldPerlin *perlin = perlins[i];
 		perlin->noiseSplines = splines[i];
-		perlin->ChangeSeed(1337ui64); 
+		perlin->ChangeSeed(1337u); 
 	}
 }

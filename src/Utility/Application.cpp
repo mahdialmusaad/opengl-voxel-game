@@ -1,4 +1,4 @@
-#include <Utility/Application.hpp>
+#include "Utility/Application.hpp"
 
 Badcraft::Badcraft() :
 	world(player),
@@ -33,7 +33,7 @@ Badcraft::Badcraft() :
 		16.0f / static_cast<float>(game.blocksTextureInfo.width),
 		1.0f / static_cast<float>(game.textTextureInfo.width)
 	};
-	OGL::UpdateUBO(m_sizesUBO, 0i64, sizeof(sizesData), sizesData);
+	OGL::UpdateUBO(m_sizesUBO, 0, sizeof(sizesData), sizesData);
 
 	// Aspect ratio for GUI sizing (also updates perspective matrix)
 	// ***	Must do this BEFORE text creation so the text objects use the 
@@ -50,7 +50,7 @@ Badcraft::Badcraft() :
 	);
 	tr.CreateText(glm::vec2(0.01f, 0.01f), formatText); // Combine static text for less draw calls and memory
 	
-	m_screenshotText = tr.CreateText(glm::vec2(0.18f, 0.8f), "", TextRenderer::T_Type::Hidden, 12ui8); // Screenshot info
+	m_screenshotText = tr.CreateText(glm::vec2(0.18f, 0.8f), "", TextRenderer::T_Type::Hidden, 12u); // Screenshot info
 	m_chatText = tr.CreateText(glm::vec2(0.01f, 0.85f), "", TextRenderer::T_Type::Hidden); // Chat text
 	m_infoText = tr.CreateText(glm::vec2(0.01f, 0.18f), ""); // Reserve text object for dynamic info text
 	m_debugText = tr.CreateText(glm::vec2(0.01f, 0.3f), ""); // Debugging purposes
@@ -73,7 +73,7 @@ void Badcraft::Main()
 	double windowTitleUpdateTime = 0.0; // The time since the last window title update
 	double largestUpdateTime = 0.0; // The largest amount of time between two frames
 
-	constexpr auto CheckKey = [](int key, int action) noexcept {
+	const auto CheckKey = [](int key, int action) noexcept {
 		return glfwGetKey(game.window, key) == action;
 	};
 
@@ -131,7 +131,7 @@ void Badcraft::Main()
 			m_matrices[Origin] = m_matrices[Perspective] * glm::mat4(glm::mat3(m_matrices[View]));
 
 			// Update world matrix values in GPU shaders
-			OGL::UpdateUBO(m_matricesUBO, 0i64, sizeof(glm::mat4[2]), m_matrices + 2);
+			OGL::UpdateUBO(m_matricesUBO, 0, sizeof(glm::mat4[2]), m_matrices + 2);
 		}
 
 		// Update the world buffers to show any chunk updates (block placing, new chunks etc)
@@ -284,7 +284,7 @@ void Badcraft::UpdateFrameValues()
 		player.position.y,
 		player.position.z, 1.0
 	};
-	OGL::UpdateUBO(m_positionsUBO, 0i64, sizeof(gamePositions), gamePositions);
+	OGL::UpdateUBO(m_positionsUBO, 0, sizeof(gamePositions), gamePositions);
 
 	// Time values for shaders
 	const float crntFrame = static_cast<float>(game.tickedFrameTime);
@@ -295,7 +295,7 @@ void Badcraft::UpdateFrameValues()
 
 	// Partial matrix UBO update (perspective and other matrices are done on player movement)
 	glm::mat4 starmatrix = m_matrices[Origin];
-	glm::rotate(starmatrix, crntFrame * WorldSky::starRotationalSpeed, glm::vec3(0.96f, 0.54f, 0.2f));
+	starmatrix = glm::rotate(starmatrix, crntFrame * WorldSky::starRotationalSpeed, glm::vec3(0.96f, 0.54f, 0.2f));
 
 	OGL::UpdateUBO(m_matricesUBO, sizeof(glm::mat4[2]), sizeof(starmatrix), &starmatrix);
 
@@ -307,7 +307,7 @@ void Badcraft::UpdateFrameValues()
 		crntFrame, // gameTime
 		1.1f - (m_gameDayTime * 0.5f), // cloudsTime
 	};
-	OGL::UpdateUBO(m_timesUBO, 0i64, sizeof(gameTimes), gameTimes);
+	OGL::UpdateUBO(m_timesUBO, 0, sizeof(gameTimes), gameTimes);
 
 	constexpr glm::vec3 skyMorningColour = glm::vec3(0.45f, 0.72f, 0.98f);
 	constexpr glm::vec3 skyTransitionColour = glm::vec3(1.0f, 0.45f, 0.0f);
@@ -340,7 +340,7 @@ void Badcraft::UpdateFrameValues()
 		// worldLight
 		worldLight, worldLight, worldLight, 1.0f,
 	};
-	OGL::UpdateUBO(m_coloursUBO, 0i64, sizeof(gameColours), gameColours);
+	OGL::UpdateUBO(m_coloursUBO, 0, sizeof(gameColours), gameColours);
 }
 
 void Badcraft::TakeScreenshot()
@@ -360,7 +360,7 @@ void Badcraft::TakeScreenshot()
 		}
 		error = ec.value() != 0;
 	}
-	catch (std::exception exception) { error = true; }
+	catch (std::filesystem::filesystem_error exception) { error = true; }
 
 	const char* newScreenshotText = "Failed to save screenshot";
 
@@ -370,7 +370,7 @@ void Badcraft::TakeScreenshot()
 
 		// Get formatted time values
 		tm lct;
-		const time_t now = time(0i64); 
+		const time_t now = time(0); 
 		localtime_s(&lct, &now);
 
 		// Determine file name in above char buffers
@@ -382,13 +382,13 @@ void Badcraft::TakeScreenshot()
 
 		// Create uint8_t vector of size 3 * width * height for each pixel and RGB values
 		const unsigned w = game.width, h = game.height;
-		std::vector<unsigned char> pixels(3ui32 * w * h);
+		std::vector<unsigned char> pixels(3u * w * h);
 
 		// Read pixels from screen to vector
 		glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
 		
 		// Flip Y axis as OGL uses opposite Y coordinates (bottom-top instead of top-bottom)
-		std::vector<unsigned char> newHalf(3ui32 * w * h);
+		std::vector<unsigned char> newHalf(3u * w * h);
 		for (unsigned x = 0; x < w; ++x) {
 			for (unsigned y = 0; y < h; ++y) {
 				for (int s = 0; s < 3; ++s) {

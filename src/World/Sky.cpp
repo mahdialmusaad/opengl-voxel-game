@@ -68,7 +68,7 @@ void WorldSky::CreateClouds() noexcept
 	uint32_t cloudData[AMOUNT_OF_CLOUDS]{}; // Cloud data compressed into int for memory saving
 
 	// Random number generator algorithm for cloud positions and size
-	WorldPerlin::mersenne64 gen(std::random_device{}());
+	std::mt19937 gen(std::random_device{}());
 	std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
 	for (int i = 0; i < AMOUNT_OF_CLOUDS; ++i) {
@@ -80,8 +80,8 @@ void WorldSky::CreateClouds() noexcept
 		constexpr float posMultiplier = 4096.0f - 0.5f;
 		cloudData[i] = 
 			static_cast<uint32_t>(dist(gen) * posMultiplier) +				// X position
-			(static_cast<uint32_t>(dist(gen) * posMultiplier) << 12ui32) +	// Z position
-			(static_cast<uint32_t>(dist(gen) * 128.0f) << 26ui32);			// Size
+			(static_cast<uint32_t>(dist(gen) * posMultiplier) << 12u) +	// Z position
+			(static_cast<uint32_t>(dist(gen) * 128.0f) << 26u);			// Size
 	}
 
 	// Buffer the int data into the GPU

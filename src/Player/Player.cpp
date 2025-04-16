@@ -84,7 +84,7 @@ Player::Player() noexcept
 	OGL::CreateBuffer(GL_ARRAY_BUFFER);
 	glVertexAttribPointer(0u, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), nullptr);
 	glVertexAttribIPointer(1u, 2, GL_INT, 5 * sizeof(float), reinterpret_cast<const void*>(3 * sizeof(float)));
-	glBufferStorage(GL_ARRAY_BUFFER, sizeof(quadVerticesData), quadVerticesData, 0ui32);
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof(quadVerticesData), quadVerticesData, 0u);
 
 	// VBO for the actual inventory texture data
 	m_inventoryIVBO = OGL::CreateBuffer8(GL_ARRAY_BUFFER);
@@ -475,10 +475,10 @@ void Player::UpdateInventory() noexcept
 
 	enum TextureIndex : uint32_t { Background, Unequipped, Equipped, Inventory, Crosshair };
 	// Last bit in second uint32 is used to determine if current instance uses the blocks or inventory texture
-	constexpr uint32_t blockBit = 1ui32 << 31ui32;
+	constexpr uint32_t blockBit = 1 << 31;
 	struct InventoryInstance {
-		constexpr InventoryInstance(uint32_t xy = 0ui32, uint32_t tw = 0ui32, bool block = false) noexcept :
-			xy(xy), tw(tw + (block ? blockBit : 0ui32)) {
+		constexpr InventoryInstance(uint32_t xy = 0u, uint32_t tw = 0u, bool block = false) noexcept :
+			xy(xy), tw(tw + (block ? blockBit : 0u)) {
 		}
 		uint32_t xy, tw;
 	};
@@ -492,14 +492,14 @@ void Player::UpdateInventory() noexcept
 
 	// Compressed buffer data
 	InventoryInstance data[numInstances] = {
-		InventoryInstance(0ui32, Crosshair) // Crosshair at center of screen (always visible)
+		InventoryInstance(0u, Crosshair) // Crosshair at center of screen (always visible)
 	};
 	m_totalInventoryInstances = 1; // Ensure counter reflects this ^^^
 
 	// Bits used to store X and Y position in first uint32
-	constexpr uint32_t positionShift = 16ui32;
+	constexpr uint32_t positionShift = 16u;
 	// Float multiplier for integer compression
-	constexpr float shaderMultiplier = static_cast<float>((1ui32 << positionShift) - 1ui32),
+	constexpr float shaderMultiplier = static_cast<float>((1u << positionShift) - 1u),
 		inventorySlotsYPosition = 0.18f,
 		inventorySlotsYSpacing = 0.073f,
 		inventoryXSpacing = 0.0495f;
@@ -511,8 +511,8 @@ void Player::UpdateInventory() noexcept
 			m_hotbarInstances = m_totalInventoryInstances;
 			// Add inventory GUI and background to data
 			constexpr const InventoryInstance inventoryData[2] = {
-				InventoryInstance(0ui32, Background),	// Translucent background for inventory GUI
-				InventoryInstance(0ui32, Inventory)	// Inventory GUI background
+				InventoryInstance(0u, Background),	// Translucent background for inventory GUI
+				InventoryInstance(0u, Inventory)	// Inventory GUI background
 			};
 			memcpy(data + m_totalInventoryInstances, inventoryData, sizeof(inventoryData));
 			m_totalInventoryInstances += 2;

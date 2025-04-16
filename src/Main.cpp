@@ -1,4 +1,4 @@
-﻿#include <Utility/Application.hpp>
+﻿#include "Utility/Application.hpp"
 
 // Debug OpenGL functions for errors
 static void GLDebugOutput(
@@ -138,9 +138,10 @@ static void Initialize()
 	game.shader.InitShader(); // Initialize shader class
 
 	// Load game textures and get information about them (width, height, etc)
-	Shader::LoadTexture(game.blocksTextureInfo, "src/Resources/atlas.png", false, GL_NEAREST, false);
-	Shader::LoadTexture(game.textTextureInfo, "src/Resources/textAtlas.png", true, GL_NEAREST, false);
-	Shader::LoadTexture(game.inventoryTextureInfo, "src/Resources/inventory.png", false, GL_NEAREST, false);
+    const std::string texDirectory = std::filesystem::current_path().parent_path().string() + "/src/Resources/Textures/";
+	Shader::LoadTexture(game.blocksTextureInfo, (texDirectory + "atlas.png").c_str(), false, GL_NEAREST, false);
+	Shader::LoadTexture(game.textTextureInfo, (texDirectory + "textAtlas.png").c_str(), true, GL_NEAREST, false);
+	Shader::LoadTexture(game.inventoryTextureInfo, (texDirectory + "inventory.png").c_str(), false, GL_NEAREST, false);
 }
 
 static void SetCallbacks() 

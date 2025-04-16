@@ -9,8 +9,8 @@ Chunk::Chunk(
 	offsetZ(offset.z),
 	positionMagnitude(sqrt(static_cast<double>((offset.x * offset.x) + (offset.y * offset.y) + (offset.z * offset.z))))
 {
-	const WorldPos worldPosition = ChunkSettings::GetChunkCorner(offset);
-	const glm::vec3 center = static_cast<glm::vec3>(ChunkSettings::GetChunkCenter(offset));
+	//const WorldPos worldPosition = ChunkSettings::GetChunkCorner(offset);
+	//const glm::vec3 center = static_cast<glm::vec3>(ChunkSettings::GetChunkCenter(offset));
 	const int worldYCorner = static_cast<int>(offsetY) * ChunkSettings::CHUNK_SIZE;
 
 	// The chunk has not been created yet so initially use a full array
@@ -115,8 +115,6 @@ void Chunk::CalculateChunk(const ChunkGetter& findFunction) noexcept
 		localNearby[localNearbyIndex++] = emptyChunk;
 	}
 
-	const DataArrays::ChunkLookupTable::ChunkLookupData* lookupTable = DataArrays::lookupTable.lookupData;
-
 	// Create an array with the maximum size on the outside to be used per chunk face calculation
 	uint32_t* outer = new uint32_t[ChunkSettings::CHUNK_BLOCKS_AMOUNT];
 
@@ -126,8 +124,8 @@ void Chunk::CalculateChunk(const ChunkGetter& findFunction) noexcept
 		FaceAxisData& faceData = chunkFaceData[faceIndex];
 
 		// Reset any previous data
-		faceData.translucentFaceCount = 0ui16;
-		faceData.faceCount = 0ui16;
+		faceData.translucentFaceCount = 0u;
+		faceData.faceCount = 0u;
 
 		// Loop through all the chunk's blocks for each face direction
 		for (int i = 0; i <= ChunkSettings::CHUNK_BLOCKS_AMOUNT_INDEX; ++i) {
@@ -136,7 +134,7 @@ void Chunk::CalculateChunk(const ChunkGetter& findFunction) noexcept
 			const WorldBlockData& blockSpecificData = ChunkSettings::GetBlockData(blockID);
 
 			// Get precalculated results for this position and face
-			const DataArrays::ChunkLookupTable::ChunkLookupData& surroundingData = lookupTable[lookupIndex++];
+			const ChunkLookupTable::ChunkLookupData& surroundingData = DataArrays::lookup.lookupData[lookupIndex++];
 
 			// Get the block next to the current face, which could be in this chunk or one of the surrounding chunks
 			const int targetBlock = static_cast<int>((*localNearby[surroundingData.nearbyIndex])[surroundingData.blockIndex]);
@@ -152,7 +150,7 @@ void Chunk::CalculateChunk(const ChunkGetter& findFunction) noexcept
 				// Compress the position and texture data into one integer
 				const uint32_t newData = 
 					 static_cast<uint32_t>(i) + 
-					(static_cast<uint32_t>(blockSpecificData.textures[faceIndex]) << 25ui32);
+					(static_cast<uint32_t>(blockSpecificData.textures[faceIndex]) << 25u);
 
 				// Append the integer to the current block data array for this chunk face direction 
 				// in the correct location depending on whether it is translucent or not.
@@ -221,8 +219,8 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 
 	FaceAxisData& faceData = chunkFaceData[IWorldDir_Front];
 	faceData.instancesData = new uint32_t[ChunkSettings::CHUNK_BLOCKS_AMOUNT];
-	faceData.faceCount = 0ui16;
-	faceData.translucentFaceCount = 0ui16;
+	faceData.faceCount = 0u;
+	faceData.translucentFaceCount = 0u;
 	
 	typedef uint32_t StateType;
 	constexpr int stateBits = sizeof(StateType) * 8;

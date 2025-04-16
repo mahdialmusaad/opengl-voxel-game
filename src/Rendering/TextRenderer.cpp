@@ -88,7 +88,7 @@ uint16_t TextRenderer::GetNewID() noexcept
 	uint16_t id = 0;
 
 	std::mt19937 gen(std::random_device{}());
-	std::uniform_int_distribution dist(1ui16, UINT16_MAX);
+	std::uniform_int_distribution<uint16_t> dist(static_cast<uint16_t>(1), UINT16_MAX);
 	
 	// Repeatedly generates new random id until an unused one is found
 	do {
@@ -110,7 +110,7 @@ uint16_t TextRenderer::GetIDFromText(ScreenText* screenText) const noexcept
 	// Returns the ID of the given text object by
 	// checking which VBO matches (unique per text object)
 	for (const auto& [id, scrText] : m_screenTexts) if (scrText->vbo == screenText->vbo) return id;
-	return 0ui16;
+	return 0u;
 }
 
 TextRenderer::ScreenText* TextRenderer::CreateText(glm::vec2 pos, std::string text, T_Type textType, uint8_t fontSize) noexcept
@@ -208,7 +208,7 @@ void TextRenderer::UpdateText(ScreenText* screenText) const noexcept
 	const uint8_t fontSize = screenText->GetFontSize();
 	bool invalidTextAttempt = false;
 
-	enum WarningBits : uint8_t { Warning_OOB = 1ui8, Warning_InvalidChar = 2ui8 };
+	enum WarningBits : uint8_t { Warning_OOB = 1, Warning_InvalidChar };
 
 	const float sizeMultiplier = static_cast<float>(fontSize) / 16.0f;
 	const float pixelSize = 1.0f / static_cast<float>(game.textTextureInfo.width);
@@ -218,9 +218,9 @@ void TextRenderer::UpdateText(ScreenText* screenText) const noexcept
 	const ScreenText::RGBVector colours = screenText->GetColour();
 	const uint32_t second = 
 		static_cast<uint32_t>(colours.x) +
-		(static_cast<uint32_t>(colours.y) << 8ui32) + 
-		(static_cast<uint32_t>(colours.z) << 16ui32) + 
-		(static_cast<uint32_t>(fontSize) << 24ui32);
+		(static_cast<uint32_t>(colours.y) << 8u) + 
+		(static_cast<uint32_t>(colours.z) << 16u) + 
+		(static_cast<uint32_t>(fontSize) << 24u);
 
 	int dataIndex = 0;
 	for (int i = 0, end = narrow_cast<int>(textString.size()); i < end; ++i) {
@@ -254,7 +254,7 @@ void TextRenderer::UpdateText(ScreenText* screenText) const noexcept
 
 		// Check for out of bounds text
 		if (pos.x < 0.0f || pos.x > 1.0f || pos.y < 0.0f || pos.y > 1.0f) {
-			if (!(screenText->beQuietPlease & 1ui8)) {
+			if (!(screenText->beQuietPlease & Warning_OOB)) {
 				int id = static_cast<int>(GetIDFromText(screenText));
 				glm::vec2 bpos = screenText->GetPosition();
 				TextFormat::warn(
@@ -268,13 +268,13 @@ void TextRenderer::UpdateText(ScreenText* screenText) const noexcept
 		}
 		
 		// Only characters after the space character (ASCII 32) are displayed -> indexing starts at ASCII 33
-		int charIndex = currentChar - 33i8;
+		int charIndex = currentChar - 33;
 
 		// Add compressed int data:
 		// 0: 0TTT TTTT YYYY YYYY YYYY XXXX XXXX XXXX
 		// 1: FFFF FFFF BBBB BBBB GGGG GGGG RRRR RRRR
 		uint32_t letterData[2] = {
-			(static_cast<uint32_t>(pos.x * 4095.0f)) + (static_cast<uint32_t>(pos.y * 4095.0f) << 12ui32) + (charIndex << 24ui32),
+			(static_cast<uint32_t>(pos.x * 4095.0f)) + (static_cast<uint32_t>(pos.y * 4095.0f) << 12u) + (charIndex << 24u),
 			second
 		};
 		memcpy(textData + dataIndex, letterData, sizeof(letterData));

@@ -38,10 +38,10 @@ public:
 		glm::vec2 m_pos = { 0.0f, 0.0f };
 		float m_textTime = 0.0f;
 
-		uint16_t m_displayLength = 0ui16;
-		uint8_t m_fontSize = 16ui8;
+		uint16_t m_displayLength = 0u;
+		uint8_t m_fontSize = 16u;
 
-		RGBVector m_RGBColour = { 255ui8, 255ui8, 255ui8 };
+		RGBVector m_RGBColour = { 255, 255u, 255u };
 	public:
 		TextType type = TextType::Default;
 		uint8_t beQuietPlease = false;
@@ -58,7 +58,7 @@ public:
 	TextRenderer() noexcept;
 	void RenderText() const noexcept;
 
-	ScreenText* CreateText(glm::vec2 pos, std::string text, T_Type textType = T_Type::Default, uint8_t fontSize = 16ui8) noexcept;
+	ScreenText* CreateText(glm::vec2 pos, std::string text, T_Type textType = T_Type::Default, uint8_t fontSize = 16) noexcept;
 	void RecalculateAllText() noexcept;
 
 	ScreenText* GetTextFromID(uint16_t id) noexcept;

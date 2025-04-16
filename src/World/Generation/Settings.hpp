@@ -2,8 +2,8 @@
 #ifndef _SOURCE_GENERATION_SETTINGS_HDR_
 #define _SOURCE_GENERATION_SETTINGS_HDR_
 
-#include <Utility/Definitions.hpp>
-#include <Rendering/FrustumCulling.hpp>
+#include "Utility/Definitions.hpp"
+#include "Rendering/FrustumCulling.hpp"
 
 enum class WorldDirection : int8_t
 {
@@ -71,10 +71,10 @@ struct WorldBlockData
 		renderLookupDefinition renderFunctionCheck
 	) noexcept :
 		textures{ t0, t1, t2, t3, t4, t5 },
+		lightEmission(light),
 		hasTransparency(hasTransparency),
 		isSolid(isSolid),
 		natureReplaceable(natureReplaceable),
-		lightEmission(light),
 		renderFunction(renderFunctionCheck) {
 	}
 
@@ -97,7 +97,7 @@ struct WorldBlockData_DEF {
 		LogSide,
 		Leaves,
 		Planks,
-		Default = 0ui8,
+		Default = 0,
 	};
 
 	// Easily identify which part of block data is being set
@@ -217,7 +217,7 @@ struct ChunkSettings
 	static constexpr int64_t CHUNK_SIZE_I64 = static_cast<int64_t>(CHUNK_SIZE);
 
 	static constexpr int32_t CHUNK_BLOCKS_AMOUNT = CHUNK_SIZE_I32 * CHUNK_SIZE_I32 * CHUNK_SIZE_I32;
-	static constexpr int CHUNK_BLOCKS_AMOUNT_INDEX = static_cast<int>(CHUNK_BLOCKS_AMOUNT - 1i32);
+	static constexpr int CHUNK_BLOCKS_AMOUNT_INDEX = static_cast<int>(CHUNK_BLOCKS_AMOUNT - 1);
 	static constexpr uint32_t UCHUNK_BLOCKS_AMOUNT = static_cast<uint32_t>(CHUNK_BLOCKS_AMOUNT);
 	static constexpr uint16_t U16CHUNK_BLOCKS_AMOUNT = static_cast<uint16_t>(CHUNK_BLOCKS_AMOUNT);
 	static constexpr int32_t CHUNK_UNIQUE_FACES = CHUNK_BLOCKS_AMOUNT * 6;
@@ -352,65 +352,62 @@ struct ChunkSettings
 	static ChunkBlockValueFull* GetFullBlockArray(ChunkBlockValue* chunkBlocks) noexcept;
 };
 
+struct GenerateCoordinates
+{
+    constexpr GenerateCoordinates() noexcept 
+    {
+        constexpr int crd = ChunkSettings::RENDER_DISTANCE;
+        constexpr auto iabs = [&](int val) noexcept { return val < 0 ? -val : val; };
+        for (int x = -crd, i = 0; x <= crd; ++x) {
+            for (int z = -crd; z <= crd; ++z) {
+                if (iabs(x) + iabs(z) <= crd) coordinates[i++] = { x, z };
+            }
+        }
+    }
+    
+    typedef glm::vec<2, int8_t> RelativeOffset;
+    RelativeOffset coordinates[ChunkSettings::FULLCHUNK_COUNT]{};
+};
+
+struct ChunkLookupTable
+{
+    constexpr ChunkLookupTable() noexcept
+    {
+        int32_t index = 0;
+        constexpr auto Overflowing = [&](int x, int y, int z) {
+            constexpr int cs = ChunkSettings::CHUNK_SIZE_M1;
+            return x < 0 || x > cs || y < 0 || y > cs || z < 0 || z > cs;
+        };
+
+        for (uint8_t face = 0; face < 6; ++face) {
+            const glm::ivec3 epos = glm::ivec3(ChunkSettings::worldDirections[face]);
+            for (int i = 0; i <= ChunkSettings::CHUNK_BLOCKS_AMOUNT_INDEX; ++i) {
+                const glm::ivec3 pos = ChunkSettings::LocalPositionFromIndex(i);
+                const glm::ivec3 nextPos = pos + epos;
+                const int targetPosIndex = ChunkSettings::IndexFromLocalPosition(
+                    Math::loopAroundInteger(nextPos.x, 0, ChunkSettings::CHUNK_SIZE),
+                    Math::loopAroundInteger(nextPos.y, 0, ChunkSettings::CHUNK_SIZE),
+                    Math::loopAroundInteger(nextPos.z, 0, ChunkSettings::CHUNK_SIZE)
+                );
+
+                ChunkLookupData& data = lookupData[index++];
+                data.blockIndex = narrow_cast<uint16_t>(targetPosIndex);
+                data.nearbyIndex = Overflowing(nextPos.x, nextPos.y, nextPos.z) ? face : static_cast<uint8_t>(6);
+            }
+        }
+    }
+
+    struct ChunkLookupData {
+        uint16_t blockIndex = 0u;
+        uint8_t nearbyIndex = 0u;
+    };
+
+    ChunkLookupData lookupData[ChunkSettings::CHUNK_UNIQUE_FACES]{};
+};
+
 struct DataArrays {
-	struct GenerateCoordinates
-	{
-		constexpr GenerateCoordinates() noexcept 
-		{
-			constexpr int crd = ChunkSettings::RENDER_DISTANCE;
-			constexpr auto iabs = [&](int val) noexcept { return val < 0 ? -val : val; };
-			for (int x = -crd, i = 0; x <= crd; ++x) {
-				for (int z = -crd; z <= crd; ++z) {
-					if (iabs(x) + iabs(z) <= crd) genCoords[i++] = { x, z };
-				}
-			}
-		}
-
-		RelativeOffset genCoords[ChunkSettings::FULLCHUNK_COUNT]{};
-	};
-
-	struct ChunkLookupTable
-	{
-		constexpr ChunkLookupTable() noexcept
-		{
-			int32_t index = 0;
-			constexpr auto Overflowing = [&](int x, int y, int z) {
-				constexpr int cs = ChunkSettings::CHUNK_SIZE_M1;
-				return x < 0 || x > cs || y < 0 || y > cs || z < 0 || z > cs;
-			};
-
-			for (uint8_t face = 0; face < 6; ++face) {
-				const glm::ivec3 epos = glm::ivec3(ChunkSettings::worldDirections[face]);
-				for (int i = 0; i <= ChunkSettings::CHUNK_BLOCKS_AMOUNT_INDEX; ++i) {
-					const glm::ivec3 pos = ChunkSettings::LocalPositionFromIndex(i);
-					const glm::ivec3 nextPos = pos + epos;
-					const int targetPosIndex = ChunkSettings::IndexFromLocalPosition(
-						Math::loopAroundInteger(nextPos.x, 0, ChunkSettings::CHUNK_SIZE),
-						Math::loopAroundInteger(nextPos.y, 0, ChunkSettings::CHUNK_SIZE),
-						Math::loopAroundInteger(nextPos.z, 0, ChunkSettings::CHUNK_SIZE)
-					);
-
-					lookupData[index++] = {
-						narrow_cast<uint16_t>(targetPosIndex),
-						Overflowing(nextPos.x, nextPos.y, nextPos.z) ? face : 6ui8
-					};
-				}
-			}
-		}
-
-		struct ChunkLookupData {
-			constexpr ChunkLookupData(uint16_t i = 0ui16, uint8_t f = 0ui8) noexcept :
-				blockIndex(i), nearbyIndex(f) {
-			}
-			uint16_t blockIndex;
-			uint8_t nearbyIndex;
-		};
-
-		ChunkLookupData lookupData[ChunkSettings::CHUNK_UNIQUE_FACES]{};
-	};
-
-	static inline ChunkLookupTable lookupTable = ChunkLookupTable();
-	static inline GenerateCoordinates generateCoords = GenerateCoordinates();
+    static inline ChunkLookupTable lookup = ChunkLookupTable();
+    static constexpr GenerateCoordinates generate = GenerateCoordinates();
 };
 
 #endif // _SOURCE_GENERATION_SETTINGS_HDR_

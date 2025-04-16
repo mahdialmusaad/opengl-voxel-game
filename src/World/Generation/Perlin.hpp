@@ -34,12 +34,6 @@ struct WorldPerlin {
 	NoiseSpline noiseSplines;
 	uint64_t seed = 0;
 
-	typedef std::mersenne_twister_engine<uint64_t,
-		64ui64, 312ui64, 156ui64, 31ui64, 0xb5026f5aa96619e9ui64, 29ui64,
-		0x5555555555555555ui64, 17ui64, 0x71d67fffeda60000ui64,
-		37ui64, 0xfff7eee000000000ui64, 43ui64, 6364136223846793005ui64
-	> mersenne64;
-
 	void ChangeSeed();
 	void ChangeSeed(uint64_t newSeed);
 
@@ -66,9 +60,6 @@ private:
 
 	static constexpr float fade(float x) noexcept;
 	static constexpr float grad(uint8_t hash, float x, float y, float z) noexcept;
-
-	static constexpr double fade(double x) noexcept;
-	static constexpr double grad(uint8_t hash, double x, double y, double z) noexcept;
 
 	static constexpr uint8_t defaultTable[256] = {
 		151,160,137,91,90,15,

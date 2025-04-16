@@ -2,8 +2,8 @@
 #ifndef _SOURCE_PLAYER_PLRDEF_HDR_
 #define _SOURCE_PLAYER_PLRDEF_HDR_
 
-#include <World/Chunk.hpp>
-#include <Rendering/TextRenderer.hpp>
+#include "World/Chunk.hpp"
+#include "Rendering/TextRenderer.hpp"
 
 // definition visible to world
 struct PlayerObject
@@ -11,7 +11,7 @@ struct PlayerObject
 	struct InventorySlot 
 	{
 		ObjectID objectID = ObjectID::Air;
-		uint8_t count = 0ui8;
+		uint8_t count = 0;
 	};
 
 	bool moved = true;

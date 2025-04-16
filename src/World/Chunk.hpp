@@ -2,7 +2,7 @@
 #ifndef _SOURCE_WORLD_CHUNK_HDR_
 #define _SOURCE_WORLD_CHUNK_HDR_
 
-#include <World/Generation/Settings.hpp>
+#include "Generation/Settings.hpp"
 
 struct Chunk
 {

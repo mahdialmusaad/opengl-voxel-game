@@ -1,0 +1,3 @@
+C:/Users/Mahdi/Desktop/badcraft/build/CMakeFiles/badcraft.dir
+C:/Users/Mahdi/Desktop/badcraft/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/Mahdi/Desktop/badcraft/build/CMakeFiles/ZERO_CHECK.dir

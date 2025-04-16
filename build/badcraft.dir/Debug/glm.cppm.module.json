@@ -1,0 +1,22 @@
+{
+    "version": 1,
+    "revision": 0,
+    "rules": [
+        {
+            "primary-output": "badcraft.dir\\Debug\\/libraries/glm/glm.cppm.obj",
+            "outputs": [
+                "C:\\Users\\Mahdi\\Desktop\\badcraft\\build\\badcraft.dir\\Debug\\vc143.pdb",
+                "badcraft.dir\\Debug\\",
+                "C:\\Users\\Mahdi\\Desktop\\badcraft\\build\\badcraft.dir\\Debug\\glm.cppm.ifc"
+            ],
+            "provides": [
+                {
+                    "logical-name": "glm",
+                    "source-path": "c:\\users\\mahdi\\desktop\\badcraft\\libraries\\glm\\glm.cppm",
+                    "is-interface": true
+                }
+            ],
+            "requires": []
+        }
+    ]
+}

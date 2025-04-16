@@ -4,28 +4,27 @@
 
 #define BADCRAFT_1THREAD
 
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
+#include "glad/glad.h"
+#include "GLFW/glfw3.h"
 
 #define GLM_FORCE_XYZW_ONLY
-#include <glm/glm.hpp>
-#include <glm/gtc/random.hpp>
-#include <glm/ext/matrix_transform.hpp>
-#include <glm/ext/matrix_clip_space.hpp>
+#include "glm/glm.hpp"
+#include "glm/gtc/random.hpp"
+#include "glm/ext/matrix_transform.hpp"
+#include "glm/ext/matrix_clip_space.hpp"
 
-#include <lodepng/lodepng.h>
-#include <World/Generation/Perlin.hpp>
+#include "lodepng/lodepng.h"
+#include "World/Generation/Perlin.hpp"
 
-#include <concurrent_unordered_map.h>
-#include <ppl.h>
+#include <thread>
 
-#include <mutex>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <functional>
 #include <unordered_map>
 
-namespace cnc = concurrency;
+//namespace cnc = concurrency;
 
 template <class T, class U>
 constexpr T narrow_cast(U&& u) noexcept
@@ -41,7 +40,6 @@ constexpr bool b_not(bool& x) noexcept
 typedef int64_t PosType; // Switch between 32-bit and 64-bit block positions
 typedef glm::vec<3, PosType> WorldPos;
 typedef glm::vec<2, PosType> ChunkOffset;
-typedef glm::vec<2, int8_t> RelativeOffset;
 
 static constexpr PosType zeroPosType = static_cast<PosType>(0);
 static constexpr PosType onePosType = static_cast<PosType>(1);
@@ -75,7 +73,10 @@ struct Math
 {
 	static float loopAround(float x, float min, float max) noexcept;
 	static double loopAround(double x, double min, double max) noexcept;
-	static int loopAroundInteger(int x, int minInc, int maxExcl) noexcept;
+	static constexpr int loopAroundInteger(int x, int minInc, int maxExcl) noexcept 
+    {
+        return minInc + ((maxExcl + x) % maxExcl);
+    }
 
 	static constexpr PosType abs(PosType val) noexcept 
 	{

@@ -35,24 +35,24 @@ World::World(PlayerObject& player) noexcept : player(player)
 
 	// Shader storage buffer object to store chunk positions for each chunk face (bound in location = 0)
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0u, OGL::CreateBuffer(GL_SHADER_STORAGE_BUFFER));
-	glBufferStorage(GL_SHADER_STORAGE_BUFFER, 0i64, nullptr, GL_DYNAMIC_STORAGE_BIT);
+	glBufferStorage(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_STORAGE_BIT);
 
 	// Indirect buffer that contains index data for the actual world data
 	OGL::CreateBuffer(GL_DRAW_INDIRECT_BUFFER);
-	glBufferStorage(GL_SHADER_STORAGE_BUFFER, 0i64, nullptr, GL_DYNAMIC_STORAGE_BIT);
+	glBufferStorage(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_STORAGE_BIT);
 
 	TextFormat::log("World settings setup");
 
 	// Create noise splines
 	constexpr int numSplines = WorldPerlin::NoiseSpline::numSplines;
 	WorldPerlin::NoiseSpline noiseSplines[numSplines] {};
-	constexpr WorldPerlin::NoiseSpline::Spline splineObjects[WorldNoise::numNoises][numSplines] = {
-		{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Continentalness
-		{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Flatness
-		{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Depth
-		{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Temperature
-		{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Humidity
-	};
+	// constexpr WorldPerlin::NoiseSpline::Spline splineObjects[WorldNoise::numNoises][numSplines] = {
+	// 	{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Continentalness
+	// 	{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Flatness
+	// 	{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Depth
+	// 	{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Temperature
+	// 	{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Humidity
+	// };
 
 	game.noiseGenerators = WorldNoise(noiseSplines);
 	// World loading, apply settings from file, etc...
@@ -204,7 +204,7 @@ bool World::ChunkExists(WorldPos chunkOffset) const noexcept
 void World::RemoveChunk(Chunk* chunk) noexcept
 {
 	// Remove from map and free up memory using delete as it was created with 'new'
-	chunks.unsafe_erase({ chunk->GetOffset() });
+	chunks.erase({ chunk->GetOffset() });
 	delete chunk;
 }
 
@@ -267,32 +267,29 @@ void World::StartThreadChunkUpdate() noexcept
 	// Generate and calculate new chunks on a separate thread to avoid blocking the main loop and add to threads list
 	game.standaloneThreads.emplace_back([&]() {
 		// Add a few cooldowns to the constant chunk check to avoid 100% thread utilisation
-		constexpr auto cooldown = [&]() { 
-			constexpr std::chrono::milliseconds waitTime = std::chrono::milliseconds(1i64); 
-			std::this_thread::sleep_for(waitTime);
-		};
+		constexpr std::chrono::milliseconds waitTime = std::chrono::milliseconds(1); 
 
 		std::cout << "wahat are u doing?? change create chunk function and fix all of this mess first";
 		if (game.currentFrameTime < 100.0) return;
 		
 		while (game.mainLoopActive) {
-			while (threadUpdateBuffers || game.test) cooldown();
+			while (threadUpdateBuffers || game.test) std::this_thread::sleep_for(waitTime);
 			if (!game.mainLoopActive) return;
 			// Offset can still change whilst generating as calculations occur separately, 
 			// store current to avoid getting different values during same update
-			const ChunkOffset playerOffset = { player.offset.x, player.offset.z };
+			//const ChunkOffset playerOffset = { player.offset.x, player.offset.z };
 
 			// Create chunks by checking if any do not exist in a pattern around the player
-			for (const RelativeOffset& chunkCoords : DataArrays::generateCoords.genCoords) {
-				const ChunkOffset& possibleCoord = playerOffset + static_cast<ChunkOffset>(chunkCoords);
-				// Check if there isn't already a chunk at the selected offset
-				if (chunks.find({ possibleCoord.x, zeroPosType, possibleCoord.y }) != chunks.end()) continue;
-				// Create a full chunk at the calculated offset, which adds each chunk to the above vector
-				//CreateFullChunk(possibleCoord, m_transferChunks);
-			}
+			// for (const GenerateCoordinates::RelativeOffset& chunkCoords : DataArrays::generate.coordinates) {
+			// 	const ChunkOffset& possibleCoord = playerOffset + static_cast<ChunkOffset>(chunkCoords);
+			// 	// Check if there isn't already a chunk at the selected offset
+			// 	if (chunks.find({ possibleCoord.x, zeroPosType, possibleCoord.y }) != chunks.end()) continue;
+			// 	// Create a full chunk at the calculated offset, which adds each chunk to the above vector
+			// 	//CreateFullChunk(possibleCoord, m_transferChunks);
+			// }
 
 			// Ignore if no chunks were created
-			if (m_transferChunks.size() == 0) { cooldown(); continue; }
+			//if (m_transferChunks.size() == 0) { cooldown(); continue; }
 			
 			// Accumulate affected chunks into map
 			//for (Chunk* chunk : m_transferChunks) uniqueChunks.insert({ chunk->GetOffset(), chunk });
@@ -327,7 +324,7 @@ void World::TestChunkUpdate() noexcept
 	toRemove.clear();
 
 	const ChunkOffset playerOffset = { player.offset.x, player.offset.z };
-	for (const RelativeOffset& chunkCoords : DataArrays::generateCoords.genCoords) {
+	for (const GenerateCoordinates::RelativeOffset& chunkCoords : DataArrays::generate.coordinates) {
 		const ChunkOffset newOffset = playerOffset + static_cast<ChunkOffset>(chunkCoords);
 		// Check if there isn't already a chunk at the selected offset
 		if (chunks.find({ newOffset.x, zeroPosType, newOffset.y }) != chunks.end()) continue;
@@ -421,8 +418,8 @@ void World::UpdateWorldBuffers() noexcept
 	#endif
 
 	// Counters
-	uint32_t amountOfInts = 0ui32;
 	int32_t faceDataPointersCount = 0;
+	uint32_t amountOfInts = 0u;
 	
 	// Pointers to chunk face data objects
 	typedef Chunk::FaceAxisData ChunkFaceData;
@@ -442,7 +439,7 @@ void World::UpdateWorldBuffers() noexcept
 		// Loop through all of the chunk's face data, either adding it (if non-empty) to the end vector or to the pointer array
 		for (ChunkFaceData& faceData : chunk->chunkFaceData) {
 			const uint32_t totalFaces = faceData.TotalFaces<uint32_t>();
-			if (totalFaces == 0ui32) continue;
+			if (!totalFaces) continue; // Empty, ignore
 			faceDataPointers[faceDataPointersCount++] = &faceData;
 			amountOfInts += totalFaces;
 		}
@@ -466,7 +463,7 @@ void World::UpdateWorldBuffers() noexcept
 	const uint32_t* activeWorldData = static_cast<uint32_t*>(glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY));
 	// Create new int array for all chunk data and index value
 	uint32_t* newWorldData = new uint32_t[amountOfInts];
-	uint32_t newIndex = 0ui32;
+	uint32_t newIndex = 0u;
 
 	/*
 		Since there is already data present in the world buffer, the old chunks' face data array
@@ -504,7 +501,9 @@ void World::UpdateWorldBuffers() noexcept
 	// Buffer data then free memory used by world data and face data pointers
 	constexpr int64_t sizeofUI32 = static_cast<int64_t>(sizeof(uint32_t));
 	glBufferData(GL_ARRAY_BUFFER, static_cast<int64_t>(amountOfInts) * sizeofUI32, newWorldData, GL_STATIC_DRAW);
-	delete[] newWorldData, faceDataPointers;
+
+	delete[] newWorldData;
+    delete[] faceDataPointers;
 
 	// Ensure new chunk data is used in indirect data and SSBO
 	SortWorldBuffers();
@@ -564,8 +563,6 @@ void World::SortWorldBuffers() noexcept
 	ChunkTranslucentData* translucentChunks = new ChunkTranslucentData[ChunkSettings::TOTAL_CHUNK_FACES_COUNT];
 	int translucentChunksCount = 0;
 
-	WorldPos64 playerOffset64 = static_cast<WorldPos64>(player.offset);
-
 	// Loop through all of the chunks and each of their normal face data
 	for (const auto& [offset, chunk] : chunks) {
 		// Set offset data for shader
@@ -576,12 +573,12 @@ void World::SortWorldBuffers() noexcept
 
 		// TODO: add WORKING frustum culling
 
-		for (offsetData.faceIndex = 0i8; offsetData.faceIndex < 6i8; ++offsetData.faceIndex) {
+		for (offsetData.faceIndex = 0; offsetData.faceIndex < 6; ++offsetData.faceIndex) {
 			const Chunk::FaceAxisData& faceData = chunk->chunkFaceData[offsetData.faceIndex];
-			if (faceData.TotalFaces<uint32_t>() == 0ui32) continue; // No faces present at all
+			if (!faceData.TotalFaces<uint32_t>()) continue; // No faces present
 
 			// Add to vector if transparency is present, go to next iteration if there are no faces at all
-			if (faceData.translucentFaceCount > 0ui32) {
+			if (faceData.translucentFaceCount > 0u) {
 				ChunkTranslucentData& translucentData = translucentChunks[translucentChunksCount++];
 				translucentData.chunk = chunk;
 				translucentData.offsetData = offsetData;
@@ -620,7 +617,7 @@ void World::SortWorldBuffers() noexcept
 			}
 
 			// Assign indirect and offset data to array (same amount, so same index)
-			worldIndirectData[m_indirectCalls] = { 4ui32, faceData.faceCount, 0ui32, faceData.dataIndex };
+			worldIndirectData[m_indirectCalls] = { 4u, faceData.faceCount, 0u, faceData.dataIndex };
 			worldOffsetData[m_indirectCalls++] = offsetData;
 		}
 	}
@@ -640,7 +637,7 @@ void World::SortWorldBuffers() noexcept
 		const Chunk::FaceAxisData& faceData = data.chunk->chunkFaceData[data.offsetData.faceIndex];
 		const uint32_t translucentFaces = faceData.translucentFaceCount, translucentOffset = faceData.dataIndex + faceData.faceCount;
 		// Create indirect command with offset using the translucent face data
-		worldIndirectData[m_indirectCalls] = { 4ui32, translucentFaces, 0ui32, translucentOffset };
+		worldIndirectData[m_indirectCalls] = { 4u, translucentFaces, 0u, translucentOffset };
 		worldOffsetData[m_indirectCalls++] = data.offsetData;
 	}
 

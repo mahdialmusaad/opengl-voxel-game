@@ -2,12 +2,12 @@
 #ifndef _SOURCE_WORLD_WLD_HEADER_
 #define _SOURCE_WORLD_WLD_HEADER_
 
-#include <Player/PlayerDef.hpp>
+#include "Player/PlayerDef.hpp"
 
 class World
 {
 public:
-	cnc::concurrent_unordered_map<WorldPos, Chunk*, WorldPosHash> chunks;
+	std::unordered_map<WorldPos, Chunk*, WorldPosHash> chunks;
 	TextRenderer textRenderer;
 
 	PlayerObject& player;
