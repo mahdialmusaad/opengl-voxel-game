@@ -1,10 +1,4 @@
-#include <World/Generation/Settings.hpp>
-
-bool ChunkSettings::InRenderDistance(WorldPos& playerOffset, const WorldPos& chunkOffset) noexcept
-{
-	return Math::abs(playerOffset.x - chunkOffset.x) +
-		   Math::abs(playerOffset.z - chunkOffset.z) <= ChunkSettings::PRENDER_DISTANCE;
-}
+#include "Settings.hpp"
 
 PosType ChunkSettings::WorldPositionToOffset(PosType x) noexcept
 {

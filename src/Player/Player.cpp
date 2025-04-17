@@ -1,4 +1,4 @@
-#include <Player/Player.hpp>
+#include "Player.hpp"
 
 Player::Player() noexcept
 {
@@ -101,10 +101,10 @@ void Player::UpdateMovement() noexcept
 {
 	// Player should slowly come to a stop instead of speed being directly related to keyboard input
 
-	// Framerate-independent lerp/smoothing
-	m_velocity.x = Math::lerpIndependent(m_velocity.x, 0.0, game.deltaTime);
-	m_velocity.y = Math::lerpIndependent(m_velocity.y, 0.0, game.deltaTime);
-	m_velocity.z = Math::lerpIndependent(m_velocity.z, 0.0, game.deltaTime);
+	// TODO: Framerate-independent lerp/smoothing
+	m_velocity.x = Math::lerp(m_velocity.x, 0.0, game.deltaTime);
+	m_velocity.y = Math::lerp(m_velocity.y, 0.0, game.deltaTime);
+	m_velocity.z = Math::lerp(m_velocity.z, 0.0, game.deltaTime);
 
 	// Check if the player velocity is close enough to zero to simply treat it as not moving
 	// (Smooth player movement means the player could move by a millionth of a block, which is basically 

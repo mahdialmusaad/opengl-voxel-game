@@ -1,4 +1,4 @@
-#include <World/World.hpp>
+#include "World.hpp"
 
 World::World(PlayerObject& player) noexcept : player(player)
 {
@@ -201,6 +201,12 @@ bool World::ChunkExists(WorldPos chunkOffset) const noexcept
 	return GetChunk(chunkOffset) != nullptr;
 }
 
+bool World::InRenderDistance(WorldPos &playerOffset, const WorldPos &chunkOffset) noexcept
+{
+    return Math::abs(playerOffset.x - chunkOffset.x) +
+           Math::abs(playerOffset.z - chunkOffset.z) <= static_cast<PosType>(chunkRenderDistance);
+}
+
 void World::RemoveChunk(Chunk* chunk) noexcept
 {
 	// Remove from map and free up memory using delete as it was created with 'new'
@@ -264,45 +270,7 @@ void World::SetPerlinValues(WorldPerlin::NoiseResult* results, ChunkOffset offse
 
 void World::StartThreadChunkUpdate() noexcept
 {
-	// Generate and calculate new chunks on a separate thread to avoid blocking the main loop and add to threads list
-	game.standaloneThreads.emplace_back([&]() {
-		// Add a few cooldowns to the constant chunk check to avoid 100% thread utilisation
-		constexpr std::chrono::milliseconds waitTime = std::chrono::milliseconds(1); 
-
-		std::cout << "wahat are u doing?? change create chunk function and fix all of this mess first";
-		if (game.currentFrameTime < 100.0) return;
-		
-		while (game.mainLoopActive) {
-			while (threadUpdateBuffers || game.test) std::this_thread::sleep_for(waitTime);
-			if (!game.mainLoopActive) return;
-			// Offset can still change whilst generating as calculations occur separately, 
-			// store current to avoid getting different values during same update
-			//const ChunkOffset playerOffset = { player.offset.x, player.offset.z };
-
-			// Create chunks by checking if any do not exist in a pattern around the player
-			// for (const GenerateCoordinates::RelativeOffset& chunkCoords : DataArrays::generate.coordinates) {
-			// 	const ChunkOffset& possibleCoord = playerOffset + static_cast<ChunkOffset>(chunkCoords);
-			// 	// Check if there isn't already a chunk at the selected offset
-			// 	if (chunks.find({ possibleCoord.x, zeroPosType, possibleCoord.y }) != chunks.end()) continue;
-			// 	// Create a full chunk at the calculated offset, which adds each chunk to the above vector
-			// 	//CreateFullChunk(possibleCoord, m_transferChunks);
-			// }
-
-			// Ignore if no chunks were created
-			//if (m_transferChunks.size() == 0) { cooldown(); continue; }
-			
-			// Accumulate affected chunks into map
-			//for (Chunk* chunk : m_transferChunks) uniqueChunks.insert({ chunk->GetOffset(), chunk });
-
-			//// Calculate the faces for all of the affected chunks
-			//for (const auto& [offset, chunk] : uniqueChunks) chunk->CalculateChunk(chunkFinder);
-			//for (const auto& [offset, chunk] : chunks) chunk->CalculateChunk(chunkFinder);
-
-			//// Request world buffer update and clear unique chunks map
-			//threadUpdateBuffers = true;
-			//uniqueChunks.clear();
-		}
-	});
+	// TODO
 }
 
 void World::TestChunkUpdate() noexcept
@@ -315,7 +283,7 @@ void World::TestChunkUpdate() noexcept
 
 	std::vector<Chunk*> toRemove;
 	for (const auto& [offset, chunk] : chunks) {
-		if (!ChunkSettings::InRenderDistance(player.offset, offset)) {
+		if (!InRenderDistance(player.offset, offset)) {
 			toRemove.emplace_back(chunk);
 		}
 	}
@@ -324,12 +292,18 @@ void World::TestChunkUpdate() noexcept
 	toRemove.clear();
 
 	const ChunkOffset playerOffset = { player.offset.x, player.offset.z };
-	for (const GenerateCoordinates::RelativeOffset& chunkCoords : DataArrays::generate.coordinates) {
-		const ChunkOffset newOffset = playerOffset + static_cast<ChunkOffset>(chunkCoords);
-		// Check if there isn't already a chunk at the selected offset
-		if (chunks.find({ newOffset.x, zeroPosType, newOffset.y }) != chunks.end()) continue;
-		CreateFullChunk(newOffset);
-	}
+
+    // Find valid coordinates relative to the player
+    for (int x = -chunkRenderDistance; x <= chunkRenderDistance; ++x) {
+        for (int z = -chunkRenderDistance; z <= chunkRenderDistance; ++z) {
+            if (abs(x) + abs(z) > chunkRenderDistance) continue;
+            
+            const ChunkOffset newOffset = playerOffset + ChunkOffset(x, z);
+            // Check if there isn't already a chunk at the selected offset
+            if (chunks.find({ newOffset.x, zeroPosType, newOffset.y }) != chunks.end()) continue;
+            CreateFullChunk(newOffset);
+        }
+    } 
 
 	std::unordered_map<WorldPos, Chunk*, WorldPosHash> unique;
 
@@ -400,7 +374,7 @@ void World::GenerateTree(TreeGenerateVars vars) noexcept
 
 void World::UpdateWorldBuffers() noexcept
 {
-	TextFormat::log("World buffer update");
+	//TextFormat::log("World buffer update");
 
 	// Bind world vertex array to edit correct buffers
 	glBindVertexArray(m_worldVAO);
@@ -420,10 +394,16 @@ void World::UpdateWorldBuffers() noexcept
 	// Counters
 	int32_t faceDataPointersCount = 0;
 	uint32_t amountOfInts = 0u;
+
+    // 2n^2 + 2n + 1 = amount of chunks in a 'star' pattern around the player, where n is the render distance
+    // Multiply by 6 to get the total number of 'chunk faces' and by the height count to include full chunks
+    const int chunkFacesTotal = 
+        ((2 * chunkRenderDistance * chunkRenderDistance) + (2 * chunkRenderDistance) + 1) *
+        6 * ChunkSettings::HEIGHT_COUNT;
 	
-	// Pointers to chunk face data objects
+	// Pointers to chunk face objects
 	typedef Chunk::FaceAxisData ChunkFaceData;
-	ChunkFaceData** faceDataPointers = malloc_T<ChunkFaceData*>(ChunkSettings::TOTAL_CHUNK_FACES_COUNT);
+	ChunkFaceData** faceDataPointers = new ChunkFaceData*[chunkFacesTotal];
 
 	// Loop through all of the chunks and each of their 6 face data to determine how much memory is needed 
 	// overall and accumulate all the valid pointer data into the array, as well as preparing to delete any far away chunks
@@ -453,7 +433,7 @@ void World::UpdateWorldBuffers() noexcept
 
 	// Just clear the data if there are no chunks present
 	if (!chunks.size()) {
-		free(faceDataPointers);
+		delete[] faceDataPointers;
 		SortWorldBuffers();
 		threadUpdateBuffers = false;
 		return;
@@ -538,13 +518,18 @@ void World::SortWorldBuffers() noexcept
 
 	/*
 		Position offsets and indirect arrays:
-		Two for each chunk is needed as translucent objects are rendered separately
+		Two is needed per chunk face as translucent objects are rendered separately
 		after all the opaque faces so require the same data as well
 	*/
 
-	constexpr size_t worldBufferAmount = static_cast<size_t>(ChunkSettings::TOTAL_CHUNK_COUNT * 12);
-	IndirectDrawCommand* worldIndirectData = new IndirectDrawCommand[worldBufferAmount];
-	ShaderChunkOffset* worldOffsetData = new ShaderChunkOffset[worldBufferAmount];
+    // Chunk total face calculation as explained in world data buffer update function
+    const int chunkFacesTotal = 
+        ((2 * chunkRenderDistance * chunkRenderDistance) + (2 * chunkRenderDistance) + 1) *
+        6 * ChunkSettings::HEIGHT_COUNT;
+
+    // Multiply by 2 as well due to the multiline comment above
+	IndirectDrawCommand* worldIndirectData = new IndirectDrawCommand[chunkFacesTotal * 2];
+	ShaderChunkOffset* worldOffsetData = new ShaderChunkOffset[chunkFacesTotal * 2];
 
 	// Offset value data
 	ShaderChunkOffset offsetData {};
@@ -560,7 +545,7 @@ void World::SortWorldBuffers() noexcept
 	*/
 
 	// All chunk face data with non-opaque faces go here for sorting later on
-	ChunkTranslucentData* translucentChunks = new ChunkTranslucentData[ChunkSettings::TOTAL_CHUNK_FACES_COUNT];
+	ChunkTranslucentData* translucentChunks = new ChunkTranslucentData[chunkFacesTotal];
 	int translucentChunksCount = 0;
 
 	// Loop through all of the chunks and each of their normal face data

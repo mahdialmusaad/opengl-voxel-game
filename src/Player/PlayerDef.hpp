@@ -6,6 +6,14 @@
 #include "Rendering/TextRenderer.hpp"
 
 // definition visible to world
+enum class ModifyWorldResult {
+	Passed,
+	AboveWorld,
+	BelowWorld,
+	NotFound,
+	Invalid
+};
+
 struct PlayerObject
 {
 	struct InventorySlot 

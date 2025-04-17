@@ -1,4 +1,4 @@
-#include "Utility/Application.hpp"
+#include "Application.hpp"
 
 Badcraft::Badcraft() :
 	world(player),
@@ -7,7 +7,7 @@ Badcraft::Badcraft() :
 	TextFormat::log("Application enter");
 	playerFunctions.world = &world;
 	callbacks.app = this;
-
+    
 	// OGL rendering settings
 	glEnable(GL_PROGRAM_POINT_SIZE); // Make GL_POINTS size set in shaders instead of having some global value
 	glEnable(GL_DEPTH_TEST); // Enable depth testing so objects are rendered properly
@@ -458,19 +458,8 @@ void Badcraft::Callbacks::KeyPressCallback(int key, int, int action, int)
 		return;
 	}
 
-	// Add to input information list
-	if (action == GLFW_RELEASE) game.keyboardState.erase(key);
-	else game.keyboardState.insert({ key, action });
-	game.anyKeyPressed = game.keyboardState.size() > 0;
-
-	// Check if key is listed in input map
-	const auto& keyboardPair = keyFunctionMap.find(key);
-
-	if (keyboardPair != keyFunctionMap.end()) {
-		const auto& [inputAction, keyFunction] = keyboardPair->second;
-		// Check if input action matches, run the associated function if it is
-		if ((action & inputAction) != 0) keyFunction();
-	}
+	// Determine if the input has a linked function and execute if so
+    ApplyInput(key, action);
 }
 void Badcraft::Callbacks::CharCallback(unsigned codepoint)
 {
@@ -556,6 +545,94 @@ void Badcraft::Callbacks::ToggleInventory() noexcept
 	// Reset mouse position
 	glfwSetCursorPos(game.window, static_cast<double>(game.width) / 2.0, static_cast<double>(game.height) / 2.0);
 	game.focusChanged = true;
+}
+
+void Badcraft::Callbacks::ApplyInput(int key, int action) noexcept
+{
+    constexpr int repeatableInput = GLFW_PRESS | GLFW_REPEAT;
+    constexpr int pressInput = GLFW_PRESS;
+    
+    typedef std::pair<int, std::function<void()>> pair;
+    static const std::unordered_map<int, pair> keyFunctionMap = {
+
+        // Single-press inputs
+
+        { GLFW_KEY_ESCAPE, { pressInput, [&]() { 
+            game.mainLoopActive = false;
+        }}},
+        { GLFW_KEY_E, { pressInput, [&]() { 
+            ToggleInventory(); 
+        }}},
+        { GLFW_KEY_Z, { pressInput, [&]() { 
+            glPolygonMode(GL_FRONT_AND_BACK, b_not(app->wireframe) ? GL_LINE : GL_FILL); 
+        }}},
+        { GLFW_KEY_X, { pressInput, [&]() { 
+            glfwSwapInterval(!b_not(app->maxFPS)); 
+        }}},
+        { GLFW_KEY_C, { pressInput, [&]() { 
+            b_not(app->player.collisionEnabled); 
+        }}},
+        { GLFW_KEY_V, { pressInput, [&]() { 
+            b_not(game.test); 
+        }}},
+        { GLFW_KEY_R, { pressInput, [&]() { 
+            game.shader.InitShader(); 
+            app->UpdateAspect(); 
+        }}},
+        { GLFW_KEY_F1, { pressInput, [&]() { 
+            b_not(app->showGUI); 
+        }}},
+        { GLFW_KEY_F2, { pressInput, [&]() { 
+            app->TakeScreenshot(); 
+        }}},
+        { GLFW_KEY_F3, { pressInput, [&]() { 
+            glfwSetInputMode(game.window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); 
+            game.focusChanged = true; 
+        }}},
+        { GLFW_KEY_SLASH, { pressInput, [&]() { 
+            app->showGUI = true; 
+            BeginChat(); 
+        }}},
+        { GLFW_KEY_LEFT_BRACKET, { pressInput, [&]() {
+            app->world.chunkRenderDistance++;
+            app->world.UpdateWorldBuffers();
+        }}},
+        { GLFW_KEY_RIGHT_BRACKET, { pressInput, [&]() {
+            app->world.chunkRenderDistance = std::max(app->world.chunkRenderDistance - 1, 0);
+            app->world.UpdateWorldBuffers();
+        }}},
+
+        // Repeatable inputs
+
+        { GLFW_KEY_COMMA, { repeatableInput, [&]() { 
+            app->player.defaultSpeed += 1.0f; 
+        }}},
+        { GLFW_KEY_PERIOD, { repeatableInput, [&]() { 
+            app->player.defaultSpeed -= 1.0f; 
+        }}},
+        { GLFW_KEY_I, { repeatableInput, [&]() { 
+            app->player.fov += Math::TORADIANS_FLT; 
+            app->UpdatePerspective(); 
+        }}},
+        { GLFW_KEY_O, { repeatableInput, [&]() { 
+            app->player.fov -= Math::TORADIANS_FLT; 
+            app->UpdatePerspective(); 
+        }}}
+    };
+
+    // Add to input information list
+	if (action == GLFW_RELEASE) game.keyboardState.erase(key);
+	else game.keyboardState.insert({ key, action });
+	game.anyKeyPressed = game.keyboardState.size() > 0;
+
+	// Check if key is listed in input map
+	const auto& keyboardPair = keyFunctionMap.find(key);
+
+	if (keyboardPair != keyFunctionMap.end()) {
+		const auto& [inputAction, keyFunction] = keyboardPair->second;
+		// Check if input action matches, run the associated function if it is
+		if ((action & inputAction) != 0) keyFunction();
+	}
 }
 
 void Badcraft::Callbacks::BeginChat() noexcept
@@ -661,6 +738,7 @@ void Badcraft::Callbacks::ApplyChat()
 	#define argnum(x) if (args.size() != x) return;
 
 	// Map of all commands and their functions
+    typedef std::function<void()> func;
 	static const std::unordered_map<std::string, func> commandsMap = {
 		{ "tp", [&]() {
 			argnum(3);

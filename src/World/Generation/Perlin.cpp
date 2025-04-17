@@ -1,4 +1,4 @@
-#include <World/Generation/Perlin.hpp>
+#include "Perlin.hpp"
 
 void WorldPerlin::ChangeSeed()
 {

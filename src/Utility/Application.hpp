@@ -23,34 +23,9 @@ public:
 		void CloseCallback() noexcept;
 
 		void ToggleInventory() noexcept;
+        void ApplyInput(int key, int action) noexcept;
 		void BeginChat() noexcept;
 		void ApplyChat();
-
-		typedef std::function<void()> func;
-		typedef std::pair<int, func> pair;
-
-		static constexpr int press = GLFW_PRESS;
-		static constexpr int rept = GLFW_PRESS | GLFW_REPEAT;
-		
-		const std::unordered_map<int, pair> keyFunctionMap = {
-			// Single-press inputs
-			{ GLFW_KEY_ESCAPE,	pair(press, func([&]() { game.mainLoopActive = false; }))},
-			{ GLFW_KEY_E,		pair(press, func([&]() { ToggleInventory(); }))},
-			{ GLFW_KEY_Z,		pair(press, func([&]() { glPolygonMode(GL_FRONT_AND_BACK, b_not(app->wireframe) ? GL_LINE : GL_FILL); }))},
-			{ GLFW_KEY_X,		pair(press, func([&]() { glfwSwapInterval(!b_not(app->maxFPS)); }))},
-			{ GLFW_KEY_C,		pair(press, func([&]() { b_not(app->player.collisionEnabled); }))},
-			{ GLFW_KEY_V,		pair(press, func([&]() { b_not(game.test); }))},
-			{ GLFW_KEY_R,		pair(press, func([&]() { game.shader.InitShader(); app->UpdateAspect(); }))},
-			{ GLFW_KEY_F1,		pair(press, func([&]() { b_not(app->showGUI); }))},
-			{ GLFW_KEY_F2,		pair(press, func([&]() { app->TakeScreenshot(); }))},
-			{ GLFW_KEY_F3,		pair(press, func([&]() { glfwSetInputMode(game.window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); game.focusChanged = true; }))},
-			{ GLFW_KEY_SLASH,	pair(press, func([&]() { app->showGUI = true; BeginChat(); }))},
-			// Repeatable inputs
-			{ GLFW_KEY_COMMA,	pair(rept, func([&]() { app->player.currentSpeed += 1.0f; app->player.defaultSpeed = app->player.currentSpeed; }))},
-			{ GLFW_KEY_PERIOD,	pair(rept, func([&]() { app->player.currentSpeed -= 1.0f; app->player.defaultSpeed = app->player.currentSpeed; }))},
-			{ GLFW_KEY_O,		pair(rept, func([&]() { app->player.fov += Math::TORADIANS_FLT; app->UpdatePerspective(); }))},
-			{ GLFW_KEY_I,		pair(rept, func([&]() { app->player.fov -= Math::TORADIANS_FLT; app->UpdatePerspective(); }))},
-		};
 	};
 
 	Callbacks callbacks;

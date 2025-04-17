@@ -27,7 +27,17 @@ enum WorldDirectionInt
 	IWorldDir_Back = 5, // negative Z
 };
 
-typedef uint8_t ObjectIDTypeof;
+// Upcoming, for reference now
+enum class BiomeID {
+	Plains,
+	Forest,
+	Desert,
+	River,
+	NumUnique
+};
+
+typedef uint8_t ObjectIDTypeof; // Change when there are enough unique IDs
+// List of all different blocks and (possibly) items
 enum class ObjectID : ObjectIDTypeof
 {
 	Air,
@@ -42,22 +52,7 @@ enum class ObjectID : ObjectIDTypeof
 	NumUnique,
 };
 
-enum class BiomeID {
-	Plains,
-	Forest,
-	Desert,
-	River,
-	NumUnique
-};
-
-enum class ModifyWorldResult {
-	Passed,
-	AboveWorld,
-	BelowWorld,
-	NotFound,
-	Invalid
-};
-
+// Block properties
 struct WorldBlockData
 {
 	typedef int(*renderLookupDefinition)(int original, int target) noexcept;
@@ -84,6 +79,7 @@ struct WorldBlockData
 	renderLookupDefinition renderFunction;
 };
 
+// Property definitions for all object IDs as seen above
 struct WorldBlockData_DEF {
 	enum AtlasTextures : uint8_t
 	{
@@ -121,12 +117,12 @@ struct WorldBlockData_DEF {
 		LightM,
 	};
 
-	static constexpr int R_DEFAULT(int, int target) noexcept {
-		return WorldBlockData_DEF::BlockIDData[target].hasTransparency;
-	}
-	static constexpr int R_HIDESELF(int original, int target) noexcept {
-		return target != original && WorldBlockData_DEF::BlockIDData[target].hasTransparency;
-	}
+    static int R_HIDESELF(int original, int target) noexcept {
+        return target != original && WorldBlockData_DEF::BlockIDData[target].hasTransparency;
+    }
+    static int R_DEFAULT(int, int target) noexcept {
+        return WorldBlockData_DEF::BlockIDData[target].hasTransparency;
+    }
 
 	static constexpr int R_NEVER(int, int) noexcept {
 		return false;
@@ -135,7 +131,8 @@ struct WorldBlockData_DEF {
 		return true;
 	}
 
-	static constexpr WorldBlockData BlockIDData[static_cast<ObjectIDTypeof>(ObjectID::NumUnique)] = {
+    // Blocks and their properties
+	static constexpr WorldBlockData BlockIDData[static_cast<int>(ObjectID::NumUnique)] = {
 		// ID, textures, transparency, 'solidness', replaceable, emission, render function
 
 		{ 
@@ -194,23 +191,25 @@ struct WorldBlockData_DEF {
 	};
 };
 
-struct BiomeData {
-	constexpr BiomeData(float heightMult) noexcept : heightMultiplier(heightMult) {};
-	float heightMultiplier;
-};
-
+// Game settings
 struct ChunkSettings
 {
-	static constexpr int CHUNK_SIZE = 32;
-	static constexpr int HEIGHT_COUNT = 8;
-	static constexpr int RENDER_DISTANCE = 2;
+	static constexpr int CHUNK_SIZE = 32; // (POWER OF 2 ONLY) Changing this requires the world shader to be updated as well.
+	static constexpr int HEIGHT_COUNT = 8; // How many chunks in a 'full chunk'
 
-	static constexpr int MAX_WORLD_HEIGHT = CHUNK_SIZE * HEIGHT_COUNT;
+    // Chunk generation settings (feel free to edit)!
+    static constexpr int CHUNK_BASE_DIRT_HEIGHT = HEIGHT_COUNT / 2;
+    static constexpr int CHUNK_WATER_HEIGHT = CHUNK_SIZE * HEIGHT_COUNT / 4;
+    static constexpr int CHUNK_MOUNTAIN_HEIGHT = CHUNK_WATER_HEIGHT * 3;
+    static constexpr int CHUNK_LAND_MINIMUM_HEIGHT = CHUNK_WATER_HEIGHT / 2;
+    static constexpr double NOISE_STEP = 0.01;
+    
+    // Calculation shortcuts - do not change!
 	static constexpr int CHUNK_SIZE_SQUARED = CHUNK_SIZE * CHUNK_SIZE;
+	static constexpr int MAX_WORLD_HEIGHT = CHUNK_SIZE * HEIGHT_COUNT;
 
 	static constexpr PosType PCHUNK_SIZE = static_cast<PosType>(CHUNK_SIZE);
 	static constexpr PosType PHEIGHT_COUNT = static_cast<PosType>(HEIGHT_COUNT);
-	static constexpr PosType PRENDER_DISTANCE = static_cast<PosType>(RENDER_DISTANCE);
 	static constexpr PosType PMAX_WORLD_HEIGHT = static_cast<PosType>(MAX_WORLD_HEIGHT);
 
 	static constexpr int32_t CHUNK_SIZE_I32 = static_cast<int32_t>(CHUNK_SIZE);
@@ -224,7 +223,6 @@ struct ChunkSettings
 
 	static constexpr int MAX_WORLD_HEIGHT_INDEX = MAX_WORLD_HEIGHT - 1;
 	static constexpr float CHUNK_NOISE_MULTIPLIER = static_cast<float>(MAX_WORLD_HEIGHT) * 0.5f;
-	static constexpr double NOISE_STEP = 0.01;
 
 	static constexpr int CHUNK_SIZE_HALF = CHUNK_SIZE / 2;
 	static constexpr int CHUNK_SIZE_M1 = CHUNK_SIZE - 1;
@@ -236,17 +234,12 @@ struct ChunkSettings
 	static constexpr float CHUNK_SIZE_RECIP = 1.0f / CHUNK_SIZE_FLT;
 	static constexpr double CHUNK_SIZE_RECIP_DBL = 1.0 / CHUNK_SIZE_DBL;
 
-	static constexpr int FULLCHUNK_COUNT = (2 * RENDER_DISTANCE * RENDER_DISTANCE) + (2 * RENDER_DISTANCE) + 1;
-	static constexpr int TOTAL_CHUNK_COUNT = FULLCHUNK_COUNT * HEIGHT_COUNT;
-	static constexpr int TOTAL_CHUNK_FACES_COUNT = TOTAL_CHUNK_COUNT * 6;
-
-	static constexpr int CHUNK_BASE_DIRT_HEIGHT = HEIGHT_COUNT / 2;
-	static constexpr int CHUNK_WATER_HEIGHT = MAX_WORLD_HEIGHT / 4;
-	static constexpr int CHUNK_MOUNTAIN_HEIGHT = CHUNK_WATER_HEIGHT * 3;
-	static constexpr int CHUNK_LAND_MINIMUM_HEIGHT = CHUNK_WATER_HEIGHT / 2;
-
-	static constexpr BiomeData worldBiomeData[static_cast<size_t>(BiomeID::NumUnique)] = {
-		//	height
+    // Upcoming biomes settings
+    struct BiomeData {
+        constexpr BiomeData(float heightMult) noexcept : heightMultiplier(heightMult) {};
+        float heightMultiplier;
+    } worldBiomeData[static_cast<size_t>(BiomeID::NumUnique)] = {
+	//	 height
 		{ 1.0f }, // Plains
 		{ 1.0f }, // Forest
 		{ 1.0f }, // Desert
@@ -352,23 +345,6 @@ struct ChunkSettings
 	static ChunkBlockValueFull* GetFullBlockArray(ChunkBlockValue* chunkBlocks) noexcept;
 };
 
-struct GenerateCoordinates
-{
-    constexpr GenerateCoordinates() noexcept 
-    {
-        constexpr int crd = ChunkSettings::RENDER_DISTANCE;
-        constexpr auto iabs = [&](int val) noexcept { return val < 0 ? -val : val; };
-        for (int x = -crd, i = 0; x <= crd; ++x) {
-            for (int z = -crd; z <= crd; ++z) {
-                if (iabs(x) + iabs(z) <= crd) coordinates[i++] = { x, z };
-            }
-        }
-    }
-    
-    typedef glm::vec<2, int8_t> RelativeOffset;
-    RelativeOffset coordinates[ChunkSettings::FULLCHUNK_COUNT]{};
-};
-
 struct ChunkLookupTable
 {
     constexpr ChunkLookupTable() noexcept
@@ -403,11 +379,6 @@ struct ChunkLookupTable
     };
 
     ChunkLookupData lookupData[ChunkSettings::CHUNK_UNIQUE_FACES]{};
-};
-
-struct DataArrays {
-    static inline ChunkLookupTable lookup = ChunkLookupTable();
-    static constexpr GenerateCoordinates generate = GenerateCoordinates();
-};
+} inline chunkLookupData;
 
 #endif // _SOURCE_GENERATION_SETTINGS_HDR_

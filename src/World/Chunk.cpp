@@ -1,4 +1,4 @@
-#include <World/Chunk.hpp>
+#include "Chunk.hpp"
 
 Chunk::Chunk(
 	WorldPos offset,
@@ -134,7 +134,7 @@ void Chunk::CalculateChunk(const ChunkGetter& findFunction) noexcept
 			const WorldBlockData& blockSpecificData = ChunkSettings::GetBlockData(blockID);
 
 			// Get precalculated results for this position and face
-			const ChunkLookupTable::ChunkLookupData& surroundingData = DataArrays::lookup.lookupData[lookupIndex++];
+			const ChunkLookupTable::ChunkLookupData& surroundingData = chunkLookupData.lookupData[lookupIndex++];
 
 			// Get the block next to the current face, which could be in this chunk or one of the surrounding chunks
 			const int targetBlock = static_cast<int>((*localNearby[surroundingData.nearbyIndex])[surroundingData.blockIndex]);

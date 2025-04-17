@@ -12,6 +12,7 @@ public:
 
 	PlayerObject& player;
 	bool threadUpdateBuffers = false;
+    int chunkRenderDistance = 4;
 
 	World(PlayerObject& player) noexcept;
 	void DrawWorld() const noexcept;
@@ -25,6 +26,8 @@ public:
 
 	Chunk* GetChunk(WorldPos offset) const noexcept;
 	bool ChunkExists(WorldPos offset) const noexcept;
+
+    bool InRenderDistance(WorldPos& playerOffset, const WorldPos& chunkOffset) noexcept;
 
 	void FillBlocks(
 		PosType x, PosType y, PosType z, 
