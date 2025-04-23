@@ -1,12 +1,13 @@
 #include <Rendering/TextRenderer.hpp>
+#include "TextRenderer.hpp"
 
 TextRenderer::TextRenderer() noexcept
 {
 	TextFormat::log("Text renderer enter");
 
 	// Setup text buffers to store instanced vertices
-	textVAO = OGL::CreateVAO8();
-	OGL::CreateBuffer(GL_ARRAY_BUFFER);
+	m_textVAO = OGL::CreateVAO8();
+	m_textVBO = OGL::CreateBuffer8(GL_ARRAY_BUFFER);
 
 	// Default instanced data for a text quad
 	constexpr const float quadVerts[8] = {
@@ -15,16 +16,15 @@ TextRenderer::TextRenderer() noexcept
 		1.0f, 0.0f,  
 		1.0f, 1.0f
 	};
-	glBufferStorage(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, 0); 
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, 0u); 
+
+	// Instanced attributes for individual text VBOs
+	glEnableVertexAttribArray(0u);
+	glVertexAttribDivisor(0u, 1u);
 
 	// Shader buffer attributes
-	glEnableVertexAttribArray(0u);
-	glVertexAttribPointer(0u, 2, GL_FLOAT, GL_FALSE, sizeof(float[2]), nullptr);
-
-	// Instanced attribute
 	glEnableVertexAttribArray(1u);
-	glVertexAttribDivisor(1u, 1u);
-	glVertexAttribIPointer(1u, 2, GL_UNSIGNED_INT, sizeof(uint32_t[2]), nullptr);
+	glVertexAttribPointer(1u, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
 
 	// Calculate size of a pixel on font texture (0.0 - 1.0)
 	const float pxSize = 1.0f / static_cast<float>(game.textTextureInfo.width);
@@ -39,7 +39,7 @@ TextRenderer::TextRenderer() noexcept
 
 	// Update texture position array with the X position and size of each character
 	float currentPixelOffset = 0.0f; // Current image X offset
-	for (int i = 0; i < static_cast<int>(sizeof(m_charSizes)); ++i) {
+	for (int i = 0, end = sizeof(m_charSizes); i < end; ++i) {
 		const float size = static_cast<float>(m_charSizes[i]);
 		tssbodata.positionData[i] = currentPixelOffset;
 		tssbodata.sizeData[i] = size;
@@ -48,9 +48,7 @@ TextRenderer::TextRenderer() noexcept
 
 	// Send the pixel offsets of each letter in font texture to shader
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1u, OGL::CreateBuffer(GL_SHADER_STORAGE_BUFFER));
-
-	// Buffer SSBO data for shader
-	glBufferStorage(GL_SHADER_STORAGE_BUFFER, sizeof(tssbodata), &tssbodata, 0);
+	glBufferStorage(GL_SHADER_STORAGE_BUFFER, sizeof(tssbodata), &tssbodata, 0u);
 
 	TextFormat::log("Text renderer exit");
 }
@@ -58,13 +56,13 @@ TextRenderer::TextRenderer() noexcept
 void TextRenderer::RenderText() const noexcept
 {
 	game.shader.UseShader(Shader::ShaderID::Text);
-	glBindVertexArray(textVAO);
+	glBindVertexArray(m_textVAO);
 
 	for (const auto& [id, text] : m_screenTexts) {
 		if (text->type == T_Type::Hidden) continue;
 		glBindBuffer(GL_ARRAY_BUFFER, text->vbo);
-		glVertexAttribIPointer(1u, 2, GL_UNSIGNED_INT, sizeof(uint32_t[2]), nullptr);
-		glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, static_cast<int>(text->GetDisplayLength()));
+		glVertexAttribIPointer(0u, 2, GL_UNSIGNED_INT, 0, nullptr);
+		glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, text->GetDisplayLength());
 	}
 }
 
@@ -76,7 +74,7 @@ void TextRenderer::RecalculateAllText() noexcept
 	TextFormat::log("Calculate text");
 
 	// Bind the text VAO so the correct buffers are updated
-	glBindVertexArray(textVAO);
+	glBindVertexArray(m_textVAO);
 
 	// Update each text object
 	for (const auto& [id, text] : m_screenTexts) UpdateText(text);
@@ -85,10 +83,10 @@ void TextRenderer::RecalculateAllText() noexcept
 uint16_t TextRenderer::GetNewID() noexcept
 {
 	bool found = true;
-	uint16_t id = 0;
+	std::uint16_t id = 0;
 
 	std::mt19937 gen(std::random_device{}());
-	std::uniform_int_distribution<uint16_t> dist(static_cast<uint16_t>(1), UINT16_MAX);
+	std::uniform_int_distribution<std::uint16_t> dist(1, UINT16_MAX);
 	
 	// Repeatedly generates new random id until an unused one is found
 	do {
@@ -98,14 +96,14 @@ uint16_t TextRenderer::GetNewID() noexcept
 
 	return id;
 }
-TextRenderer::ScreenText* TextRenderer::GetTextFromID(uint16_t id) noexcept
+TextRenderer::ScreenText* TextRenderer::GetTextFromID(std::uint16_t id) noexcept
 {
 	// Returns a text object if one is found with the given id
 	const auto& textIterator = m_screenTexts.find(id);
 	return textIterator != m_screenTexts.end() ? textIterator->second : nullptr;
 }
 
-uint16_t TextRenderer::GetIDFromText(ScreenText* screenText) const noexcept
+std::uint16_t TextRenderer::GetIDFromText(ScreenText* screenText) const noexcept
 {
 	// Returns the ID of the given text object by
 	// checking which VBO matches (unique per text object)
@@ -113,7 +111,7 @@ uint16_t TextRenderer::GetIDFromText(ScreenText* screenText) const noexcept
 	return 0u;
 }
 
-TextRenderer::ScreenText* TextRenderer::CreateText(glm::vec2 pos, std::string text, T_Type textType, uint8_t fontSize) noexcept
+TextRenderer::ScreenText* TextRenderer::CreateText(glm::vec2 pos, std::string text, T_Type textType, std::uint8_t fontSize) noexcept
 {
 	uint16_t id = GetNewID(); // Create unique identifier for this text object
 	TextFormat::log("Text creation, ID: " + std::to_string(id));
@@ -150,11 +148,11 @@ void TextRenderer::ChangeColour(ScreenText* screenText, ScreenText::RGBVector ne
 	UpdateText(screenText);
 }
 
-void TextRenderer::RemoveText(uint16_t id) noexcept
+void TextRenderer::RemoveText(std::uint16_t id) noexcept
 {
 	// Clear up any memory used by the given text object
 	const std::string idText = std::to_string(id);
-	TextFormat::log("Text removed, ID: " + idText);
+	if (game.mainLoopActive) TextFormat::log("Text removed, ID: " + idText);
 
 	ScreenText* screenText = GetTextFromID(id);
 	if (screenText == nullptr) {
@@ -179,7 +177,7 @@ void TextRenderer::CheckTextStatus() noexcept
 
 	// Cannot remove text objects from the map during range for loop
 	// so delete them seperately from the loop
-	std::vector<uint16_t> toRemove;
+	std::vector<std::uint16_t> toRemove;
 	float currentTime = static_cast<float>(glfwGetTime());
 
 	for (const auto& [id, text] : m_screenTexts) {
@@ -188,15 +186,15 @@ void TextRenderer::CheckTextStatus() noexcept
 		else if (text->type == T_Type::TemporaryShow && timePassed) text->type = T_Type::Hidden;
 	}
 
-	for (const uint16_t id : toRemove) RemoveText(id);
+	for (const std::uint16_t id : toRemove) RemoveText(id);
 }
 
 void TextRenderer::UpdateText(ScreenText* screenText) const noexcept
 {
 	// Bind buffers to update
-	glBindVertexArray(textVAO);
+	glBindVertexArray(m_textVAO);
 	glBindBuffer(GL_ARRAY_BUFFER, screenText->vbo);
-	glVertexAttribIPointer(1u, 2, GL_UNSIGNED_INT, sizeof(uint32_t[2]), nullptr); // Instanced text buffer attribute
+	glVertexAttribIPointer(0u, 2, GL_UNSIGNED_INT, sizeof(uint32_t[2]), nullptr); // Instanced text buffer attribute
 
 	// Compressed text data
 	const int displayLength = screenText->GetDisplayLength();
@@ -224,7 +222,7 @@ void TextRenderer::UpdateText(ScreenText* screenText) const noexcept
 
 	int dataIndex = 0;
 	for (int i = 0, end = narrow_cast<int>(textString.size()); i < end; ++i) {
-		char currentChar = textString[i];
+		const char currentChar = textString[i];
 		if (currentChar == '\0') break; // End of text check
 
 		if (currentChar == '\n') {
@@ -235,70 +233,95 @@ void TextRenderer::UpdateText(ScreenText* screenText) const noexcept
 			continue;
 		} else if (currentChar == ' ') {
 			// For a space, just increase the X position offset by an amount
-			pos.x += letterSpacing * 4.0f * sizeMultiplier;
+			pos.x += letterSpacing;
 			continue;
 		}
 		else if (currentChar < ' ' || currentChar > '~') { // Make sure only compatible text is shown
 			invalidTextAttempt = true;
-			int id = static_cast<int>(GetIDFromText(screenText));
-			glm::vec2 bpos = screenText->GetPosition();
-			TextFormat::warn(
-				std::format("Character: {} ({})\nText id: {}\nTotal length: {} (display {})\nFailed index: {} (display {})\nPosition: {}, {}",
-					(currentChar < ' ' ? "(CONTROL)" : currentChar + ""), static_cast<int>(static_cast<uint8_t>(currentChar)),
-					id, end, displayLength, i, dataIndex, bpos.x, bpos.y
-				),
-				"Invalid text character in text object"
-			);
+			const int id = static_cast<int>(GetIDFromText(screenText));
+			const glm::vec2 bpos = screenText->GetPosition();
+			const std::string errChar = static_cast<int>(currentChar) < ' ' ? std::string("(CONTROL)") : std::string(1, currentChar);
+
+			std::stringstream formatted;
+			formatted << "Character: " << errChar << " (" << static_cast<int>(currentChar) << ")\nText id: " << id 
+				<< "\nFailed index: " << i << "\nFailed position: " << pos.x << ", " << pos.y;
+
+			TextFormat::warn(formatted.str(), "Invalid text character in text object");
 			continue;
 		}
 
 		// Check for out of bounds text
 		if (pos.x < 0.0f || pos.x > 1.0f || pos.y < 0.0f || pos.y > 1.0f) {
-			if (!(screenText->beQuietPlease & Warning_OOB)) {
-				int id = static_cast<int>(GetIDFromText(screenText));
-				glm::vec2 bpos = screenText->GetPosition();
-				TextFormat::warn(
-					std::format("Text id: {}\nBase position: {}, {}\nCurrent position: {}, {}\n\n", id, bpos.x, bpos.y, pos.x, pos.y),
-					"Attempted text rendering off-screen"
-				);
-				screenText->beQuietPlease |= Warning_OOB;
+			if (!(screenText->loggedErrors & Warning_OOB)) {
+				const int id = static_cast<int>(GetIDFromText(screenText));
+				const glm::vec2 bpos = screenText->GetPosition();
+
+				std::stringstream formatted;
+				formatted << "Text id: " << id << "\nPosition: " << pos.x << ", " << pos.y;
+
+				TextFormat::warn(formatted.str(), "Attempted text rendering off-screen");
+				screenText->loggedErrors |= Warning_OOB;
 			}
 			
 			continue;
 		}
 		
 		// Only characters after the space character (ASCII 32) are displayed -> indexing starts at ASCII 33
-		int charIndex = currentChar - 33;
+		const int charIndex = currentChar - 33;
 
 		// Add compressed int data:
 		// 0: 0TTT TTTT YYYY YYYY YYYY XXXX XXXX XXXX
 		// 1: FFFF FFFF BBBB BBBB GGGG GGGG RRRR RRRR
-		uint32_t letterData[2] = {
+		const uint32_t letterData[2] = {
 			(static_cast<uint32_t>(pos.x * 4095.0f)) + (static_cast<uint32_t>(pos.y * 4095.0f) << 12u) + (charIndex << 24u),
 			second
 		};
-		memcpy(textData + dataIndex, letterData, sizeof(letterData));
+		std::memcpy(textData + dataIndex, letterData, sizeof(letterData));
 		dataIndex += 2;
 
 		// Make sure characters aren't rendered on top of each other; 
 		// increase X position offset by the size of the character and a set amount
-		pos.x += sizeMultiplier * ((m_charSizes[charIndex] * pixelSize) + letterSpacing);
+		pos.x += sizeMultiplier * ((m_charSizes[charIndex] * pixelSize) + letterSpacing) / game.aspect;
 	}
 
 	// Prevent repeatedly warning about same error each update
-	if (invalidTextAttempt) screenText->beQuietPlease |= Warning_InvalidChar;
+	if (invalidTextAttempt) screenText->loggedErrors |= Warning_InvalidChar;
 	
 	// Buffer the text data to the GPU.
-	glBufferData(GL_ARRAY_BUFFER, dataIndex * sizeof(uint32_t), textData, GL_DYNAMIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(uint32_t[dataIndex]), textData, GL_DYNAMIC_DRAW);
 	// Array was created with 'new', so make sure to free up the memory
 	delete[] textData;
+}
+
+TextRenderer::~TextRenderer() noexcept
+{
+	// Delete all text objects from their ids (cannot loop over and delete at the same time)
+	std::vector<std::uint16_t> ids;
+	ids.reserve(m_screenTexts.size());
+	for (const auto& [id, text] : m_screenTexts) ids.emplace_back(id);
+	for (const uint16_t& id : ids) RemoveText(id);
+	
+	// Bind VAO to retrieve correct buffer IDs
+	glBindVertexArray(m_textVAO);
+
+	// Get text SSBO ID
+	GLint textSSBO;
+	glGetIntegerv(GL_SHADER_STORAGE_BUFFER_BINDING, &textSSBO);
+	
+	// Delete renderer buffers
+	const GLuint deleteBuffers[] = { static_cast<GLuint>(textSSBO), static_cast<GLuint>(m_textVBO) };
+	glDeleteBuffers(sizeof(deleteBuffers) / sizeof(GLuint), deleteBuffers);
+
+	// Delete renderer VAO
+	const GLuint deleteVAO = static_cast<GLuint>(m_textVAO);
+	glDeleteVertexArrays(1, &deleteVAO);
 }
 
 TextRenderer::ScreenText::ScreenText(
 	glm::vec2 pos, 
 	std::string text, 
 	TextType type, 
-	uint8_t fontSize
+	std::uint8_t fontSize
 ) noexcept : 
 	type(type),
 	m_fontSize(fontSize)
@@ -310,25 +333,24 @@ TextRenderer::ScreenText::ScreenText(
 }
 
 // The weird setter names is a reminder to use the TextRenderer's update functions
-// rather than changing them directly in the text object
+// rather than changing them directly in the text object (lazy solution, I know)
 
 // Internal setters
 void TextRenderer::ScreenText::_ChangeInternalColour(RGBVector newColour) noexcept
 { 
 	m_RGBColour = newColour;
 }
-void TextRenderer::ScreenText::_ChangeInternalFontSize(uint8_t newFontSize) noexcept
+void TextRenderer::ScreenText::_ChangeInternalFontSize(std::uint8_t newFontSize) noexcept
 { 
 	m_fontSize = newFontSize;
 }
 void TextRenderer::ScreenText::_ChangeInternalText(std::string newText) noexcept
 { 
 	m_text = newText;
-	// Update the 'display length' variable with how many *visible* characters are present 
-	// (no spaces, newlines, etc)
+	// Update the 'display length' variable with how many *visible* characters are present (no spaces, newlines, etc)
 	int len = 0;
 	for (char x : m_text) if (x > ' ') ++len;
-	m_displayLength = narrow_cast<uint16_t>(len);
+	m_displayLength = narrow_cast<std::uint16_t>(len);
 }
 void TextRenderer::ScreenText::ResetTextTime() noexcept
 { 
@@ -343,6 +365,6 @@ void TextRenderer::ScreenText::_ChangeInternalPosition(glm::vec2 newPos) noexcep
 int TextRenderer::ScreenText::GetDisplayLength() const noexcept { return static_cast<int>(m_displayLength); }
 std::string& TextRenderer::ScreenText::GetText() noexcept { return m_text; }
 TextRenderer::ScreenText::RGBVector TextRenderer::ScreenText::GetColour() const noexcept { return m_RGBColour; }
-uint8_t TextRenderer::ScreenText::GetFontSize() const noexcept { return m_fontSize; }
+std::uint8_t TextRenderer::ScreenText::GetFontSize() const noexcept { return m_fontSize; }
 float TextRenderer::ScreenText::GetTime() const noexcept { return m_textTime; }
 glm::vec2 TextRenderer::ScreenText::GetPosition() const noexcept { return m_pos; }

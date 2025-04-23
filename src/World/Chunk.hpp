@@ -6,20 +6,20 @@
 
 struct Chunk
 {
-	enum class ChunkState : uint8_t
+	enum class ChunkState : std::uint8_t
 	{
 		Normal,
 		PlayerModified
 	};
 
 	struct FaceAxisData {
-		uint32_t* instancesData;
-		uint32_t dataIndex;
-		uint16_t faceCount;
-		uint16_t translucentFaceCount;
+		std::uint32_t* instancesData;
+		std::uint32_t dataIndex;
+		std::uint16_t faceCount;
+		std::uint16_t translucentFaceCount;
 		template<typename T> inline const T TotalFaces() const noexcept 
 		{ 
-			return static_cast<T>(faceCount + translucentFaceCount);
+			return static_cast<T>(faceCount) + static_cast<T>(translucentFaceCount);
 		}
 	};
 
@@ -28,7 +28,7 @@ struct Chunk
 
 	const double positionMagnitude;
 	const PosType offsetX, offsetZ;
-	const int8_t offsetY;
+	const std::int8_t offsetY;
 
 	ChunkState gameState = ChunkState::Normal;
 	

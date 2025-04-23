@@ -1,21 +1,16 @@
 #version 430 core
 #extension GL_ARB_shader_draw_parameters : require
-#extension GL_NV_gpu_shader5 : require
 
 struct ChunkOffset {
-	i64vec3 v;
-	int8_t f;
+	double x;
+	double y;
+	double z;
+	int f;
 };
 
 layout (std430, binding = 0) readonly buffer chunkMeshData {
 	ChunkOffset chunkData[];
 };
-
-layout (location = 0) in uint data;
-// TTTT TTTH HHHH WWWW WZZZ ZZXX XXXY YYYY
-layout (location = 1) in ivec4 baseXZ;
-layout (location = 2) in ivec4 baseYZ;
-layout (location = 3) in ivec4 baseYW;
 
 layout (std140, binding = 0) uniform GameMatrices {
 	mat4 matrix;
@@ -52,27 +47,35 @@ layout (std140, binding = 4) uniform GameSizes {
 	float inventoryHeight;
 };
 
+layout (location = 0) in uint data;
+// TTTT TTTH HHHH WWWW WZZZ ZZXX XXXY YYYY
+layout (location = 1) in vec4 baseXZ;
+layout (location = 2) in vec4 baseYZ;
+layout (location = 3) in vec4 baseYW;
+
 out vec2 TexCoord;
 out vec4 mult;
 
 void main()
 {
 	TexCoord = vec2((baseYZ.x + (data >> 25)) * blockTextureSize, baseYW.y);
-	mult = worldLight;
 	const ChunkOffset cd = chunkData[gl_DrawIDARB];
-	
+
 	dvec3 blockPos = dvec3(
 		(data >> 5) & 31,
 		data & 31,
 		(data >> 10) & 31
-	) + cd.v;
+	) + dvec3(cd.x, cd.y, cd.z);
 
-		 if (cd.f == 0) blockPos += baseYZ.ywx;	// Y+
-	else if (cd.f == 1) blockPos += baseYW.yzx;	// Y-
-	else if (cd.f == 2) blockPos += baseXZ.wyx;	// X+
-	else if (cd.f == 3) blockPos += baseYZ.zyx;	// X-
-	else if (cd.f == 4) blockPos += baseYZ.xyw;	// Z+
-	else blockPos += baseXZ.xyz;				// Z-
+	const vec3 sizeMult = vec3(((data >> 15) & 31) + 1.0, ((data >> 20) & 31) + 1.0, 1.0);
+
+	     if (cd.f == 0) blockPos += baseYZ.ywx * sizeMult;	// Y+
+	else if (cd.f == 1) blockPos += baseYW.yzx * sizeMult;	// Y-
+	else if (cd.f == 2) blockPos += baseXZ.wyx * sizeMult;	// X+
+	else if (cd.f == 3) blockPos += baseYZ.zyx * sizeMult;	// X-
+	else if (cd.f == 4) blockPos += baseYZ.xyw * sizeMult;	// Z+
+	               else blockPos += baseXZ.xyz * sizeMult;	// Z-
 	
 	gl_Position = originMatrix * vec4(blockPos - playerPosition.xyz, 1.0);
+	mult = worldLight;
 }

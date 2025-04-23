@@ -1,4 +1,4 @@
-﻿#include "Utility/Application.hpp"
+#include "Application/Application.hpp"
 
 // Debug OpenGL functions for errors
 static void GLDebugOutput(
@@ -11,42 +11,44 @@ static void GLDebugOutput(
 	const void*
 ) {
 	if (id == 131185 || id == 131154) return;
-	const char* csource, *errType, *cseverity;
+	std::string sourcestr, typestr, severitystr;
 
 	switch (source) {
-		case GL_DEBUG_SOURCE_API:				csource = "API"; break;
-		case GL_DEBUG_SOURCE_WINDOW_SYSTEM:		csource = "Window System"; break;
-		case GL_DEBUG_SOURCE_SHADER_COMPILER:	csource = "Shader Compiler"; break;
-		case GL_DEBUG_SOURCE_THIRD_PARTY:		csource = "Third Party"; break;
-		case GL_DEBUG_SOURCE_APPLICATION:		csource = "Application"; break;
-		case GL_DEBUG_SOURCE_OTHER:				csource = "Other"; break;
+		case GL_DEBUG_SOURCE_API:				sourcestr = "[API]"; break;
+		case GL_DEBUG_SOURCE_WINDOW_SYSTEM:		sourcestr = "[Window System]"; break;
+		case GL_DEBUG_SOURCE_SHADER_COMPILER:	sourcestr = "[Shader Compiler]"; break;
+		case GL_DEBUG_SOURCE_THIRD_PARTY:		sourcestr = "[Third Party]"; break;
+		case GL_DEBUG_SOURCE_APPLICATION:		sourcestr = "[Application]"; break;
+		case GL_DEBUG_SOURCE_OTHER:				sourcestr = "[Other]"; break;
 	} 
 	switch (type) {
-		case GL_DEBUG_TYPE_ERROR:               errType = "Error"; break;
-		case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: errType = "Deprecated Behaviour"; break;
-		case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:  errType = "Undefined Behaviour"; break;
-		case GL_DEBUG_TYPE_PORTABILITY:         errType = "Portability"; break;
-		case GL_DEBUG_TYPE_PERFORMANCE:         errType = "Performance"; break;
-		case GL_DEBUG_TYPE_MARKER:              errType = "Marker"; break;
-		case GL_DEBUG_TYPE_PUSH_GROUP:          errType = "Push Group"; break;
-		case GL_DEBUG_TYPE_POP_GROUP:           errType = "Pop Group"; break;
-		case GL_DEBUG_TYPE_OTHER:               errType = "Other"; break;
+		case GL_DEBUG_TYPE_ERROR:               typestr = "[Error]"; break;
+		case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: typestr = "[Deprecated Behaviour]"; break;
+		case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:  typestr = "[Undefined Behaviour]"; break;
+		case GL_DEBUG_TYPE_PORTABILITY:         typestr = "[Portability]"; break;
+		case GL_DEBUG_TYPE_PERFORMANCE:         typestr = "[Performance]"; break;
+		case GL_DEBUG_TYPE_MARKER:              typestr = "[Marker]"; break;
+		case GL_DEBUG_TYPE_PUSH_GROUP:          typestr = "[Push Group]"; break;
+		case GL_DEBUG_TYPE_POP_GROUP:           typestr = "[Pop Group]"; break;
+		case GL_DEBUG_TYPE_OTHER:               typestr = "[Other]"; break;
 	} 
 	switch (severity) {
-		case GL_DEBUG_SEVERITY_HIGH:			cseverity = "High"; break;
-		case GL_DEBUG_SEVERITY_MEDIUM:			cseverity = "Medium"; break;
-		case GL_DEBUG_SEVERITY_LOW:				cseverity = "Low"; break;
-		case GL_DEBUG_SEVERITY_NOTIFICATION:	cseverity = "Notification"; break;
+		case GL_DEBUG_SEVERITY_HIGH:			severitystr = "[High] - ID "; break;
+		case GL_DEBUG_SEVERITY_MEDIUM:			severitystr = "[Medium] - ID "; break;
+		case GL_DEBUG_SEVERITY_LOW:				severitystr = "[Low] - ID "; break;
+		case GL_DEBUG_SEVERITY_NOTIFICATION:	severitystr = "[Notification] - ID "; break;
 	}
 
-	TextFormat::log(
-		std::format("{} - [{}][{}][{}][{}]", message, csource, errType, cseverity, id)
-	);
+	std::stringstream errfmt;
+	errfmt << message << " - " << sourcestr << typestr << severitystr << id;
+	TextFormat::log(errfmt.str());
 }
-static void GLErrorCallback(int err, const char* des)
+static void GLErrorCallback(int err, const char* description)
 {
 	if (!game.mainLoopActive) return;
-	TextFormat::log(std::format("OGL error (ID {}): {}", err, des));
+	std::stringstream errfmt;
+	errfmt << "OGL error (ID " << err << "): " << description;
+	TextFormat::log(errfmt.str());
 }
 
 // OpenGL I/O callbacks can only be set as global functions, 
@@ -90,16 +92,16 @@ static void Initialize()
 	// Intialize GLFW library
 	if (!glfwInit()) {
 		TextFormat::warn("GLFW initialization failed", "Init failed");
-		exit(-1);
+		throw std::runtime_error("GLFW failure");
 	}
 
 	TextFormat::log("GLFW initialized");
 
-	// Window hints (OGL comp. 4.6)
+	// Window hints (OGL core 4.6)
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, true);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 	// Compatibility configuration for Apple operating systems
 	#ifdef __APPLE__ 
@@ -107,13 +109,14 @@ static void Initialize()
 	#endif
 
 	// Create the game window with default settings into global
-	game.window = glfwCreateWindow(1800, 1200, "Loading...", nullptr, nullptr);
+	constexpr int width = 1200, height = 800;
+	game.window = glfwCreateWindow(width, height, "Loading...", nullptr, nullptr);
 
 	// Check if window failed to create
 	if (game.window == nullptr) {
-		TextFormat::warn("Window creation failed", "Window");
+		TextFormat::warn("Window creation failed", "Null window");
 		glfwTerminate();
-		exit(-1);
+		throw std::runtime_error("Window failure");
 	}
 
 	TextFormat::log("Window created");
@@ -122,26 +125,38 @@ static void Initialize()
 	glfwMakeContextCurrent(game.window);
 
 	// Initialize OGL function loader
-	const GLADloadproc loader = reinterpret_cast<GLADloadproc>(glfwGetProcAddress);
-	if (!gladLoadGLLoader(loader)) {
+	if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
 		TextFormat::warn("GLAD initialization failed", "GLAD fail");
-		exit(-1);
+		glfwDestroyWindow(game.window);
+		glfwTerminate();
+		throw std::runtime_error("GLAD failure");
 	}
 
 	TextFormat::log("GLAD loaded");
 
 	// Utility functions
-	glfwSetWindowSizeLimits(game.window, 1800, 1200, GLFW_DONT_CARE, GLFW_DONT_CARE); // Enforce minimum window size
+	glfwSetWindowSizeLimits(game.window, 300, 200, GLFW_DONT_CARE, GLFW_DONT_CARE); // Enforce minimum window size
 	glfwSetInputMode(game.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); // Disable moving the cursor so it doesn't go outside the window
-	glfwSetWindowPos(game.window, 2000, 860); // debug
+	glfwSwapInterval(1); // Swap buffers with screen's refresh rate
+
+	// Attempt to find resources folder
+	const std::filesystem::path currentPath = std::filesystem::current_path();
+	const std::string endPath = "\\src\\Resources\\";
+
+	// Lazy solution, I know.
+	const std::string directory1 = currentPath.string() + endPath;
+	const std::string directory2 = currentPath.parent_path().string() + endPath;
+
+	if (std::filesystem::exists(directory1)) game.resourcesFolder = directory1;
+	else if (std::filesystem::exists(directory2)) game.resourcesFolder = directory2;
+	else throw std::runtime_error("Resources folder not found");
 
 	game.shader.InitShader(); // Initialize shader class
 
 	// Load game textures and get information about them (width, height, etc)
-    const std::string texDirectory = std::filesystem::current_path().parent_path().string() + "/src/Resources/Textures/";
-	Shader::LoadTexture(game.blocksTextureInfo, (texDirectory + "atlas.png").c_str(), false, GL_NEAREST, false);
-	Shader::LoadTexture(game.textTextureInfo, (texDirectory + "textAtlas.png").c_str(), true, GL_NEAREST, false);
-	Shader::LoadTexture(game.inventoryTextureInfo, (texDirectory + "inventory.png").c_str(), false, GL_NEAREST, false);
+	Shader::LoadTexture(game.blocksTextureInfo, "Textures\\atlas.png", false, GL_NEAREST, false);
+	Shader::LoadTexture(game.textTextureInfo, "Textures\\textAtlas.png", true, GL_NEAREST, false);
+	Shader::LoadTexture(game.inventoryTextureInfo, "Textures\\inventory.png", false, GL_NEAREST, false);
 }
 
 static void SetCallbacks() 

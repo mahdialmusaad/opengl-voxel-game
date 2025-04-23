@@ -1,46 +1,46 @@
 #include "Sky.hpp"
 
-WorldSky::WorldSky() noexcept
+Skybox::Skybox() noexcept
 {
-	TextFormat::log("Sky enter");
+	TextFormat::log("Full sky creation: ");
 
 	CreateClouds();
 	CreateSkybox();
 	CreateStars();
 }
 
-void WorldSky::RenderClouds() const noexcept
+void Skybox::RenderClouds() const noexcept
 {
-	game.shader.UseShader(Shader::ShaderID::Cloud);
+	game.shader.UseShader(Shader::ShaderID::Clouds);
 	glBindVertexArray(m_cloudsVAO);
 	glDrawElementsInstanced(GL_TRIANGLE_STRIP, 14, GL_UNSIGNED_BYTE, nullptr, AMOUNT_OF_CLOUDS);
 }
 
-void WorldSky::RenderSky() const noexcept
+void Skybox::RenderSky() const noexcept
 {
 	game.shader.UseShader(Shader::ShaderID::Sky);
 	glBindVertexArray(m_skyboxVAO);
 	glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_BYTE, nullptr);
 }
 
-void WorldSky::RenderStars() const noexcept
+void Skybox::RenderStars() const noexcept
 {
 	game.shader.UseShader(Shader::ShaderID::Stars);
 	glBindVertexArray(m_starsVAO);
 	glDrawArrays(GL_POINTS, 0, AMOUNT_OF_STARS);
 }
 
-void WorldSky::CreateClouds() noexcept
+void Skybox::CreateClouds() noexcept
 {
-	TextFormat::log("Sky clouds");
+	TextFormat::log("Clouds creation");
 
 	m_cloudsVAO = OGL::CreateVAO8();
 	glEnableVertexAttribArray(0u);
 	glEnableVertexAttribArray(1u);
-	glVertexAttribDivisor(1u, 1u); // Instanced rendering
+	glVertexAttribDivisor(0u, 1u); // Instanced rendering
 
 	// Cloud shape data
-	constexpr float vertices[24] = {
+	constexpr float cloudVertices[24] = {
 		0.0f, 1.0f, 2.5f,	// Front-top-left		0
 		2.5f, 1.0f, 2.5f,	// Front-top-right		1
 		0.0f, 0.0f, 2.5f,	// Front-bottom-left	2
@@ -49,48 +49,55 @@ void WorldSky::CreateClouds() noexcept
 		2.5f, 1.0f, 0.0f,	// Back-top-right		5
 		0.0f, 1.0f, 0.0f,	// Back-top-left		6
 		0.0f, 0.0f, 0.0f,	// Back-bottom-left		7
-	}; 
-	constexpr uint8_t indices[14] = { 0, 1, 2, 3, 4, 1, 5, 0, 6, 2, 7, 4, 6, 5 };
+	};
 
-	OGL::CreateBuffer(GL_ARRAY_BUFFER); // Instanced vertex buffer
-	glVertexAttribPointer(0u, 3, GL_FLOAT, GL_FALSE, sizeof(float[3]), nullptr);
-	glBufferStorage(GL_ARRAY_BUFFER, sizeof(vertices), vertices, 0); 
+	// Buffer for cloud vertices
+	m_cloudsShapeVBO = OGL::CreateBuffer8(GL_ARRAY_BUFFER);
+	glVertexAttribPointer(1u, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof(cloudVertices), cloudVertices, 0u);
 
-	OGL::CreateBuffer(GL_ELEMENT_ARRAY_BUFFER); // Cloud shape indices - avoid redefining vertices
-	glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, 0);
+	constexpr std::uint8_t cloudIndices[14] = {
+		0u, 1u, 2u, 3u, 4u, 1u, 5u, 0u, 6u, 2u, 7u, 4u, 6u, 5u 
+	};
+
+	// Buffer for indexes into cloud vertices
+	OGL::CreateBuffer(GL_ELEMENT_ARRAY_BUFFER);
+	glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, sizeof(cloudIndices), cloudIndices, 0u);
 	
-	// Cloud generation
-	OGL::CreateBuffer(GL_ARRAY_BUFFER); // Compressed cloud data buffer
+	// Setup instanced cloud buffer
+	m_cloudsInstVBO = OGL::CreateBuffer8(GL_ARRAY_BUFFER);
+	glVertexAttribIPointer(0u, 1, GL_UNSIGNED_INT, 0, nullptr);
 
-	// Setup cloud shader attribute
-	glVertexAttribIPointer(1u, 1, GL_UNSIGNED_INT, sizeof(int32_t), nullptr);
+	// Compressed cloud data
+	std::uint32_t* cloudData = new std::uint32_t[AMOUNT_OF_CLOUDS];
 
-	uint32_t cloudData[AMOUNT_OF_CLOUDS]{}; // Cloud data compressed into int for memory saving
-
-	// Random number generator algorithm for cloud positions and size
+	// Random number generator for cloud positions and size
 	std::mt19937 gen(std::random_device{}());
 	std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
-	for (int i = 0; i < AMOUNT_OF_CLOUDS; ++i) {
+	// Cloud generation
+	for (std::size_t i = 0; i < AMOUNT_OF_CLOUDS; ++i) {
 		// X and Z are in the range 0 - 4095 (12 bits each)
-		// Width is in the range 0 - 255 (8 bits), height is a certain fraction of this
+		// Size is in the range 0 - 255 (8 bits), height is a certain fraction of this
 		// Y position is a set amount with slight variation using gl_InstanceID
 
 		// Using bit manipulation to store XZ position and size into a single uint
-		constexpr float posMultiplier = 4096.0f - 0.5f;
 		cloudData[i] = 
-			static_cast<uint32_t>(dist(gen) * posMultiplier) +				// X position
-			(static_cast<uint32_t>(dist(gen) * posMultiplier) << 12u) +	// Z position
-			(static_cast<uint32_t>(dist(gen) * 128.0f) << 26u);			// Size
+			static_cast<std::uint32_t>(dist(gen) * 4095.0f) +						// X position
+			(static_cast<std::uint32_t>(dist(gen) * 4095.0f) << 12u) +				// Z position
+			(static_cast<std::uint32_t>(fmaxf(dist(gen), 0.01f) * 255.0f) << 24u);	// Size
 	}
 
-	// Buffer the int data into the GPU
-	glBufferStorage(GL_ARRAY_BUFFER, sizeof(cloudData), cloudData, 0);
+	// Buffer the compressed integer data into the GPU - use instanced buffer
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof(std::uint32_t[AMOUNT_OF_CLOUDS]), cloudData, 0u);
+
+	// Free memory used by cloud data
+	delete[] cloudData;
 }
 
-void WorldSky::CreateSkybox() noexcept
+void Skybox::CreateSkybox() noexcept
 {
-	TextFormat::log("Sky skybox");
+	TextFormat::log("Skybox creation");
 
 	/* 
 		The skybox should just consist of the 'horizon' fading into the
@@ -102,7 +109,7 @@ void WorldSky::CreateSkybox() noexcept
 		whether it is made up of 1000 triangles or 10.
 	*/
 
-	// Optimal skybox shape
+	// Optimal skybox data
 	static constexpr float skyboxVertices[27] = {
 		-triDist,  -0.1f, -0.5f, // 0
 		 triDist,  -0.1f, -0.5f, // 1	Lower triangle
@@ -116,43 +123,38 @@ void WorldSky::CreateSkybox() noexcept
 		 triDist,   0.1f, -0.5f, // 7	Upper triangle
 		 0.0f,	    0.1f,  1.0f, // 8
 	};
-	static constexpr uint8_t skyboxIndices[] = {
-		0, 1, 3, 3, 1, 4, 3, 4, 6, 6, 4, 7,
-		0, 3, 2, 2, 3, 5, 3 ,8, 5, 8, 3, 6,
-		2, 4, 1, 4, 2, 5, 4, 5, 7, 7, 5, 8
+
+	static constexpr std::uint8_t skyboxIndices[] = {
+		0u, 1u, 3u, 3u, 1u, 4u, 3u, 4u, 6u, 6u, 4u, 7u,
+		0u, 3u, 2u, 2u, 3u, 5u, 3u, 8u, 5u, 8u, 3u, 6u,
+		2u, 4u, 1u, 4u, 2u, 5u, 4u, 5u, 7u, 7u, 5u, 8u
 	};
 
 	// Create skybox buffers
 	m_skyboxVAO = OGL::CreateVAO8();
-	OGL::CreateBuffer(GL_ELEMENT_ARRAY_BUFFER);
-	OGL::CreateBuffer(GL_ARRAY_BUFFER);
-
-	// Setup sky shader attributes
-	glVertexAttribPointer(0u, 3, GL_FLOAT, GL_FALSE, sizeof(float[3]), nullptr);
 	glEnableVertexAttribArray(0u);
 
-	// Save skybox data into buffers
-	glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, sizeof(skyboxIndices), skyboxIndices, 0);
-	glBufferStorage(GL_ARRAY_BUFFER, sizeof(skyboxVertices), skyboxVertices, 0);
+	// Setup sky vertices buffer
+	OGL::CreateBuffer(GL_ARRAY_BUFFER);
+	glVertexAttribPointer(0u, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof(skyboxVertices), skyboxVertices, 0u);
+
+	// Setup sky vertices indexes
+	OGL::CreateBuffer(GL_ELEMENT_ARRAY_BUFFER);
+	glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, sizeof(skyboxIndices), skyboxIndices, 0u);
 }
 
-void WorldSky::CreateStars() noexcept
+void Skybox::CreateStars() noexcept
 {
-	TextFormat::log("Sky stars");
+	TextFormat::log("Stars creation");
 
 	// Star buffers
 	m_starsVAO = OGL::CreateVAO8();
-	OGL::CreateBuffer(GL_ARRAY_BUFFER);
-
-	// Setup star shader attribute (compressed all into 1 int only)
-	glVertexAttribIPointer(0u, 1, GL_INT, sizeof(int32_t), nullptr);
 	glEnableVertexAttribArray(0u);
 
-	// Weighted randomness list
-	constexpr uint8_t randcol[10] = { 0, 0, 0, 0, 0, 0, 0, 1, 2, 3 };
-
-	// Compressed star data array
-	int32_t* starsData = new int32_t[AMOUNT_OF_STARS];
+	// Setup star shader attribute (compressed all into 1 int only)
+	OGL::CreateBuffer(GL_ARRAY_BUFFER);
+	glVertexAttribIPointer(0u, 1, GL_UNSIGNED_INT, 0, nullptr);
 
 	/* 
 		Using Fibonnaci sphere algorithm gives more evenly distributed
@@ -175,31 +177,73 @@ void WorldSky::CreateStars() noexcept
 	constexpr float phi = Math::PI_FLT * (static_cast<float>(Math::sqrt(5.0)) - 1.0f);
 	constexpr float floatAmount = static_cast<float>(AMOUNT_OF_STARS);
 
-	// Random number generator (avoid use of rand() due to predictability)
+	// Random number generator (avoid use of rand() due to predictability and bad results in general)
 	std::mt19937 gen(std::random_device{}());
 	std::uniform_real_distribution<float> dist(0.0f, floatAmount);
 
-	for (int n = 0; n < AMOUNT_OF_STARS; ++n) {
+	// Weighted randomness list
+	constexpr int randcol[] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3 };
+	constexpr int randcolmax = sizeof(randcol) / sizeof(int);
+
+	// Compressed star data array
+	std::uint32_t* starsData = new std::uint32_t[AMOUNT_OF_STARS];
+
+	for (std::size_t n = 0; n < AMOUNT_OF_STARS; ++n) {
 		const float i = dist(gen); // Randomly selected position
 		const float u = phi * i;
 
-		// X and Z are in the range -1.0f to 1.0f so they need to be incremented and
-		// multiplied by 511.5 to change to the range 0 - 1023 (10 bits each)
+		// To store the floating point positions, the XYZ position can be multiplied to
+		// the maximum value able to be held in the bits allocated for each (10 in this case = 1023),
+		// so they can be multiplied by half of that (511.5) to get their positions back (1.0f to -1.0f)
 
 		const float y = 1.0f - (i / floatAmount) * 2.0f,
 			r = sqrt(1.0f - (y * y)),
-			x = (cos(u) * r) + 1.0f,
+			x = (cos(u) * r) + 1.0f, // trig(u) * r gives value -1.0f to 1.0f, so add 1.0f to make it positive
 			z = (sin(u) * r) + 1.0f;
 
 		// Using bit manipulation to store position and colour in a single int 
-		starsData[n] = static_cast<int32_t>(x * 511.5f) + 
-			(static_cast<int32_t>((y + 1.0f) * 511.5f) << 10) +
-			(static_cast<int32_t>(z * 511.5f) << 20) + 
-			(randcol[n % 10] << 30);
+		starsData[n] = static_cast<std::uint32_t>(x * 511.5f) + 
+			static_cast<std::uint32_t>(static_cast<int>((y + 1.0f) * 511.5f) << 10) +
+			static_cast<std::uint32_t>(static_cast<int>(z * 511.5f) << 20) + 
+			static_cast<std::uint32_t>(randcol[n % randcolmax] << 30);
 	}
 
 	// Buffer star int data into GPU
-	glBufferStorage(GL_ARRAY_BUFFER, sizeof(int32_t) * WorldSky::AMOUNT_OF_STARS, starsData, 0);
-	// Free memory used by stars
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof(std::uint32_t[AMOUNT_OF_STARS]), starsData, 0u);
+
+	// Free memory used by stars data
 	delete[] starsData;
+}
+
+Skybox::~Skybox() noexcept
+{
+	// The stars and skybox only use 1 unique buffer per type, so they can be easily retrieved using
+	// glGetIntegerv(...). However, both the cloud array buffers need to be explicitly saved.
+	
+	GLint skyVBO, skyEBO, starsVBO;
+
+	glBindVertexArray(m_skyboxVAO);
+	glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &skyVBO);
+	glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER, &skyEBO);
+
+	glBindVertexArray(m_starsVAO);
+	glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &starsVBO);
+
+	// Delete buffers in array
+	const GLuint deleteBuffers[] = {
+		static_cast<GLuint>(skyVBO),
+		static_cast<GLuint>(skyEBO),
+		static_cast<GLuint>(starsVBO),
+		static_cast<GLuint>(m_cloudsInstVBO),
+		static_cast<GLuint>(m_cloudsShapeVBO)
+	};
+	glDeleteBuffers(sizeof(deleteBuffers) / sizeof(GLuint), deleteBuffers);
+
+	// Delete all three VAOs
+	const GLuint deleteVAOs[] = {
+		static_cast<GLuint>(m_skyboxVAO),
+		static_cast<GLuint>(m_cloudsVAO),
+		static_cast<GLuint>(m_starsVAO),
+	};
+	glDeleteVertexArrays(sizeof(deleteVAOs) / sizeof(GLuint), deleteVAOs);
 }

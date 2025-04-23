@@ -1,9 +1,9 @@
 #version 430 core
 
-layout (location = 0) in vec2 baseGUI;
-layout (location = 1) in uvec2 data;
+layout (location = 0) in uvec2 data;
 // 0: 0TTT TTTT YYYY YYYY YYYY XXXX XXXX XXXX
 // 1: FFFF FFFF BBBB BBBB GGGG GGGG RRRR RRRR
+layout (location = 1) in vec2 baseGUI;
 
 layout (std430, binding = 1) readonly buffer textureIndexes {
 	float texturePositions[95];
@@ -38,7 +38,7 @@ void main()
 		0.0, 1.0
 	);
 
-	TexCoord = vec2(texturePositions[textindex + int(round(baseGUI.x))], baseGUI.y);
+	TexCoord = vec2(texturePositions[textindex + int(baseGUI.x)], baseGUI.y);
 	TextCol = vec4(
 		(data.y & 0xFF) / 255.0, 
 		((data.y >> 8) & 0xFF) / 255.0, 

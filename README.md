@@ -1,5 +1,5 @@
 # Badcraft
-A voxel-type game inspired by Minecraft, designed to be performant (in terms of memory usage and FPS), cross-compatible and easy to change.
+A voxel game built to be performant, memory-efficient and cross compatible, based on Minecraft.
 
 <img src="markdown/main.png"/>
 <sup>In-game screenshot of Badcraft (Windows)</sup>
@@ -7,10 +7,9 @@ A voxel-type game inspired by Minecraft, designed to be performant (in terms of 
 ## Features
 - 64-bit rendering and generation system, allowing for worlds to span **trillions** of blocks with no issues*
 - Custom text rendering system that supports different sizes and colours
-- Event logging system in console
 - Dynamic skybox with clouds and night stars
-- Commands (see [Commands](https://github.com/mahdialmusaad/badcraft/tree/main?tab=readme-ov-file#commands))
 - Screenshotting (see [Controls](https://github.com/mahdialmusaad/badcraft/tree/main?tab=readme-ov-file#controls))
+- Commands (see [Commands](https://github.com/mahdialmusaad/badcraft/tree/main?tab=readme-ov-file#commands))
 
 <sup>\*Due to precision limitations, terrain rendering begins to break down at 2<sup>53</sup> blocks from spawn (9 quadrillion).</sup>
 
@@ -31,9 +30,9 @@ There are still many things that could be improved about the game, but implement
 Commands are also available to make exploring and editing the world easier! The implementations can be seen in the [application source file](https://github.com/mahdialmusaad/badcraft/blob/main/src/Utility/Application.cpp) ('ApplyChat' function)
 - /tp x y z - Teleport to specified x, y and z coordinates. Scientific notation and other keywords are allowed (e.g. inf, NaN).
 - /speed n - Change the player's current speed to the specified value.
-- /tick n - Change the game tick speed to the specified value (affects how fast time passes in-game)
-- /exit - Exits the game. What did you expect?
-- /dcmp id - (DEBUG) Outputs the assembly code of the specified shader ID into 'bin.txt'
+- /tick n - Change the tick speed to the specified value, which affects the speed at which in-game time passes.
+- /time n - Change the current in-game time to the specified value.
+- /exit - Exits the game.
 - /fill x<sub>1</sub> y<sub>1</sub> z<sub>1</sub>  x<sub>2</sub> y<sub>2</sub> z<sub>2</sub> id - Fills from the first position to the second with the specified block ID*
 
 \*A full list of all the blocks and their associated IDs and properties can be found in the [settings header file](https://github.com/mahdialmusaad/badcraft/blob/main/src/World/Generation/Settings.hpp).
@@ -72,10 +71,10 @@ If you are using the **CMake GUI**, you can follow these steps:
 - Specify generator and other settings if needed and press 'Finish'
 - Press 'Generate' to create the binaries
 
-If you are using CMake in a **terminal**, you can run the following (replace directories with your own):
+If you are using CMake in a **terminal**, you can run the following (replace directories and settings with your own):
 
 ```bash
-$ cmake -S source-dir -B build-dir
+$ cmake [settings] -S [source-dir] -B [build-dir]
 ```
 
 If you encounter any problems, please create a new issue so it can be resolved.

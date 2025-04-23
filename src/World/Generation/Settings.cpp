@@ -20,33 +20,23 @@ glm::ivec3 ChunkSettings::WorldToLocalPosition(PosType x, PosType y, PosType z) 
 	return { WorldToLocalPosition(x), WorldToLocalPosition(y), WorldToLocalPosition(z) };
 }
 
-WorldPos ChunkSettings::GetChunkCorner(WorldPos& offset) noexcept
+WorldPos ChunkSettings::GetChunkCorner(const WorldPos& offset) noexcept
 {
-	return WorldPos(
-		(offset.x * ChunkSettings::CHUNK_SIZE),
-		(offset.y * ChunkSettings::CHUNK_SIZE),
-		(offset.z * ChunkSettings::CHUNK_SIZE)
-	);
+	return offset * ChunkSettings::PCHUNK_SIZE;
 }
 
-WorldPos ChunkSettings::GetChunkCenter(WorldPos& offset) noexcept
+WorldPos ChunkSettings::GetChunkCenter(const WorldPos& offset) noexcept
 {
 	constexpr PosType half = static_cast<PosType>(ChunkSettings::CHUNK_SIZE_HALF);
-	return WorldPos(
-		(offset.x * ChunkSettings::PCHUNK_SIZE) + half,
-		(offset.y * ChunkSettings::PCHUNK_SIZE) + half,
-		(offset.z * ChunkSettings::PCHUNK_SIZE) + half
-	);
+	const WorldPos corner = offset * ChunkSettings::PCHUNK_SIZE;
+	return { corner.x + half, corner.y + half, corner.z + half };
 }
 
-bool ChunkSettings::ChunkOnFrustum(CameraFrustum& frustum, glm::vec3& center) noexcept
+bool ChunkSettings::ChunkOnFrustum(CameraFrustum& frustum, glm::vec3 center) noexcept
 {
-	constexpr float chunkRadius = -static_cast<float>(Math::sqrt(CHUNK_SIZE_FLT * CHUNK_SIZE_FLT * 2.0f));
-	return frustum.top.DistToPlane(center) > chunkRadius &&
-		frustum.bottom.DistToPlane(center) > chunkRadius &&
-		frustum.right.DistToPlane(center) > chunkRadius &&
-		frustum.left.DistToPlane(center) > chunkRadius &&
-		frustum.near.DistToPlane(center) > chunkRadius;
+	constexpr float chunkRadius = -static_cast<float>(Math::sqrt(CHUNK_SIZE_FLT * CHUNK_SIZE_FLT));
+	return frustum.top.DistToPlane(center) > chunkRadius && frustum.bottom.DistToPlane(center) > chunkRadius &&
+		   frustum.right.DistToPlane(center) > chunkRadius && frustum.left.DistToPlane(center) > chunkRadius;
 }
 
 bool ChunkSettings::IsAirChunk(ChunkBlockValue* chunkBlocks) noexcept

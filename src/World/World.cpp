@@ -3,67 +3,64 @@
 World::World(PlayerObject& player) noexcept : player(player)
 {
 	TextFormat::log("World enter");
-	
+
 	// Create VAO for the world buffers to store buffer settings
-	m_worldVAO = OGL::CreateVAO16();
+	m_worldVAO = OGL::CreateVAO8();
 	glEnableVertexAttribArray(0u);
+	glVertexAttribDivisor(0u, 1u);
+
 	glEnableVertexAttribArray(1u);
 	glEnableVertexAttribArray(2u);
 	glEnableVertexAttribArray(3u);
-	glVertexAttribDivisor(0u, 1u);
 
-	// World data buffer (allocation happens on world update)
-	m_worldVBO = OGL::CreateBuffer8(GL_ARRAY_BUFFER);
-	glVertexAttribIPointer(0u, 1, GL_UNSIGNED_INT, sizeof(uint32_t), nullptr);
+	// World data buffer for instanced compressed face data
+	m_worldInstancedVBO = OGL::CreateBuffer8(GL_ARRAY_BUFFER);
+	glVertexAttribIPointer(0u, 1, GL_UNSIGNED_INT, 0, nullptr);
 
 	// Very important definition of a plane/quad for block rendering
-	constexpr int32_t planeVertices[] = {
-	//	  ivec4 0		  ivec4 1		  ivec4 2
-		1, 1, 0, 1,		0, 1, 0, 1,		0, 0, 0, 0,	 // Vertex 1
-		1, 0, 0, 1,		0, 0, 0, 1,		0, 1, 0, 0,	 // Vertex 2
-		0, 1, 0, 1,		1, 1, 0, 1,		1, 0, 0, 0,	 // Vertex 3
-		0, 0, 0, 1,		1, 0, 0, 1,		1, 1, 0, 0,	 // Vertex 4
-	//	x  z  0  1      y  z  0  1      y  w  0  0                 
+	// Laid out like this to allow for swizzling (e.g. verticesXZ.xyz) which is 'essentially free' in shaders
+	// See https://www.khronos.org/opengl/wiki/GLSL_Optimizations for more information
+	constexpr float planeVertices[] = {
+	//	        vec4 0		                 vec4 1		                vec4 2
+		1.0f, 1.0f, 0.0f, 1.0f, 	0.0f, 1.0f, 0.0f, 1.0f,		0.0f, 0.0f, 0.0f, 0.0f,	 // Vertex 1
+		1.0f, 0.0f, 0.0f, 1.0f, 	0.0f, 0.0f, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f, 0.0f,	 // Vertex 2
+		0.0f, 1.0f, 0.0f, 1.0f, 	1.0f, 1.0f, 0.0f, 1.0f,		1.0f, 0.0f, 0.0f, 0.0f,	 // Vertex 3
+		0.0f, 0.0f, 0.0f, 1.0f, 	1.0f, 0.0f, 0.0f, 1.0f,		1.0f, 1.0f, 0.0f, 0.0f,	 // Vertex 4
+	//	 x     z     0     1         y     z     0     1         y     w     0     0
 	};
 
 	// Instanced VBO that contains plane data, 12 floats per vertex
-	OGL::CreateBuffer(GL_ARRAY_BUFFER);
-	glVertexAttribIPointer(1u, 4, GL_INT, sizeof(int32_t[12]), nullptr);
-	glVertexAttribIPointer(2u, 4, GL_INT, sizeof(int32_t[12]), reinterpret_cast<const void*>(sizeof(int32_t[4])));
-	glVertexAttribIPointer(3u, 4, GL_INT, sizeof(int32_t[12]), reinterpret_cast<const void*>(sizeof(int32_t[8])));
-	glBufferStorage(GL_ARRAY_BUFFER, sizeof(planeVertices), planeVertices, 0);
+	m_worldPlaneVBO = OGL::CreateBuffer(GL_ARRAY_BUFFER);
+	glVertexAttribPointer(1u, 4, GL_FLOAT, GL_FALSE, sizeof(float[12]), nullptr);
+	glVertexAttribPointer(2u, 4, GL_FLOAT, GL_FALSE, sizeof(float[12]), reinterpret_cast<const void*>(sizeof(float[4])));
+	glVertexAttribPointer(3u, 4, GL_FLOAT, GL_FALSE, sizeof(float[12]), reinterpret_cast<const void*>(sizeof(float[8])));
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof(planeVertices), planeVertices, 0u);
 
-	// Shader storage buffer object to store chunk positions for each chunk face (bound in location = 0)
+	// Shader storage buffer object (SSBO) to store chunk positions and face indexes for each chunk face (location = 0)
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0u, OGL::CreateBuffer(GL_SHADER_STORAGE_BUFFER));
-	glBufferStorage(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_STORAGE_BIT);
-
-	// Indirect buffer that contains index data for the actual world data
+	// Buffer which holds the indexes into the world data for each 'instanced draw call' in indirect draw call
 	OGL::CreateBuffer(GL_DRAW_INDIRECT_BUFFER);
-	glBufferStorage(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_STORAGE_BIT);
 
-	TextFormat::log("World settings setup");
+	// Possible: noise splines for varied terrain generation
+	game.noiseGenerators = WorldNoise(nullptr);
 
-	// Create noise splines
-	constexpr int numSplines = WorldPerlin::NoiseSpline::numSplines;
-	WorldPerlin::NoiseSpline noiseSplines[numSplines] {};
-	// constexpr WorldPerlin::NoiseSpline::Spline splineObjects[WorldNoise::numNoises][numSplines] = {
-	// 	{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Continentalness
-	// 	{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Flatness
-	// 	{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Depth
-	// 	{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Temperature
-	// 	{ {0.0f, 0.0f}, {0.1f, 10.0f}, {0.2f, 20.0f}, {0.3f, 30.0f}, {0.4f, 40.0f}, {0.5f, 50.0f}, {0.6f, 60.0f}, {0.7f, 70.0f}, {0.8f, 80.0f}, {0.9f, 90.0f} }, // Humidity
-	// };
-
-	game.noiseGenerators = WorldNoise(noiseSplines);
-	// World loading, apply settings from file, etc...
+	// Initial update and buffer sizing
+	UpdateRenderDistance(chunkRenderDistance);
 
 	TextFormat::log("World exit");
 }
 
 void World::DrawWorld() const noexcept
 {
-	game.shader.UseShader(Shader::ShaderID::World);
+	// Use correct VAO and shader program
+	game.shader.UseShader(Shader::ShaderID::Blocks);
 	glBindVertexArray(m_worldVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, m_worldInstancedVBO);
+
+	// Draw the entire world in a single draw call using the indirect buffer, essentially
+	// doing an instanced draw call (glDrawArraysInstancedBaseInstance) for each 'chunk face'.
+	// See https://registry.khronos.org/OpenGL-Refpages/gl4/html/glMultiDrawArraysIndirect.xhtml for more information.
+
 	glMultiDrawArraysIndirect(GL_TRIANGLE_STRIP, nullptr, m_indirectCalls, 0);
 }
 
@@ -81,12 +78,12 @@ ObjectID World::GetBlock(PosType x, PosType y, PosType z) const noexcept
 	// If the chunk exists, return the block found at the position in local chunk coordinates
 	if (chunk != nullptr) {
 		return chunk->chunkBlocks->GetBlock(
-			ChunkSettings::WorldToLocalPosition(x), 
-			ChunkSettings::WorldToLocalPosition(y), 
+			ChunkSettings::WorldToLocalPosition(x),
+			ChunkSettings::WorldToLocalPosition(y),
 			ChunkSettings::WorldToLocalPosition(z)
 		);
 	}
-	
+
 	// If no chunk is found in the given position, return air
 	return ObjectID::Air;
 }
@@ -115,9 +112,9 @@ ModifyWorldResult World::SetBlock(PosType x, PosType y, PosType z, ObjectID obje
 	// Warning text if the set position is above or below world height
 	if (y > ChunkSettings::MAX_WORLD_HEIGHT) {
 		textRenderer.CreateText({ 0.4f, 0.6f }, "Cannot change blocks above world height", TextRenderer::T_Type::Temporary);
-		return ModifyWorldResult::AboveWorld; 
+		return ModifyWorldResult::AboveWorld;
 	}
-	else if (y < zeroPosType) {
+	else if (y < 0) {
 		textRenderer.CreateText({ 0.4f, 0.6f }, "Cannot change blocks below y = 0", TextRenderer::T_Type::Temporary);
 		return ModifyWorldResult::BelowWorld;
 	}
@@ -162,14 +159,15 @@ Chunk* World::SetBlockSimple(PosType x, PosType y, PosType z, ObjectID objectID)
 }
 
 void World::FillBlocks(
-	PosType x, PosType y, PosType z, 
-	PosType tx, PosType ty, PosType tz, 
+	PosType x, PosType y, PosType z,
+	PosType tx, PosType ty, PosType tz,
 	ObjectID objectID
 ) noexcept
 {
 	// Force valid position
-	y = std::clamp(y, zeroPosType, ChunkSettings::PMAX_WORLD_HEIGHT);
-	ty = std::clamp(ty, zeroPosType, ChunkSettings::PMAX_WORLD_HEIGHT);
+	constexpr PosType zero_pt = static_cast<PosType>(0);
+	y = Math::clamp(y, zero_pt, ChunkSettings::PMAX_WORLD_HEIGHT);
+	ty = Math::clamp(ty, zero_pt, ChunkSettings::PMAX_WORLD_HEIGHT);
 
 	// List of unique edited chunks for updating
 	std::unordered_map<WorldPos, Chunk*, WorldPosHash> uniqueChunks;
@@ -203,8 +201,40 @@ bool World::ChunkExists(WorldPos chunkOffset) const noexcept
 
 bool World::InRenderDistance(WorldPos &playerOffset, const WorldPos &chunkOffset) noexcept
 {
-    return Math::abs(playerOffset.x - chunkOffset.x) +
-           Math::abs(playerOffset.z - chunkOffset.z) <= static_cast<PosType>(chunkRenderDistance);
+	return Math::qabs(playerOffset.x - chunkOffset.x) +
+		   Math::qabs(playerOffset.z - chunkOffset.z) <= static_cast<PosType>(chunkRenderDistance);
+}
+
+void World::UpdateRenderDistance(std::int32_t newRenderDistance) noexcept
+{
+	// Render distance determines how many chunks in a 'star' pattern will be generated
+	// from the initial player chunk (e.g. a render distance of 0 has only the player's chunk,
+	// whereas a render distance of 1 has 4 extra chunks surrounding it - 5 in total).
+
+	// Negative render distance (achieved by decreasing from 0 render distance) does not make sense
+	if (newRenderDistance < 0) return;
+	chunkRenderDistance = newRenderDistance;
+	
+	// Maximum amount of chunk faces (calculated as (2n^2 + 2n + 1) * h, 
+	// where n is the render distance and h is the number of chunks in a'full chunk')
+	// Also multiply by 2 due to translucent faces needing to be rendered seperately
+	const std::size_t maxChunkFaces = (
+			(2 * chunkRenderDistance * chunkRenderDistance) + (2 * chunkRenderDistance) + 1
+		) * ChunkSettings::HEIGHT_COUNT * 2;
+
+	// Ensure correct buffers are used
+	glBindVertexArray(m_worldVAO);
+
+	// Update buffer sizes (used to avoid doing glBufferData each time, which reallocates = expensive):
+
+	// Indirect buffer ('draw commands' used for rendering, see 'draw world' function)
+	glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(IndirectDrawCommand[maxChunkFaces]), nullptr, GL_STATIC_DRAW);
+	// SSBO (used to store offset data and face index in world shader)
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ShaderChunkOffset[maxChunkFaces]), nullptr, GL_STATIC_DRAW);
+
+	// Fill the newly sized buffers (empty now) with new valid data
+	STChunkUpdate();
+	SortWorldBuffers();
 }
 
 void World::RemoveChunk(Chunk* chunk) noexcept
@@ -221,7 +251,7 @@ void World::CreateFullChunk(ChunkOffset offsetXZ) noexcept
 	SetPerlinValues(noiseResults, offsetXZ * ChunkSettings::PCHUNK_SIZE);
 
 	// Create a new chunk at each Y offset and add it to the chunks map
-	WorldPos offset = { offsetXZ.x, zeroPosType, offsetXZ.y };
+	WorldPos offset = { offsetXZ.x, 0, offsetXZ.y };
 	for (; offset.y < ChunkSettings::PHEIGHT_COUNT; ++offset.y) {
 		Chunk* newChunk = new Chunk(offset, noiseResults);
 		chunks.insert({ offset, newChunk });
@@ -245,22 +275,22 @@ void World::CalculateChunk(Chunk* chunk) const noexcept
 
 void World::SetPerlinValues(WorldPerlin::NoiseResult* results, ChunkOffset offset) noexcept
 {
-	// (used per full chunk, each chunk would have the same results as they 
+	// (used per full chunk, each chunk would have the same results as they
 	// have the same XZ coordinates so no calculation is needed for each individual chunk)
-	
+
 	// Loop through X and Z axis
 	for (int i = 0; i < ChunkSettings::CHUNK_SIZE_SQUARED; ++i) {
 		const int indZ = i / ChunkSettings::CHUNK_SIZE, indX = i % ChunkSettings::CHUNK_SIZE; // Get the X and Z position
 		// Get noise coordinates
 		const double posX = static_cast<double>(offset.x + indX) * ChunkSettings::NOISE_STEP,
 			posZ = static_cast<double>(offset.y + indZ) * ChunkSettings::NOISE_STEP;
-			
+
 		// Store the height result for each of the terrain noise generators
 		WorldPerlin::NoiseResult& result = results[i];
 		constexpr int octaves = 3;
 
-		result.continentalnessHeight = 
-			((game.noiseGenerators.continentalness.Octave2D(posX, posZ, octaves) + 0.4f) * 
+		result.continentalnessHeight =
+			((game.noiseGenerators.continentalness.Octave2D(posX, posZ, octaves) + 0.4f) *
 			ChunkSettings::CHUNK_NOISE_MULTIPLIER) + 20;
 		result.flatness = game.noiseGenerators.temperature.Noise2D(posX, posZ) + 0.2f;
 		result.temperature = game.noiseGenerators.flatness.Noise2D(posX, posZ) + 0.2f;
@@ -273,9 +303,8 @@ void World::StartThreadChunkUpdate() noexcept
 	// TODO
 }
 
-void World::TestChunkUpdate() noexcept
+void World::STChunkUpdate() noexcept
 {
-	if (!game.mainLoopActive || game.test) return;
 	const Chunk::ChunkGetter finder = [&](const WorldPos& o) noexcept {
 		const auto& a = chunks.find(o);
 		return a == chunks.end() ? nullptr : a->second;
@@ -293,17 +322,17 @@ void World::TestChunkUpdate() noexcept
 
 	const ChunkOffset playerOffset = { player.offset.x, player.offset.z };
 
-    // Find valid coordinates relative to the player
-    for (int x = -chunkRenderDistance; x <= chunkRenderDistance; ++x) {
-        for (int z = -chunkRenderDistance; z <= chunkRenderDistance; ++z) {
-            if (abs(x) + abs(z) > chunkRenderDistance) continue;
-            
-            const ChunkOffset newOffset = playerOffset + ChunkOffset(x, z);
-            // Check if there isn't already a chunk at the selected offset
-            if (chunks.find({ newOffset.x, zeroPosType, newOffset.y }) != chunks.end()) continue;
-            CreateFullChunk(newOffset);
-        }
-    } 
+	// Find valid coordinates relative to the player
+	for (int x = -chunkRenderDistance; x <= chunkRenderDistance; ++x) {
+		for (int z = -chunkRenderDistance; z <= chunkRenderDistance; ++z) {
+			if (Math::qabs(x) + Math::qabs(z) > chunkRenderDistance) continue;
+
+			const ChunkOffset newOffset = playerOffset + ChunkOffset(x, z);
+			// Check if there isn't already a chunk at the selected offset
+			if (chunks.find({ newOffset.x, 0, newOffset.y }) != chunks.end()) continue;
+			CreateFullChunk(newOffset);
+		}
+	}
 
 	std::unordered_map<WorldPos, Chunk*, WorldPosHash> unique;
 
@@ -322,7 +351,7 @@ void World::TestChunkUpdate() noexcept
 	UpdateWorldBuffers();
 }
 
-void World::GenerateTree(TreeGenerateVars vars) noexcept 
+void World::GenerateTree(TreeGenerateVars vars) noexcept
 {
 	bool shouldSpawn = static_cast<int>(vars.noiseResult.humidity * 3279245.8f) % 13 == 0;
 	if (!shouldSpawn) return;
@@ -376,14 +405,17 @@ void World::UpdateWorldBuffers() noexcept
 {
 	//TextFormat::log("World buffer update");
 
-	// Bind world vertex array to edit correct buffers
-	glBindVertexArray(m_worldVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, m_worldVBO);
-
 	if (threadUpdateBuffers) {
 		// Move any newly generated chunks (from thread) to the main chunk map
-		for (Chunk* chunk : m_transferChunks) chunks.insert({ chunk->GetOffset(), chunk});
+		for (Chunk* chunk : m_transferChunks) chunks.insert({ chunk->GetOffset(), chunk });
 		m_transferChunks.clear(); // Clear new chunk pointer array
+	}
+
+	// Exit if there are no chunks (e.g. moving very fast so all chunks are deleted)
+	if (!chunks.size()) {
+		SortWorldBuffers();
+		threadUpdateBuffers = false;
+		return;
 	}
 
 	#ifndef BADCRAFT_1THREAD
@@ -392,20 +424,16 @@ void World::UpdateWorldBuffers() noexcept
 	#endif
 
 	// Counters
-	int32_t faceDataPointersCount = 0;
-	uint32_t amountOfInts = 0u;
+	std::size_t faceDataPointersCount = 0u;
+	squaresCount = 0u;
 
-    // 2n^2 + 2n + 1 = amount of chunks in a 'star' pattern around the player, where n is the render distance
-    // Multiply by 6 to get the total number of 'chunk faces' and by the height count to include full chunks
-    const int chunkFacesTotal = 
-        ((2 * chunkRenderDistance * chunkRenderDistance) + (2 * chunkRenderDistance) + 1) *
-        6 * ChunkSettings::HEIGHT_COUNT;
-	
+	// The total number of 'chunk faces' (6 per chunk)
+	const std::size_t chunkFacesTotal = chunks.size() * static_cast<std::size_t>(6);
+
 	// Pointers to chunk face objects
-	typedef Chunk::FaceAxisData ChunkFaceData;
-	ChunkFaceData** faceDataPointers = new ChunkFaceData*[chunkFacesTotal];
+	Chunk::FaceAxisData** faceDataPointers = new Chunk::FaceAxisData*[chunkFacesTotal];
 
-	// Loop through all of the chunks and each of their 6 face data to determine how much memory is needed 
+	// Loop through all of the chunks and each of their 6 face data to determine how much memory is needed
 	// overall and accumulate all the valid pointer data into the array, as well as preparing to delete any far away chunks
 	for (const auto& [offset, chunk] : chunks) {
 		#ifndef BADCRAFT_1THREAD
@@ -416,12 +444,12 @@ void World::UpdateWorldBuffers() noexcept
 		}
 		#endif
 
-		// Loop through all of the chunk's face data, either adding it (if non-empty) to the end vector or to the pointer array
-		for (ChunkFaceData& faceData : chunk->chunkFaceData) {
-			const uint32_t totalFaces = faceData.TotalFaces<uint32_t>();
-			if (!totalFaces) continue; // Empty, ignore
+		// Loop through all of the chunk's face data, adding to the faces pointer if not empty
+		for (Chunk::FaceAxisData& faceData : chunk->chunkFaceData) {
+			const std::uint32_t totalFaces = faceData.TotalFaces<std::uint32_t>();
+			if (!totalFaces) continue; // Empty - ignore
 			faceDataPointers[faceDataPointersCount++] = &faceData;
-			amountOfInts += totalFaces;
+			squaresCount += totalFaces;
 		}
 	}
 
@@ -431,136 +459,91 @@ void World::UpdateWorldBuffers() noexcept
 	chunksToRemove.clear();
 	#endif
 
-	// Just clear the data if there are no chunks present
-	if (!chunks.size()) {
-		delete[] faceDataPointers;
-		SortWorldBuffers();
-		threadUpdateBuffers = false;
-		return;
-	}
+	// Bind world vertex array to edit correct buffers
+	glBindVertexArray(m_worldVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, m_worldInstancedVBO);
 
-	// World data buffer
-	const uint32_t* activeWorldData = static_cast<uint32_t*>(glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY));
+	// World data buffer (on initial update, all chunk faces have instance data so the nullptr world data is not accessed)
+	std::uint32_t* activeWorldData = nullptr;
+	if (canMap) activeWorldData = static_cast<uint32_t*>(glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY));
+
 	// Create new int array for all chunk data and index value
-	uint32_t* newWorldData = new uint32_t[amountOfInts];
-	uint32_t newIndex = 0u;
+	std::uint32_t* newWorldData = new std::uint32_t[squaresCount];
+	std::uint32_t newIndex = 0u;
 
-	/*
-		Since there is already data present in the world buffer, the old chunks' face data array
-		would have been deleted (to save memory), so the actual data is found in the current world buffer data instead.
+	// If a chunk face's instance data is nullptr, it has been deleted and buffered before, so the data can instead
+	// be retrieved from the current world buffer (glMapBuffer). Otherwise, buffer new data into the world array. 
+	for (std::size_t i = 0; i < faceDataPointersCount; ++i) {
+		Chunk::FaceAxisData* faceData = faceDataPointers[i];
+		const std::uint32_t totalFaces = faceData->TotalFaces<std::uint32_t>();
+		const std::size_t totalFacesBytes = sizeof(std::uint32_t[totalFaces]);
 
-		* Deleted chunks should have their data overwritten/removed
-		* Updated chunks should have their data moved to the end as the new data size will most likely change (doesn't fit/leaves empty space)
-		* New chunks should be placed at the end as well
-			
-		Deleted chunks are identified from gaps in the 'world index'
-		Updated and new chunks have new data from face calculation
-		The original chunks that have not changed will not have any face data (nullptr)
-
-		Example data layout in glMapBuffer result: [(chunk data)(old chunk data)(deleted chunk data)(chunk data)(chunk data)...]
-		Example data layout after: [(chunk data)(chunk data)(chunk data)(new chunk data)...]
-	*/
-
-	// Copy the data from all valid chunk faces depending on whether it has new data or not and set new data indexes:
-	// Contains new data - memcpy new instance data to new index then delete new instance data to free memory
-	// Data is nullptr - memcpy from active world buffer at current set index to new world data (where the chunk's data is located)
-	for (int32_t i = 0; i < faceDataPointersCount; ++i) {
-		ChunkFaceData* faceData = faceDataPointers[i];
-		const uint32_t totalFaces = faceData->TotalFaces<uint32_t>();
-		const size_t totalFacesBytes = static_cast<size_t>(totalFaces) * sizeof(uint32_t);
-		if (faceData->instancesData == nullptr) memcpy(newWorldData + newIndex, activeWorldData + faceData->dataIndex, totalFacesBytes);
+		if (faceData->instancesData == nullptr) {
+			std::memcpy(newWorldData + newIndex, activeWorldData + faceData->dataIndex, totalFacesBytes);
+		}
 		else {
-			memcpy(newWorldData + newIndex, faceData->instancesData, totalFacesBytes);
+			std::memcpy(newWorldData + newIndex, faceData->instancesData, totalFacesBytes);
 			delete[] faceData->instancesData;
 			faceData->instancesData = nullptr;
 		}
+
 		faceData->dataIndex = newIndex;
 		newIndex += totalFaces;
 	}
 
-	// Buffer data then free memory used by world data and face data pointers
-	constexpr int64_t sizeofUI32 = static_cast<int64_t>(sizeof(uint32_t));
-	glBufferData(GL_ARRAY_BUFFER, static_cast<int64_t>(amountOfInts) * sizeofUI32, newWorldData, GL_STATIC_DRAW);
+	// Unmap array buffer only if it was mapped in the first place
+	if (canMap) glUnmapBuffer(GL_ARRAY_BUFFER);
 
+	// Buffer accumulated block data into instanced world VBO
+	glBindBuffer(GL_ARRAY_BUFFER, m_worldInstancedVBO);
+	glVertexAttribIPointer(0u, 1, GL_UNSIGNED_INT, 0, nullptr);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(std::uint32_t[squaresCount]), newWorldData, GL_STATIC_DRAW);
+
+	// Free memory from world data array and pointers from 'new'
 	delete[] newWorldData;
-    delete[] faceDataPointers;
+	delete[] faceDataPointers;
 
 	// Ensure new chunk data is used in indirect data and SSBO
 	SortWorldBuffers();
 	threadUpdateBuffers = false;
+	canMap = true;
 }
 
 void World::SortWorldBuffers() noexcept
 {
-	// Bind world vertex array and instance VBO
-	glBindVertexArray(m_worldVAO);
+	// The total amount of 'chunk faces' as seen in the 'world buffer update' function
+	const std::size_t chunkFacesTotal = chunks.size() * static_cast<std::size_t>(6);
 
-	typedef glm::i64vec3 WorldPos64;
+	// Two per chunk face is needed to render translucent objects seperately
+	IndirectDrawCommand* worldIndirectData = new IndirectDrawCommand[chunkFacesTotal * static_cast<std::size_t>(2)];
+	ShaderChunkOffset* worldOffsetData = new ShaderChunkOffset[chunkFacesTotal * static_cast<std::size_t>(2)];
 
-	struct ShaderChunkOffset {
-		int64_t worldOffsetX;
-		int64_t worldOffsetY;
-		int64_t worldOffsetZ;
-		int8_t faceIndex;
-	};
+	// Offset value data
+	ShaderChunkOffset offsetData {};
+	m_indirectCalls = 0;
 
 	struct ChunkTranslucentData {
 		ShaderChunkOffset offsetData;
 		Chunk* chunk;
 	};
 
-	struct IndirectDrawCommand {
-		uint32_t count;
-		uint32_t instanceCount;
-		uint32_t first;
-		uint32_t baseInstance;
-	};
-
-	/*
-		Position offsets and indirect arrays:
-		Two is needed per chunk face as translucent objects are rendered separately
-		after all the opaque faces so require the same data as well
-	*/
-
-    // Chunk total face calculation as explained in world data buffer update function
-    const int chunkFacesTotal = 
-        ((2 * chunkRenderDistance * chunkRenderDistance) + (2 * chunkRenderDistance) + 1) *
-        6 * ChunkSettings::HEIGHT_COUNT;
-
-    // Multiply by 2 as well due to the multiline comment above
-	IndirectDrawCommand* worldIndirectData = new IndirectDrawCommand[chunkFacesTotal * 2];
-	ShaderChunkOffset* worldOffsetData = new ShaderChunkOffset[chunkFacesTotal * 2];
-
-	// Offset value data
-	ShaderChunkOffset offsetData {};
-	m_indirectCalls = 0;
-
-	/*
-		Faces that you can see through need to be rendered last for the 'transparency' effect
-		to actually work and prevent any silliness like invisible normal faces when looking
-		through blocks that have some sort of transparency
-
-		After storing the normal face data for every chunk, loop through the individual chunk faces
-		that have translucent faces, giving the offset and chunk data for each
-	*/
-
 	// All chunk face data with non-opaque faces go here for sorting later on
 	ChunkTranslucentData* translucentChunks = new ChunkTranslucentData[chunkFacesTotal];
-	int translucentChunksCount = 0;
+	std::size_t translucentChunksCount = 0u;
 
-	// Loop through all of the chunks and each of their normal face data
+	// After storing the normal face data for every chunk, loop through the individual chunk faces
+	// that have translucent faces, giving the offset and chunk data for each
 	for (const auto& [offset, chunk] : chunks) {
 		// Set offset data for shader
-		const WorldPos64 chunkPosition64 = static_cast<WorldPos64>(offset) * ChunkSettings::CHUNK_SIZE_I64;
-		offsetData.worldOffsetX = chunkPosition64.x;
-		offsetData.worldOffsetY = chunkPosition64.y;
-		offsetData.worldOffsetZ = chunkPosition64.z;
+		offsetData.worldPositionX = static_cast<double>(offset.x * ChunkSettings::PCHUNK_SIZE);
+		offsetData.worldPositionY = static_cast<double>(offset.y * ChunkSettings::PCHUNK_SIZE);
+		offsetData.worldPositionZ = static_cast<double>(offset.z * ChunkSettings::PCHUNK_SIZE);
 
-		// TODO: add WORKING frustum culling
+		// TODO: frustum culling
 
 		for (offsetData.faceIndex = 0; offsetData.faceIndex < 6; ++offsetData.faceIndex) {
 			const Chunk::FaceAxisData& faceData = chunk->chunkFaceData[offsetData.faceIndex];
-			if (!faceData.TotalFaces<uint32_t>()) continue; // No faces present
+			if (!faceData.TotalFaces<std::uint32_t>()) continue; // No faces present
 
 			// Add to vector if transparency is present, go to next iteration if there are no faces at all
 			if (faceData.translucentFaceCount > 0u) {
@@ -568,15 +551,15 @@ void World::SortWorldBuffers() noexcept
 				translucentData.chunk = chunk;
 				translucentData.offsetData = offsetData;
 			}
-			
+
 			// Check if it would even be possible to see this (opaque) face of the chunk
 			// e.g. you can't see forward faces when looking north at a chunk
 
 			//	2d example:		---------
-			//					|opaque |
-			//	camera -------> | shape | <---- impossible to see this face
-			//					|		|
-			//					---------
+			//	 				|opaque |
+			//	 O ----------->	| shape | <---- impossible to see this face on the opposite side
+			//	/|\				|		|
+			//	/ \				---------
 
 			switch (offsetData.faceIndex) {
 				case IWorldDir_Up:
@@ -600,8 +583,8 @@ void World::SortWorldBuffers() noexcept
 				default:
 					break;
 			}
-
-			// Assign indirect and offset data to array (same amount, so same index)
+			
+			// Set indirect and offset data in the same indexes in both buffers
 			worldIndirectData[m_indirectCalls] = { 4u, faceData.faceCount, 0u, faceData.dataIndex };
 			worldOffsetData[m_indirectCalls++] = offsetData;
 		}
@@ -609,31 +592,60 @@ void World::SortWorldBuffers() noexcept
 
 	// Sort chunks with transparency based on distance to camera for correct rendering order
 	std::sort(
-		translucentChunks, 
-		translucentChunks + translucentChunksCount, 
+		translucentChunks,
+		translucentChunks + translucentChunksCount,
 		[&](const ChunkTranslucentData& a, const ChunkTranslucentData& b) {
 			return a.chunk->positionMagnitude - player.posMagnitude > b.chunk->positionMagnitude - player.posMagnitude;
 		}
 	);
 
 	// Loop through all of the sorted chunk faces with translucent faces and save the specific data
-	for (int i = 0; i < translucentChunksCount; ++i) {
+	for (std::size_t i = 0; i < translucentChunksCount; ++i) {
+		// Get chunk face data
 		const ChunkTranslucentData& data = translucentChunks[i];
 		const Chunk::FaceAxisData& faceData = data.chunk->chunkFaceData[data.offsetData.faceIndex];
-		const uint32_t translucentFaces = faceData.translucentFaceCount, translucentOffset = faceData.dataIndex + faceData.faceCount;
+
 		// Create indirect command with offset using the translucent face data
-		worldIndirectData[m_indirectCalls] = { 4u, translucentFaces, 0u, translucentOffset };
+		worldIndirectData[m_indirectCalls] = { 4u, faceData.translucentFaceCount, 0u, faceData.dataIndex + faceData.faceCount };
 		worldOffsetData[m_indirectCalls++] = data.offsetData;
 	}
 
+	// Bind world vertex array to edit correct buffers
+	glBindVertexArray(m_worldVAO);
+	
+	// Update SSBO and indirect buffer with their respective data and sizes
+	glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(IndirectDrawCommand[m_indirectCalls]), worldIndirectData);
+	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(ShaderChunkOffset[m_indirectCalls]), worldOffsetData);
 
-	// Buffer the accumulated data
-	const int64_t totalOffsetDataSize = static_cast<int64_t>(m_indirectCalls) * static_cast<int64_t>(sizeof(ShaderChunkOffset));
-	glBufferData(GL_DRAW_INDIRECT_BUFFER, totalOffsetDataSize, worldIndirectData, GL_STATIC_DRAW);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, totalOffsetDataSize, worldOffsetData, GL_STATIC_COPY);
-
+	// std::cout << "Max size (indirect): " << ((2 * chunkRenderDistance * chunkRenderDistance) + (2 * chunkRenderDistance) + 1
+	// ) * ChunkSettings::HEIGHT_COUNT * 2 * sizeof(IndirectDrawCommand) << " Current: " << sizeof(IndirectDrawCommand[m_indirectCalls]) << "\n";
+	
 	// Free up memory used by arrays created with new
 	delete[] translucentChunks;
 	delete[] worldIndirectData;
 	delete[] worldOffsetData;
+}
+
+World::~World() noexcept
+{
+	// Bind vertex array to get correct buffers
+	glBindVertexArray(m_worldVAO);
+
+	// Get the IDs of unnamed buffers
+	GLint SSBOID, DIBID;
+	glGetIntegerv(GL_SHADER_STORAGE_BUFFER_BINDING, &SSBOID);
+	glGetIntegerv(GL_DRAW_INDIRECT_BUFFER_BINDING, &DIBID);
+
+	// Delete created buffer objects
+	const GLuint deleteBuffers[] = { 
+		static_cast<GLuint>(SSBOID), 
+		static_cast<GLuint>(DIBID), 
+		static_cast<GLuint>(m_worldInstancedVBO), 
+		static_cast<GLuint>(m_worldPlaneVBO),
+	};
+	glDeleteBuffers(sizeof(deleteBuffers) / sizeof(GLuint), deleteBuffers);
+
+	// Delete world VAO
+	const GLuint uintVAO = static_cast<GLuint>(m_worldVAO);
+	glDeleteVertexArrays(1, &uintVAO);
 }

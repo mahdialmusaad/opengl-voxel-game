@@ -9,22 +9,26 @@
 
 #define GLM_FORCE_XYZW_ONLY
 #include "glm/glm.hpp"
-#include "glm/gtc/random.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/ext/matrix_clip_space.hpp"
 
 #include "lodepng/lodepng.h"
 #include "World/Generation/Perlin.hpp"
+#include "Timer.hpp"
 
+#include <mutex>
 #include <thread>
 
+#include <string>
+#include <cstring>
+#include <sstream>
 #include <fstream>
 #include <iostream>
+
+#include <algorithm>
 #include <filesystem>
 #include <functional>
 #include <unordered_map>
-
-//namespace cnc = concurrency;
 
 template <class T, class U>
 constexpr T narrow_cast(U&& u) noexcept
@@ -37,36 +41,31 @@ constexpr bool b_not(bool& x) noexcept
 	return x;
 }
 
-typedef int64_t PosType; // Switch between 32-bit and 64-bit block positions
+typedef std::int64_t PosType; // Switch between 32-bit and 64-bit positioning
 typedef glm::vec<3, PosType> WorldPos;
 typedef glm::vec<2, PosType> ChunkOffset;
-
-static constexpr PosType zeroPosType = static_cast<PosType>(0);
-static constexpr PosType onePosType = static_cast<PosType>(1);
-static constexpr size_t oneSizeT = static_cast<size_t>(1);
 
 struct OGL 
 {
 	static GLuint CreateBuffer(GLenum type) noexcept;
-	static uint8_t CreateBuffer8(GLenum type) noexcept;
-	static uint16_t CreateBuffer16(GLenum type) noexcept;
+	static std::uint8_t CreateBuffer8(GLenum type) noexcept;
+	static std::uint16_t CreateBuffer16(GLenum type) noexcept;
 
 	static GLuint CreateVAO() noexcept;
-	static uint8_t CreateVAO8() noexcept;
-	static uint16_t CreateVAO16() noexcept;
+	static std::uint8_t CreateVAO8() noexcept;
 
-	static void SetupUBO(uint8_t& ubo, GLuint index, size_t uboSize) noexcept;
-	static void UpdateUBO(uint8_t& ubo, GLintptr offset, GLsizeiptr bytes, const void* data) noexcept;
+	static void SetupUBO(std::uint8_t& ubo, GLuint index, std::size_t uboSize) noexcept;
+	static void UpdateUBO(std::uint8_t& ubo, GLintptr offset, GLsizeiptr bytes, const void* data) noexcept;
 };
 struct OGLImageInfo
 {
-	uint32_t width = 0, height = 0;
+	std::uint32_t width = 0, height = 0;
 	std::vector<unsigned char> data;
 };
 
 struct WorldPosHash
 {
-	size_t operator()(const WorldPos& vec) const noexcept;
+	std::size_t operator()(const WorldPos& vec) const noexcept;
 };
 
 struct Math
@@ -74,15 +73,21 @@ struct Math
 	static float loopAround(float x, float min, float max) noexcept;
 	static double loopAround(double x, double min, double max) noexcept;
 	static constexpr int loopAroundInteger(int x, int minInc, int maxExcl) noexcept 
-    {
-        return minInc + ((maxExcl + x) % maxExcl);
-    }
-
-	static constexpr PosType abs(PosType val) noexcept 
 	{
-		constexpr PosType mult = sizeof(PosType) * static_cast<size_t>(CHAR_BIT - 1);
+		return minInc + ((maxExcl + x) % maxExcl);
+	}
+
+	static constexpr PosType qabs(PosType val) noexcept 
+	{
+		constexpr PosType mult = sizeof(PosType[CHAR_BIT - 1]);
 		const PosType mask = val >> mult;
 		return (val + mask) ^ mask;
+	}
+
+	template<typename T>
+	static constexpr T clamp(T val, T min, T max) noexcept
+	{
+		return val < min ? min : val > max ? max : val;
 	}
 
 	static constexpr double _sqrtInner(double val, double current, double previous) noexcept
@@ -128,25 +133,15 @@ struct Math
 struct TextFormat
 {
 	static void warn(std::string t, std::string ttl);
-	static void warnNull(std::string t);
-	static void log(std::string t);
+	static void log(std::string t, bool nl = true);
+	static bool stringEndsWith(const std::string& str, const std::string& ending);
 };
-
-template <class T, class U>
-constexpr T* malloc_T(U numInstances) noexcept
-{
-	void* res = malloc(static_cast<size_t>(numInstances) * sizeof(T));
-	if (res == nullptr) { TextFormat::warnNull("Malloc_t result"); return malloc_T<T>(numInstances); }
-	else return static_cast<T*>(res);
-}
 
 class Shader
 {
 public:
 	void InitShader();
-	Shader() noexcept = default;
-
-	enum class ShaderID { Cloud, Inventory, Outline, Sky, Stars, Text, World, MAX };
+	enum class ShaderID { Blocks, Clouds, Inventory, Outline, Sky, Stars, Text, MAX };
 
 	GLuint ShaderFromID(ShaderID id) const noexcept;
 	void UseShader(ShaderID id) const noexcept;
@@ -162,15 +157,17 @@ public:
 
 	static std::string ReadFileFromDisk(const std::string& filename);
 	static void LoadTexture(OGLImageInfo& info, const char* filename, bool border, int filterParam, bool mipmap);
+
+	~Shader() noexcept;
 private:
-	uint8_t m_programs[static_cast<int>(ShaderID::MAX)]{};
+	std::uint8_t m_programs[static_cast<int>(ShaderID::MAX)] {};
 };
 
 struct WorldNoise
 {
 	WorldNoise() noexcept = default;
 	WorldNoise(WorldPerlin::NoiseSpline *splines);
-	WorldNoise(WorldPerlin::NoiseSpline *splines, uint64_t *seeds);
+	WorldNoise(WorldPerlin::NoiseSpline *splines, std::uint64_t *seeds);
 	
 	WorldPerlin continentalness;
 	WorldPerlin flatness;
@@ -190,7 +187,9 @@ struct Game
 	int windowX = 0, windowY = 0;
 	int width = 0, height = 0;
 	int updateInterval = 1;
-	float aspect = 1.5f;
+	float aspect = 1.0f;
+
+	float testfloat = 0.0f, testfloat2 = 0.0f;
 
 	Shader shader;
 
@@ -200,7 +199,7 @@ struct Game
 	bool chatting = false;
 	bool minimized = false;
 	bool isServer = false;
-	bool test = false;
+	bool noGeneration = false;
 
 	double tickSpeed = 1.0;
 	double tickedDeltaTime = 0.016;
@@ -211,7 +210,8 @@ struct Game
 	double mouseX = 0.0, mouseY = 0.0;
 	double deltaTime = 0.016;
 
-	std::string worldName;
+	//std::string worldName;
+	std::string resourcesFolder;
 
 	OGLImageInfo blocksTextureInfo;
 	OGLImageInfo textTextureInfo;

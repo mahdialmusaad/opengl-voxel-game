@@ -12,7 +12,8 @@ public:
 
 	PlayerObject& player;
 	bool threadUpdateBuffers = false;
-    int chunkRenderDistance = 4;
+	std::uint32_t squaresCount = 0u;
+	std::int32_t chunkRenderDistance = 4;
 
 	World(PlayerObject& player) noexcept;
 	void DrawWorld() const noexcept;
@@ -27,7 +28,8 @@ public:
 	Chunk* GetChunk(WorldPos offset) const noexcept;
 	bool ChunkExists(WorldPos offset) const noexcept;
 
-    bool InRenderDistance(WorldPos& playerOffset, const WorldPos& chunkOffset) noexcept;
+	bool InRenderDistance(WorldPos& playerOffset, const WorldPos& chunkOffset) noexcept;
+	void UpdateRenderDistance(std::int32_t newRenderDistance) noexcept;
 
 	void FillBlocks(
 		PosType x, PosType y, PosType z, 
@@ -36,10 +38,12 @@ public:
 	) noexcept;
 
 	void StartThreadChunkUpdate() noexcept;
-	void TestChunkUpdate() noexcept;
+	void STChunkUpdate() noexcept;
 
 	void UpdateWorldBuffers() noexcept;
 	void SortWorldBuffers() noexcept;
+
+	~World() noexcept;
 private:
 	void RemoveChunk(Chunk* chunk) noexcept;
 	void CreateFullChunk(ChunkOffset offsetXZ) noexcept;
@@ -64,14 +68,29 @@ private:
 	void GenerateTree(TreeGenerateVars vars) noexcept;
 	Chunk* SetBlockSimple(PosType x, PosType y, PosType z, ObjectID objectID) const noexcept;
 
-	uint8_t m_worldVBO;
-	uint16_t m_worldVAO; 
-	int32_t m_indirectCalls = 0;
+	std::uint8_t m_worldVAO; 
+	std::uint8_t m_worldInstancedVBO, m_worldPlaneVBO;
+	GLsizei m_indirectCalls = 0;
+	bool canMap = false;
 
 	std::vector<Chunk*> m_transferChunks;
 	std::unordered_map<WorldPos, std::vector<BlockQueue>, WorldPosHash> m_blockQueue;
 
 	Chunk::ChunkGetter m_defaultGetter;
+
+	struct ShaderChunkOffset {
+		double worldPositionX;
+		double worldPositionY;
+		double worldPositionZ;
+		std::int32_t faceIndex;
+	};
+
+	struct IndirectDrawCommand {
+		std::uint32_t count;
+		std::uint32_t instanceCount;
+		std::uint32_t first;
+		std::uint32_t baseInstance;
+	};
 };
 
 #endif

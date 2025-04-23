@@ -31,20 +31,20 @@ public:
 		int GetDisplayLength() const noexcept;
 		std::string& GetText() noexcept;
 		RGBVector GetColour() const noexcept;
-		uint8_t GetFontSize() const noexcept;
+		std::uint8_t GetFontSize() const noexcept;
 		float GetTime() const noexcept;
 	private:
 		std::string m_text;
 		glm::vec2 m_pos = { 0.0f, 0.0f };
 		float m_textTime = 0.0f;
 
-		uint16_t m_displayLength = 0u;
-		uint8_t m_fontSize = 16u;
+		std::uint16_t m_displayLength = 0u;
+		std::uint8_t m_fontSize = 16u;
 
 		RGBVector m_RGBColour = { 255, 255u, 255u };
 	public:
 		TextType type = TextType::Default;
-		uint8_t beQuietPlease = false;
+		std::uint8_t loggedErrors = false;
 		GLuint vbo;
 	};
 
@@ -53,16 +53,15 @@ public:
 	static constexpr float TEMP_TIME = 5.0f;
 	float letterSpacing = 0.002f;
 	float lineSpacing = 0.04f;
-	uint8_t textVAO;
 
 	TextRenderer() noexcept;
 	void RenderText() const noexcept;
 
-	ScreenText* CreateText(glm::vec2 pos, std::string text, T_Type textType = T_Type::Default, uint8_t fontSize = 16) noexcept;
+	ScreenText* CreateText(glm::vec2 pos, std::string text, T_Type textType = T_Type::Default, std::uint8_t fontSize = 16u) noexcept;
 	void RecalculateAllText() noexcept;
 
-	ScreenText* GetTextFromID(uint16_t id) noexcept;
-	uint16_t GetIDFromText(ScreenText* screenText) const noexcept;
+	ScreenText* GetTextFromID(std::uint16_t id) noexcept;
+	std::uint16_t GetIDFromText(ScreenText* screenText) const noexcept;
 
 	void ChangeText(ScreenText* screenText, std::string newText) noexcept;
 	void ChangePosition(ScreenText* screenText, glm::vec2 newPos) noexcept;
@@ -71,6 +70,8 @@ public:
 
 	void CheckTextStatus() noexcept;
 	void RemoveText(uint16_t id) noexcept;
+
+	~TextRenderer() noexcept;
 private:
 	static constexpr uint8_t m_charSizes[] = { 
 		1, 3, 5, 5, 5, 5, 1, 2, 2, 3, 
@@ -85,9 +86,10 @@ private:
 		3, 1, 3, 4 
 	};
 	std::unordered_map<uint16_t, ScreenText*> m_screenTexts;
+	std::uint8_t m_textVAO, m_textVBO;
 
 	void UpdateText(ScreenText* screenText) const noexcept;
-	uint16_t GetNewID() noexcept;
+	std::uint16_t GetNewID() noexcept;
 };
 
 #endif // _TEXTRENDERER_HEADER_

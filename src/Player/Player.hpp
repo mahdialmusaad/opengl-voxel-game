@@ -8,7 +8,7 @@
 class Player
 {
 private:
-	uint8_t m_outlineVAO, m_inventoryVAO, m_inventoryIVBO;
+	uint8_t m_outlineVAO, m_inventoryVAO, m_inventoryIVBO, m_inventoryQuadVBO, m_outlineVBO;
 	uint8_t m_hotbarInstances, m_totalInventoryInstances;
 	uint8_t selected = 0;
 	TextRenderer::ScreenText** inventoryCountText;
@@ -17,6 +17,7 @@ public:
 	World *world;
 
 	Player() noexcept;
+	void CheckInput() noexcept;
 	void UpdateMovement() noexcept;
 	void SetPosition(glm::dvec3 newPos) noexcept;
 
@@ -35,6 +36,8 @@ public:
 
 	void UpdateScroll(float yoffset) noexcept;
 	void UpdateInventory() noexcept;
+
+	~Player() noexcept;
 private:
 	void UpdatePositionalVariables() noexcept;
 	void UpdateCameraVectors() noexcept;

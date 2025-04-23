@@ -3,11 +3,11 @@
 void WorldPerlin::ChangeSeed()
 {
 	std::mt19937_64 gen(std::random_device{}());
-	std::uniform_int_distribution<uint64_t> dist;
+	std::uniform_int_distribution<std::uint64_t> dist;
 	ChangeSeed(dist(gen));
 }
 
-void WorldPerlin::ChangeSeed(uint64_t newSeed)
+void WorldPerlin::ChangeSeed(std::uint64_t newSeed)
 {
 	seed = newSeed;
 	ShuffleTable();
@@ -29,9 +29,9 @@ float WorldPerlin::Noise3D(double x, double y, double z) const noexcept
 		   floorY = floor(y), 
 		   floorZ = floor(z);
 
-	int X = static_cast<int>(static_cast<int64_t>(floorX) & 255), 
-		Y = static_cast<int>(static_cast<int64_t>(floorY) & 255), 
-		Z = static_cast<int>(static_cast<int64_t>(floorZ) & 255);
+	int X = static_cast<int>(static_cast<std::int64_t>(floorX) & 255), 
+		Y = static_cast<int>(static_cast<std::int64_t>(floorY) & 255), 
+		Z = static_cast<int>(static_cast<std::int64_t>(floorZ) & 255);
 	
 	int A = m_permutationTable[X] + Y, B = m_permutationTable[X + 1] + Y;
 	int AA = m_permutationTable[A] + Z, AB = m_permutationTable[A + 1] + Z;
@@ -101,7 +101,7 @@ float WorldPerlin::Octave3D(double x, double y, double z, int octaves) const noe
 void WorldPerlin::ShuffleTable()
 {
 	std::mt19937_64 gen(seed);
-	std::uniform_int_distribution<uint64_t> dist(0, 255);
+	std::uniform_int_distribution<std::uint64_t> dist(0, 255);
 	for (int i = 0; i < 256; ++i) m_permutationTable[i + 256] = m_permutationTable[i] = defaultTable[dist(gen)];
 }
 
@@ -110,7 +110,7 @@ constexpr float WorldPerlin::fade(float x) noexcept
 	return x * x * (3.0f - 2.0f * x);
 }
 
-constexpr float WorldPerlin::grad(uint8_t hash, float x, float y, float z) noexcept
+constexpr float WorldPerlin::grad(std::uint8_t hash, float x, float y, float z) noexcept
 {
 	const int h = hash & 15;
 	const float u = h < 8 ? x : y;

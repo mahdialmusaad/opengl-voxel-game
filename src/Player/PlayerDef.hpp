@@ -19,7 +19,7 @@ struct PlayerObject
 	struct InventorySlot 
 	{
 		ObjectID objectID = ObjectID::Air;
-		uint8_t count = 0;
+		std::uint8_t count = 0;
 	};
 
 	bool moved = true;

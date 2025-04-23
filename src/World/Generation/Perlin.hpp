@@ -32,10 +32,10 @@ struct WorldPerlin {
 	};
 
 	NoiseSpline noiseSplines;
-	uint64_t seed = 0;
+	std::uint64_t seed = 0;
 
 	void ChangeSeed();
-	void ChangeSeed(uint64_t newSeed);
+	void ChangeSeed(std::uint64_t newSeed);
 
 	static constexpr double defaultY = 0.64847273f;
 	static constexpr double defaultZ = 0.23569347f;
@@ -59,9 +59,9 @@ private:
 	}
 
 	static constexpr float fade(float x) noexcept;
-	static constexpr float grad(uint8_t hash, float x, float y, float z) noexcept;
+	static constexpr float grad(std::uint8_t hash, float x, float y, float z) noexcept;
 
-	static constexpr uint8_t defaultTable[256] = {
+	static constexpr std::uint8_t defaultTable[256] = {
 		151,160,137,91,90,15,
 		131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
 		190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
@@ -77,7 +77,7 @@ private:
 		138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180
 	};
 
-	uint8_t m_permutationTable[512] {};
+	std::uint8_t m_permutationTable[512] {};
 	void ShuffleTable();
 };
 

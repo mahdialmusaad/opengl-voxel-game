@@ -4,13 +4,13 @@
 
 #include "Utility/Definitions.hpp"
 
-class WorldSky
+class Skybox
 {
 public:
-	WorldSky() noexcept;
+	Skybox() noexcept;
 
-	constexpr static int AMOUNT_OF_CLOUDS = 300;
-	constexpr static int AMOUNT_OF_STARS = 30000;
+	constexpr static size_t AMOUNT_OF_CLOUDS = 300;
+	constexpr static size_t AMOUNT_OF_STARS = 30000;
 
 	constexpr static float dayNightTimeSeconds = 60.0f;
 	constexpr static float starRotationalSpeed = 0.015f;
@@ -21,8 +21,11 @@ public:
 	void RenderClouds() const noexcept;
 	void RenderSky() const noexcept;
 	void RenderStars() const noexcept;
+
+	~Skybox() noexcept;
 private:
-	uint8_t m_cloudsVAO, m_skyboxVAO, m_starsVAO;
+	std::uint8_t m_cloudsVAO, m_skyboxVAO, m_starsVAO;
+	std::uint8_t m_cloudsInstVBO, m_cloudsShapeVBO;
 	void CreateClouds() noexcept;
 	void CreateSkybox() noexcept;
 	void CreateStars() noexcept;

@@ -1,8 +1,8 @@
 #version 420 core
 
-layout (location = 0) in vec3 baseData;
-layout (location = 1) in uint data;
+layout (location = 0) in uint data;
 // WWWW WWWW ZZZZ ZZZZ ZZZZ XXXX XXXX XXXX
+layout (location = 1) in vec3 baseData;
 
 layout (std140, binding = 0) uniform GameMatrices {
 	mat4 matrix;
@@ -28,9 +28,9 @@ const vec2 cflts = vec2(0.8, 0.0);
 
 void main()
 {
-	float x = (data & 0xfff) - 2047.5;
-	float z = (data >> 12 & 0xfff) - 2047.5;
-	float w = data >> 26;
+	const float x = (data & 0xfff) - 2047.5;
+	const float z = (data >> 12 & 0xfff) - 2047.5;
+	const float w = data >> 26;
 
 	gl_Position = originMatrix * vec4(
 		dvec3(
