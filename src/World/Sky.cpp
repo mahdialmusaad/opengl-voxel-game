@@ -89,7 +89,7 @@ void Skybox::CreateClouds() noexcept
 	}
 
 	// Buffer the compressed integer data into the GPU - use instanced buffer
-	glBufferStorage(GL_ARRAY_BUFFER, sizeof(std::uint32_t[AMOUNT_OF_CLOUDS]), cloudData, 0u);
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof(std::uint32_t) * AMOUNT_OF_CLOUDS, cloudData, 0u);
 
 	// Free memory used by cloud data
 	delete[] cloudData;
@@ -209,7 +209,7 @@ void Skybox::CreateStars() noexcept
 	}
 
 	// Buffer star int data into GPU
-	glBufferStorage(GL_ARRAY_BUFFER, sizeof(std::uint32_t[AMOUNT_OF_STARS]), starsData, 0u);
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof(std::uint32_t) * AMOUNT_OF_STARS, starsData, 0u);
 
 	// Free memory used by stars data
 	delete[] starsData;

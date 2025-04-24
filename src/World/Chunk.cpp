@@ -172,13 +172,13 @@ void Chunk::CalculateChunk(const ChunkGetter& findFunction) noexcept
 		// next to each other in the new compressed array
 
 		// Opaque face data
-		std::memcpy(faceData.instancesData, outer, sizeof(std::uint32_t[faceData.faceCount]));
+		std::memcpy(faceData.instancesData, outer, sizeof(std::uint32_t) * faceData.faceCount);
 		
 		// Translucent face data
 		std::memcpy(
 			faceData.instancesData + faceData.faceCount,
 			outer + (ChunkSettings::U16CHUNK_BLOCKS_AMOUNT - faceData.translucentFaceCount),
-			sizeof(std::uint32_t[faceData.translucentFaceCount])
+			sizeof(std::uint32_t) * faceData.translucentFaceCount
 		);
 
 		// The data now is stored as such (assuming no bugs):
@@ -397,13 +397,13 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 	// next to each other in the new compressed array
 
 	// Opaque face data
-	std::memcpy(faceData.instancesData, currentFaceData, sizeof(std::uint32_t[faceData.faceCount]));
+	std::memcpy(faceData.instancesData, currentFaceData, sizeof(std::uint32_t) * faceData.faceCount);
 
 	// Translucent face data
 	std::memcpy(
 		faceData.instancesData + faceData.faceCount,
 		currentFaceData + (ChunkSettings::CHUNK_BLOCKS_AMOUNT - faceData.translucentFaceCount),
-		sizeof(std::uint32_t[faceData.translucentFaceCount])
+		sizeof(std::uint32_t) * faceData.translucentFaceCount
 	);
 
 	// The data now is stored as such (assuming no bugs):

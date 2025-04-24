@@ -58,7 +58,7 @@ enum class ObjectID : ObjectIDTypeof
 // Block properties
 struct WorldBlockData
 {
-	typedef int(*renderLookupDefinition)(const WorldBlockData& original, const WorldBlockData& target) noexcept;
+	typedef int(*renderLookupDefinition)(const WorldBlockData& original, const WorldBlockData& target);
 
 	constexpr WorldBlockData(
 		ObjectID oid, 
@@ -126,10 +126,10 @@ namespace WorldBlockData_DEF
 
 	// Functions each block uses when determining visibility next to another block
 	typedef const WorldBlockData& WBD;
-	constexpr int R_Never(WBD, WBD) noexcept { return false; }
-	constexpr int R_Always(WBD, WBD) noexcept { return true; }
-	constexpr int R_HideSelf(WBD original, WBD target) noexcept { return original.id != target.id && target.hasTransparency; }
-	constexpr int R_Default(WBD, WBD target) noexcept { return target.hasTransparency; }
+	constexpr int R_Never(WBD, WBD) { return false; }
+	constexpr int R_Always(WBD, WBD) { return true; }
+	constexpr int R_HideSelf(WBD original, WBD target) { return original.id != target.id && target.hasTransparency; }
+	constexpr int R_Default(WBD, WBD target) { return target.hasTransparency; }
 
 	// All blocks and their properties
 	constexpr WorldBlockData BlockIDData[static_cast<int>(ObjectID::NumUnique)] = {
@@ -343,26 +343,24 @@ struct ChunkLookupTable
 {
 	constexpr ChunkLookupTable() noexcept
 	{
-		std::size_t index = 0;
-		constexpr auto Overflowing = [&](int x, int y, int z) {
-			constexpr int cs = ChunkSettings::CHUNK_SIZE_M1;
-			return x < 0 || x > cs || y < 0 || y > cs || z < 0 || z > cs;
-		};
+		constexpr int cs = ChunkSettings::CHUNK_SIZE_M1;
+		std::size_t index = 0u;
 
 		for (std::uint8_t face = 0; face < 6; ++face) {
 			const glm::ivec3 epos = glm::ivec3(ChunkSettings::worldDirections[face]);
 			for (size_t i = 0; i <= ChunkSettings::CHUNK_BLOCKS_AMOUNT_INDEX; ++i) {
-				const glm::ivec3 pos = ChunkSettings::LocalPositionFromIndex(i);
-				const glm::ivec3 nextPos = pos + epos;
+				const glm::ivec3 crnt = ChunkSettings::LocalPositionFromIndex(i);
+				const glm::ivec3 nxt = crnt + epos;
 				const int targetPosIndex = ChunkSettings::IndexFromLocalPosition(
-					Math::loopAroundInteger(nextPos.x, 0, ChunkSettings::CHUNK_SIZE),
-					Math::loopAroundInteger(nextPos.y, 0, ChunkSettings::CHUNK_SIZE),
-					Math::loopAroundInteger(nextPos.z, 0, ChunkSettings::CHUNK_SIZE)
+					Math::loopAroundInteger(nxt.x, 0, ChunkSettings::CHUNK_SIZE),
+					Math::loopAroundInteger(nxt.y, 0, ChunkSettings::CHUNK_SIZE),
+					Math::loopAroundInteger(nxt.z, 0, ChunkSettings::CHUNK_SIZE)
 				);
 
 				ChunkLookupData& data = lookupData[index++];
 				data.blockIndex = narrow_cast<std::uint16_t>(targetPosIndex);
-				data.nearbyIndex = Overflowing(nextPos.x, nextPos.y, nextPos.z) ? face : static_cast<std::uint8_t>(6);
+				const bool isOverflowing = nxt.x < 0 || nxt.x > cs || nxt.y < 0 || nxt.y > cs || nxt.z < 0 || nxt.z > cs;
+				data.nearbyIndex = isOverflowing ? face : static_cast<std::uint8_t>(6u);
 			}
 		}
 	}

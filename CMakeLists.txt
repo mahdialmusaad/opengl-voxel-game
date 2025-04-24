@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.10.0)
+set(CMAKE_CXX_STANDARD 17)
 project(badcraft VERSION 1 LANGUAGES C CXX)
 set(BC_LIBS ${PROJECT_SOURCE_DIR}/libraries)
 set(BC_SRC ${PROJECT_SOURCE_DIR}/src)

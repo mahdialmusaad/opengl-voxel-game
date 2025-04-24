@@ -178,7 +178,7 @@ void Badcraft::Callbacks::TakeScreenshot() noexcept
 		std::time_t timeSecs;
 
 		#if defined(__unix__)
-			localtime_r(&timeSecs &timeValues);
+			localtime_r(&timeSecs, &timeValues);
 		#elif defined(_MSC_VER)
 			localtime_s(&timeValues, &timeSecs);
 		#else

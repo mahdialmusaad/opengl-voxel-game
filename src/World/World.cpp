@@ -228,9 +228,9 @@ void World::UpdateRenderDistance(std::int32_t newRenderDistance) noexcept
 	// Update buffer sizes (used to avoid doing glBufferData each time, which reallocates = expensive):
 
 	// Indirect buffer ('draw commands' used for rendering, see 'draw world' function)
-	glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(IndirectDrawCommand[maxChunkFaces]), nullptr, GL_STATIC_DRAW);
+	glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(IndirectDrawCommand) * maxChunkFaces, nullptr, GL_STATIC_DRAW);
 	// SSBO (used to store offset data and face index in world shader)
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ShaderChunkOffset[maxChunkFaces]), nullptr, GL_STATIC_DRAW);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ShaderChunkOffset) * maxChunkFaces, nullptr, GL_STATIC_DRAW);
 
 	// Fill the newly sized buffers (empty now) with new valid data
 	STChunkUpdate();
@@ -476,7 +476,7 @@ void World::UpdateWorldBuffers() noexcept
 	for (std::size_t i = 0; i < faceDataPointersCount; ++i) {
 		Chunk::FaceAxisData* faceData = faceDataPointers[i];
 		const std::uint32_t totalFaces = faceData->TotalFaces<std::uint32_t>();
-		const std::size_t totalFacesBytes = sizeof(std::uint32_t[totalFaces]);
+		const std::size_t totalFacesBytes = sizeof(std::uint32_t) * totalFaces;
 
 		if (faceData->instancesData == nullptr) {
 			std::memcpy(newWorldData + newIndex, activeWorldData + faceData->dataIndex, totalFacesBytes);
@@ -497,7 +497,7 @@ void World::UpdateWorldBuffers() noexcept
 	// Buffer accumulated block data into instanced world VBO
 	glBindBuffer(GL_ARRAY_BUFFER, m_worldInstancedVBO);
 	glVertexAttribIPointer(0u, 1, GL_UNSIGNED_INT, 0, nullptr);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(std::uint32_t[squaresCount]), newWorldData, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(std::uint32_t) * squaresCount, newWorldData, GL_STATIC_DRAW);
 
 	// Free memory from world data array and pointers from 'new'
 	delete[] newWorldData;
@@ -614,12 +614,9 @@ void World::SortWorldBuffers() noexcept
 	glBindVertexArray(m_worldVAO);
 	
 	// Update SSBO and indirect buffer with their respective data and sizes
-	glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(IndirectDrawCommand[m_indirectCalls]), worldIndirectData);
-	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(ShaderChunkOffset[m_indirectCalls]), worldOffsetData);
+	glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(IndirectDrawCommand) * m_indirectCalls, worldIndirectData);
+	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(ShaderChunkOffset) * m_indirectCalls, worldOffsetData);
 
-	// std::cout << "Max size (indirect): " << ((2 * chunkRenderDistance * chunkRenderDistance) + (2 * chunkRenderDistance) + 1
-	// ) * ChunkSettings::HEIGHT_COUNT * 2 * sizeof(IndirectDrawCommand) << " Current: " << sizeof(IndirectDrawCommand[m_indirectCalls]) << "\n";
-	
 	// Free up memory used by arrays created with new
 	delete[] translucentChunks;
 	delete[] worldIndirectData;

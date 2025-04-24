@@ -79,7 +79,7 @@ struct Math
 
 	static constexpr PosType qabs(PosType val) noexcept 
 	{
-		constexpr PosType mult = sizeof(PosType[CHAR_BIT - 1]);
+		constexpr PosType mult = sizeof(PosType) * (CHAR_BIT - 1);
 		const PosType mask = val >> mult;
 		return (val + mask) ^ mask;
 	}

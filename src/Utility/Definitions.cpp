@@ -102,7 +102,7 @@ void OGL::UpdateUBO(std::uint8_t& ubo, GLintptr offset, GLsizeiptr bytes, const 
 
 void Shader::InitShader()
 {
-	static constexpr auto CheckProgramError = [&](GLuint program, const std::string& vertex, const std::string& fragment)
+	static const auto CheckProgramError = [&](GLuint program, const std::string& vertex, const std::string& fragment)
 	{
 		// Check for any errors in the given program ID
 		int success;
@@ -121,8 +121,7 @@ void Shader::InitShader()
 			delete[] infolog;
 		}
 	};
-
-	static constexpr auto CheckShaderError = [&](const std::string& filename, GLuint shader)
+	static const auto CheckShaderError = [&](const std::string& filename, GLuint shader)
 	{
 		// Check for any errors in the given vertex or fragment shader ID
 		int success;
@@ -144,8 +143,7 @@ void Shader::InitShader()
 
 		return false;
 	};
-
-	static constexpr auto CreateShaderFromFilename = [&](const std::string& filename)
+	static const auto CreateShaderFromFilename = [&](const std::string filename)
 	{
 		// Determine if the current file is a vertex file or fragment file
 		const std::string vertend = ".vert";
@@ -189,13 +187,15 @@ void Shader::InitShader()
 		{"Text.vert", "Text.frag"},
 	};
 
+	const std::string shadersFile = "Shaders\\";
+
 	// Load each vertex and fragment pair from disk and create a shader program from them
 	for (int programIndex = 0; programIndex < numPrograms; ++programIndex) {
 		const auto& [vertexFileName, fragmentFileName] = shaderPairs[programIndex];
 
 		// Create shaders from the associated files
-		const GLuint vertexID = CreateShaderFromFilename(game.resourcesFolder + "Shaders\\" + vertexFileName),
-			fragmentID = CreateShaderFromFilename(game.resourcesFolder + "Shaders\\" + fragmentFileName);
+		const GLuint vertexID = CreateShaderFromFilename(game.resourcesFolder + shadersFile + vertexFileName),
+			fragmentID = CreateShaderFromFilename(game.resourcesFolder + shadersFile + fragmentFileName);
 
 		// Stop and throw error if any program failed to compile
 		if (!vertexID || !fragmentID) { 

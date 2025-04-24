@@ -31,7 +31,7 @@ Badcraft::Badcraft() :
 	OGL::SetupUBO(m_sizesUBO, 4, sizeof(float[7]));
 
 	// Update block texture size in shader UBO
-	float sizesData[] = {
+	const float sizesData[] = {
 		16.0f / static_cast<float>(game.blocksTextureInfo.width),
 		1.0f / static_cast<float>(game.textTextureInfo.width)
 	};

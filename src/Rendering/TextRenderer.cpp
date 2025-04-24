@@ -288,7 +288,7 @@ void TextRenderer::UpdateText(ScreenText* screenText) const noexcept
 	if (invalidTextAttempt) screenText->loggedErrors |= Warning_InvalidChar;
 	
 	// Buffer the text data to the GPU.
-	glBufferData(GL_ARRAY_BUFFER, sizeof(uint32_t[dataIndex]), textData, GL_DYNAMIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(uint32_t) * dataIndex, textData, GL_DYNAMIC_DRAW);
 	// Array was created with 'new', so make sure to free up the memory
 	delete[] textData;
 }
