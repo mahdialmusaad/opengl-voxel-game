@@ -2,7 +2,7 @@
 #ifndef _SOURCE_WORLD_SKY_HDR_
 #define _SOURCE_WORLD_SKY_HDR_
 
-#include "Utility/Definitions.hpp"
+#include "Globals/Definitions.hpp"
 
 class Skybox
 {

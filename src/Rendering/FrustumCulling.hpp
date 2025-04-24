@@ -2,7 +2,7 @@
 #ifndef _SOURCE_RENDERING_FRSTCLL_HDR_
 #define _SOURCE_RENDERING_FRSTCLL_HDR_
 
-#include <Utility/Definitions.hpp>
+#include "Globals/Definitions.hpp"
 
 struct FrustumPlane 
 {

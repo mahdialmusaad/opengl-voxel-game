@@ -2,7 +2,7 @@
 #ifndef _SOURCE_RENDERING_TEXTRENDERER_HDR_
 #define _SOURCE_RENDERING_TEXTRENDERER_HDR_
 
-#include <Utility/Definitions.hpp>
+#include "Globals/Definitions.hpp"
 
 class TextRenderer
 {
@@ -73,18 +73,8 @@ public:
 
 	~TextRenderer() noexcept;
 private:
-	static constexpr uint8_t m_charSizes[] = { 
-		1, 3, 5, 5, 5, 5, 1, 2, 2, 3, 
-		3, 2, 3, 1, 3, 4, 3, 3, 3, 4, 
-		3, 3, 4, 4, 3, 1, 2, 3, 3, 3, 
-		3, 7, 4, 4, 4, 4, 4, 4, 4, 4, 
-		3, 4, 4, 4, 5, 4, 4, 4, 5, 4, 
-		4, 3, 4, 5, 5, 5, 5, 4, 2, 3, 
-		2, 3, 4, 2, 5, 4, 3, 4, 4, 4, 
-		4, 4, 1, 2, 3, 3, 6, 4, 4, 4, 
-		4, 3, 4, 3, 4, 3, 5, 3, 4, 4, 
-		3, 1, 3, 4 
-	};
+	std::uint8_t m_charSizes[94]{};
+
 	std::unordered_map<uint16_t, ScreenText*> m_screenTexts;
 	std::uint8_t m_textVAO, m_textVBO;
 

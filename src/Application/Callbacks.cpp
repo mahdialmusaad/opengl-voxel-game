@@ -392,8 +392,9 @@ void Badcraft::Callbacks::ApplyChat()
 	};
 
 	const auto getInt = [&](int ind) { return std::stoi(getArg(ind)); };
-	const auto getBlk = [&](int ind) { return narrow_cast<ObjectID>(std::stoi(getArg(ind))); };
+	const auto getBlk = [&](int ind) { return static_cast<ObjectID>(std::stoi(getArg(ind))); };
 	const auto getDbl = [&](int ind) { return std::stod(getArg(ind)); };
+	const auto getFlt = [&](int ind) { return std::stof(getArg(ind)); };
 
 	enum class CVALS { X, Y, Z };
 	typedef std::pair<int, CVALS> ConversionPair;

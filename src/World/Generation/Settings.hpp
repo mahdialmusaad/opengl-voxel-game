@@ -2,7 +2,7 @@
 #ifndef _SOURCE_GENERATION_SETTINGS_HDR_
 #define _SOURCE_GENERATION_SETTINGS_HDR_
 
-#include "Utility/Definitions.hpp"
+#include "Globals/Definitions.hpp"
 #include "Rendering/FrustumCulling.hpp"
 
 enum class WorldDirection : std::int8_t
@@ -348,7 +348,7 @@ struct ChunkLookupTable
 
 		for (std::uint8_t face = 0; face < 6; ++face) {
 			const glm::ivec3 epos = glm::ivec3(ChunkSettings::worldDirections[face]);
-			for (size_t i = 0; i <= ChunkSettings::CHUNK_BLOCKS_AMOUNT_INDEX; ++i) {
+			for (int i = 0; i <= ChunkSettings::CHUNK_BLOCKS_AMOUNT_INDEX; ++i) {
 				const glm::ivec3 crnt = ChunkSettings::LocalPositionFromIndex(i);
 				const glm::ivec3 nxt = crnt + epos;
 				const int targetPosIndex = ChunkSettings::IndexFromLocalPosition(

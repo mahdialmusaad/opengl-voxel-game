@@ -26,24 +26,47 @@ TextRenderer::TextRenderer() noexcept
 	glEnableVertexAttribArray(1u);
 	glVertexAttribPointer(1u, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
 
-	// Calculate size of a pixel on font texture (0.0 - 1.0)
+	// Calculate size of a pixel on font texture (used for relative texture coordinate, 0.0 to 1.0)
 	const float pxSize = 1.0f / static_cast<float>(game.textTextureInfo.width);
 
 	struct TextSSBOData {
 		float positionData[95]; // 94 unique characters + 1 for end of image
-		float sizeData[94]; // Same as stored char sizes, but as float for shader
+		float sizeData[94]; // Floating point number for the size of each character
 	};
 
 	TextSSBOData tssbodata{};
 	tssbodata.positionData[94] = 1.0f; // End of image coordinate
 
-	// Update texture position array with the X position and size of each character
-	float currentPixelOffset = 0.0f; // Current image X offset
-	for (int i = 0, end = sizeof(m_charSizes); i < end; ++i) {
-		const float size = static_cast<float>(m_charSizes[i]);
-		tssbodata.positionData[i] = currentPixelOffset;
-		tssbodata.sizeData[i] = size;
-		currentPixelOffset += pxSize * size; 
+	// Find gaps in texture to determine the size of each character (2 empty columns to seperate each char)
+	const int width = game.textTextureInfo.width, height = game.textTextureInfo.height;
+
+	// 94 characters in total
+	float currentPixelCoord = 0.0f;
+	int filledChars = 0;
+	int currentWidthIndex = 0;
+	int emptyColumns = 0;
+	int charWidth = 0;
+
+	while (filledChars < 94) {
+		bool isAllEmpty = true;
+		for (int i = 0; i < height; ++i) {
+			if (game.textTextureInfo.data[currentWidthIndex + (i * width)] != 0) { // Current column is not transparent
+				isAllEmpty = false;
+				break;
+			}
+		}
+
+		currentWidthIndex += width;
+
+		if (isAllEmpty && emptyColumns++ >= 2) {
+			// New character detected due to the gap
+			const float finalWidth = static_cast<float>(charWidth - 2);
+			tssbodata.sizeData[filledChars] = finalWidth;
+
+			filledChars++;
+			charWidth = 0;
+			emptyColumns = 0;
+		} else charWidth++;
 	}
 
 	// Send the pixel offsets of each letter in font texture to shader

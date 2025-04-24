@@ -14,7 +14,6 @@
 
 #include "lodepng/lodepng.h"
 #include "World/Generation/Perlin.hpp"
-#include "Timer.hpp"
 
 #include <mutex>
 #include <thread>
