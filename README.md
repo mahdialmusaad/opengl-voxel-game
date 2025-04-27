@@ -1,5 +1,5 @@
 # Badcraft
-A voxel game built to be performant, memory-efficient and cross compatible, based on Minecraft.
+A voxel game built to be performant, memory-efficient and cross compatible.
 
 <img src="markdown/main.png"/>
 <sup>In-game screenshot of Badcraft (Windows)</sup>
@@ -11,7 +11,7 @@ A voxel game built to be performant, memory-efficient and cross compatible, base
 - Screenshotting (see [Controls](https://github.com/mahdialmusaad/badcraft/tree/main?tab=readme-ov-file#controls))
 - Commands (see [Commands](https://github.com/mahdialmusaad/badcraft/tree/main?tab=readme-ov-file#commands))
 
-<sup>\*Due to precision limitations, terrain rendering begins to break down at 2<sup>53</sup> blocks from spawn (9 quadrillion).</sup>
+<sup>\*Due to precision limitations, terrain rendering begins to break down at 2<sup>53</sup> (9 quadrillion) blocks away from the origin.</sup>
 
 ## Goal
 Badcraft was developed with performance and cross-compatibility in mind to ensure that anyone can use it, no matter their hardware or operating system.
@@ -45,15 +45,15 @@ The implementations of controls can also be viewed and easily edited in the [app
 - Movement: **WASD**
 - Toggle VSYNC: **X**
 - Wireframe: **Z**
-- Write command: **/** ('forward slash')
-- Exit game/exit commands (if currently typing one): **ESC**
+- Write command: **/** (forward slash)
+- Exit game or cancel command (if currently typing one): **ESCAPE**
 - Reload shaders: **R**
 - Toggle inventory: **E**
 - (DEBUG) Toggle collision: **C**
 - (DEBUG) Toggle generation: **V**
 - Change speed (increase and decrease respectively): **COMMA** and **PERIOD**
 - Change FOV (increase and decrease respectively): **I** and **O**
-- Change render distance (increase and decrease respectively): **[** and **]**
+- Change render distance (increase and decrease respectively): **[** and **]** (square brackets)
 - Toggle GUI: **F1**
 - Take screenshot: **F2**
 - Free cursor: **F3**
@@ -71,10 +71,16 @@ If you are using the **CMake GUI**, you can follow these steps:
 - Specify generator and other settings if needed and press 'Finish'
 - Press 'Generate' to create the binaries
 
-If you are using CMake in a **terminal**, you can run the following (replace directories and settings with your own):
+If you are using CMake in a **terminal**, you can simply run the following, providing your own directories and other settings (generator, toolset, etc).
 
 ```bash
-$ cmake [settings] -S [source-dir] -B [build-dir]
+$ cmake -S [source-dir] -B [build-dir]
+```
+
+An example on Windows (assuming using Visual Studio) would be:
+
+```bash
+$ cmake -S C:/Users/.../Downloads/badcraft-main -B C:/Users/.../Downloads/badcraft-main/build -G "Visual Studio 17 2022"
 ```
 
 If you encounter any problems, please create a new issue so it can be resolved.
