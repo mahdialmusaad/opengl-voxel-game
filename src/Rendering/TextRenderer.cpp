@@ -37,36 +37,13 @@ TextRenderer::TextRenderer() noexcept
 	TextSSBOData tssbodata{};
 	tssbodata.positionData[94] = 1.0f; // End of image coordinate
 
-	// Find gaps in texture to determine the size of each character (2 empty columns to seperate each char)
-	const int width = game.textTextureInfo.width, height = game.textTextureInfo.height;
-
-	// 94 characters in total
-	float currentPixelCoord = 0.0f;
-	int filledChars = 0;
-	int currentWidthIndex = 0;
-	int emptyColumns = 0;
-	int charWidth = 0;
-
-	while (filledChars < 94) {
-		bool isAllEmpty = true;
-		for (int i = 0; i < height; ++i) {
-			if (game.textTextureInfo.data[currentWidthIndex + (i * width)] != 0) { // Current column is not transparent
-				isAllEmpty = false;
-				break;
-			}
-		}
-
-		currentWidthIndex += width;
-
-		if (isAllEmpty && emptyColumns++ >= 2) {
-			// New character detected due to the gap
-			const float finalWidth = static_cast<float>(charWidth - 2);
-			tssbodata.sizeData[filledChars] = finalWidth;
-
-			filledChars++;
-			charWidth = 0;
-			emptyColumns = 0;
-		} else charWidth++;
+	// Get relative coordinates of each chararcter (each is seperated by 2 pixels)
+	float currentImageOffset = 0.0f; // Current coordinate of character (0.0 - 1.0)
+	for (std::size_t i = 0u; i < sizeof(m_charSizes); ++i) {
+		const float charSize = static_cast<float>(m_charSizes[i]);
+		tssbodata.positionData[i] = currentImageOffset;
+		tssbodata.sizeData[i] = charSize;
+		currentImageOffset += pxSize * (charSize + 2.0f);
 	}
 
 	// Send the pixel offsets of each letter in font texture to shader

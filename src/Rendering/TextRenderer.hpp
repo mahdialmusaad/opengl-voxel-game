@@ -73,7 +73,18 @@ public:
 
 	~TextRenderer() noexcept;
 private:
-	std::uint8_t m_charSizes[94]{};
+	// Characters sizes as seen in text texture (follows ASCII, starting after the 'space' character)
+	static constexpr std::uint8_t m_charSizes[94] = {
+		1, 3, 6, 5, 9, 6, 1, 2, 2, 5, 5, 2, 5, 1, 3, 	// ! " # $ % & ' ( ) * + , - . /
+		5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 					// 0-9
+		1, 2, 4, 5, 4, 5, 6,							// : ; < = > ? @
+		5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 			// Uppercase alphabet P1 (A-M)
+		5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,			// Uppercase alphabet P2 (N-Z)
+		2, 3, 2, 5, 5, 2,								// [ \ ] ^ _ `
+		4, 4, 4, 4, 4, 4, 4, 4, 1, 3, 4, 3, 5,			// Lowercase alphabet P1 (a-m)
+		4, 4, 4, 4, 4, 4, 3, 4, 5, 5, 5, 4, 4,			// Lowercase alphabet P2 (n-z)
+		3, 1, 3, 6										// { | } ~
+	};
 
 	std::unordered_map<uint16_t, ScreenText*> m_screenTexts;
 	std::uint8_t m_textVAO, m_textVBO;

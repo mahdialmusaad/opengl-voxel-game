@@ -156,11 +156,12 @@ void Badcraft::Callbacks::TakeScreenshot() noexcept
 	}
 	catch (std::filesystem::filesystem_error e) { error = true; }
 
-	const char* newScreenshotText = "Failed to save screenshot";
+	// The resulting text to be displayed on screen
+	std::string newScreenshotText = "Failed to save screenshot";
 
 	if (!error) {
 		constexpr const std::size_t snprintfsz = static_cast<std::size_t>(200);
-		char filenamebuf[snprintfsz], directorybuf[snprintfsz];
+		std::stringstream filenamefmt, directoryfmt;
 
 		// Lodepng needs pixel array in std::vector - 3 per pixel for R,G,B colours
 		const unsigned w = game.width, h = game.height;
@@ -188,11 +189,12 @@ void Badcraft::Callbacks::TakeScreenshot() noexcept
 		#endif
 
 		// File name for displaying and creating directory path
-		snprintf(filenamebuf, snprintfsz, "Screenshot %d-%d-%d %d-%02d-%02d-%03d.png",
-			timeValues.tm_year + 1900, timeValues.tm_mon + 1, timeValues.tm_mday, timeValues.tm_hour, timeValues.tm_min, timeValues.tm_sec, milliseconds);
+		filenamefmt << "Screenshot " << timeValues.tm_year + 1900 << "-" << timeValues.tm_mon + 1 << "-" << timeValues.tm_mday << " " 
+					<< timeValues.tm_hour << "-" << std::setw(2) << std::setfill('0') << timeValues.tm_min << "-" 
+					<< timeValues.tm_sec << std::setw(3) << milliseconds; 
 
-		// Get full path to save to
-		snprintf(directorybuf, snprintfsz, "%s/%s", screenshotfolder, filenamebuf); 
+		// Get full path of image to save to
+		directoryfmt << screenshotfolder << "/" << filenamefmt.str();
 
 		// Flip Y axis as OGL uses opposite Y coordinates (bottom-top instead of top-bottom)
 		std::vector<unsigned char> newHalf(3u * w * h);
@@ -207,17 +209,13 @@ void Badcraft::Callbacks::TakeScreenshot() noexcept
 		}
 
 		// Save to PNG file in directory constructed above (RGB colours, no alpha)
-		const bool success = lodepng::encode(directorybuf, newHalf, w, h, LodePNGColorType::LCT_RGB) == 0;
+		const bool success = lodepng::encode(directoryfmt.str(), newHalf, w, h, LodePNGColorType::LCT_RGB) == 0;
 
 		newHalf.clear();
 		pixels.clear();
 
 		// Create result text to be displayed
-		if (success) {
-			// Overwrite directory buffer to avoid having to create another buffer
-			snprintf(directorybuf, snprintfsz, "Screenshot saved as %s", filenamebuf);
-			newScreenshotText = static_cast<const char*>(directorybuf);
-		}
+		if (success) newScreenshotText = "Screenshot saved as " + filenamefmt.str();
 	}
 
 	// Update text with results
@@ -449,8 +447,8 @@ void Badcraft::Callbacks::ApplyChat()
 		}},
 		{ "testval", [&]() {
 			argnum(2);
-			game.testfloat = getDbl(0);
-			game.testfloat2 = getDbl(1);
+			game.testfloat = getFlt(0);
+			game.testfloat2 = getFlt(1);
 			fplayer.UpdateInventory();
 		}},
 		{ "tick", [&]() {
