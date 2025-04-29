@@ -1,4 +1,3 @@
-#include <Rendering/TextRenderer.hpp>
 #include "TextRenderer.hpp"
 
 TextRenderer::TextRenderer() noexcept
@@ -239,7 +238,6 @@ void TextRenderer::UpdateText(ScreenText* screenText) const noexcept
 		else if (currentChar < ' ' || currentChar > '~') { // Make sure only compatible text is shown
 			invalidTextAttempt = true;
 			const int id = static_cast<int>(GetIDFromText(screenText));
-			const glm::vec2 bpos = screenText->GetPosition();
 			const std::string errChar = static_cast<int>(currentChar) < ' ' ? std::string("(CONTROL)") : std::string(1, currentChar);
 
 			std::stringstream formatted;
@@ -254,7 +252,6 @@ void TextRenderer::UpdateText(ScreenText* screenText) const noexcept
 		if (pos.x < 0.0f || pos.x > 1.0f || pos.y < 0.0f || pos.y > 1.0f) {
 			if (!(screenText->loggedErrors & Warning_OOB)) {
 				const int id = static_cast<int>(GetIDFromText(screenText));
-				const glm::vec2 bpos = screenText->GetPosition();
 
 				std::stringstream formatted;
 				formatted << "Text id: " << id << "\nPosition: " << pos.x << ", " << pos.y;

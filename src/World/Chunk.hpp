@@ -17,7 +17,9 @@ struct Chunk
 		std::uint32_t dataIndex;
 		std::uint16_t faceCount;
 		std::uint16_t translucentFaceCount;
-		template<typename T> inline const T TotalFaces() const noexcept 
+		
+		template<typename T> 
+		const T TotalFaces() const noexcept 
 		{ 
 			return static_cast<T>(faceCount) + static_cast<T>(translucentFaceCount);
 		}

@@ -371,6 +371,6 @@ struct ChunkLookupTable
 	};
 
 	ChunkLookupData lookupData[ChunkSettings::CHUNK_UNIQUE_FACES]{}; 
-} inline chunkLookupData;
+} extern chunkLookupData;
 
 #endif // _SOURCE_GENERATION_SETTINGS_HDR_

@@ -160,7 +160,6 @@ void Badcraft::Callbacks::TakeScreenshot() noexcept
 	std::string newScreenshotText = "Failed to save screenshot";
 
 	if (!error) {
-		constexpr const std::size_t snprintfsz = static_cast<std::size_t>(200);
 		std::stringstream filenamefmt, directoryfmt;
 
 		// Lodepng needs pixel array in std::vector - 3 per pixel for R,G,B colours

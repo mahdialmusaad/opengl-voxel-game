@@ -90,13 +90,13 @@ void Chunk::CalculateChunk(const ChunkGetter& findFunction) noexcept
 	}
 
 	// Get reference to block data, avoiding doing 'GetBlock' calls (function call overhead)
-	const ChunkSettings::blockArray& inlineBlockArray = ChunkSettings::GetFullBlockArray(chunkBlocks)->chunkBlocks;
+	const ChunkSettings::blockArray& blockArray = ChunkSettings::GetFullBlockArray(chunkBlocks)->chunkBlocks;
 	// Empty chunk array in case of no chunk existing in a certain direction
 	constexpr const ChunkSettings::blockArray* emptyChunk = &ChunkSettings::emptyChunk;
 
 	// Store nearby chunks in an array for easier access (last index is current chunk)
 	const ChunkSettings::blockArray* localNearby[7]{};
-	localNearby[6] = &inlineBlockArray;
+	localNearby[6] = &blockArray;
 
 	const WorldPos chunkOffset = GetOffset();
 	int localNearbyIndex = 0;
@@ -131,7 +131,7 @@ void Chunk::CalculateChunk(const ChunkGetter& findFunction) noexcept
 		// Loop through all the chunk's blocks for each face direction
 		for (int i = 0; i <= ChunkSettings::CHUNK_BLOCKS_AMOUNT_INDEX; ++i) {
 			// Get properties of the current block
-			const WorldBlockData& currentBlockData = ChunkSettings::GetBlockData(static_cast<int>(inlineBlockArray[i]));
+			const WorldBlockData& currentBlockData = ChunkSettings::GetBlockData(static_cast<int>(blockArray[i]));
 			// Get precalculated results for this position index and face
 			const ChunkLookupTable::ChunkLookupData& surroundingData = chunkLookupData.lookupData[lookupIndex++];
 			// Get the data of the block next to the current face, which could be in this or a surrounding chunk
@@ -206,7 +206,7 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 	}
 
 	// Get reference to block data, avoiding doing 'GetBlock' calls (function call overhead)
-	const ChunkSettings::blockArray& inlineBlockArray = ChunkSettings::GetFullBlockArray(chunkBlocks)->chunkBlocks;
+	const ChunkSettings::blockArray& blockArray = ChunkSettings::GetFullBlockArray(chunkBlocks)->chunkBlocks;
 
 	const int TESTFACEDIRECTION = IWorldDir_Front; // Z+
 	FaceAxisData& faceData = chunkFaceData[TESTFACEDIRECTION];
@@ -217,8 +217,7 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 	typedef std::uint32_t StateType;
 	constexpr int nextZIndex = 1 << ChunkSettings::CHUNK_SIZE_POW2;
 	constexpr int chunkSizeIndex = ChunkSettings::CHUNK_SIZE - 1;
-	constexpr int stateBits = sizeof(StateType[CHAR_BIT]);
-	constexpr int stateBitsIndex = stateBits - 1;
+	constexpr int stateBitsCount = sizeof(StateType[CHAR_BIT]);
 
 	// Binary greedy meshing: Combine surrounding faces with same texture to decrease triangle count, using
 	// bits to determine visible faces and to advance through the bitmaps and extend faces.
@@ -256,8 +255,8 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 				if (shift == 0) {
 					// Check if face is obscured by another block in this chunk
 					const int blockIndex = zxIndex + y; 
-					const WorldBlockData& currentProperties = ChunkSettings::GetBlockData(inlineBlockArray[blockIndex]);
-					const WorldBlockData& otherProperties = ChunkSettings::GetBlockData(inlineBlockArray[blockIndex + nextZIndex]);
+					const WorldBlockData& currentProperties = ChunkSettings::GetBlockData(blockArray[blockIndex]);
+					const WorldBlockData& otherProperties = ChunkSettings::GetBlockData(blockArray[blockIndex + nextZIndex]);
 					shift = currentProperties.notObscuredBy(currentProperties, otherProperties);
 				}
 				
@@ -289,7 +288,7 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 				const int blocksZXIndex = zIndex + xIndex;
 
 				// Get the current block from the state and bit indexes
-				ObjectID blockType = inlineBlockArray[blocksZXIndex + currentBitIndex];
+				ObjectID blockType = blockArray[blocksZXIndex + currentBitIndex];
 				const int startingYIndex = currentBitIndex; // Save Z axis for later
 				int width = 1, height = 1; // Width and height of the resulting face, will increase if space is found
 				
@@ -308,7 +307,7 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 					}
 					
 					// Also stop extending if the next valid block turns out to be of a different block type
-					if (inlineBlockArray[blocksZXIndex + currentBitIndex++] != blockType) break; 
+					if (blockArray[blocksZXIndex + currentBitIndex++] != blockType) break; 
 
 					state &= ~(1 << currentBitIndex); // Clear bit as it has been searched, move on to next bit
 					width++; // Increase current face width
@@ -330,7 +329,7 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 					*/
 
 					constexpr StateType allOnesBitmask = ~0u; // Full bitmask
-					const StateType bitsCheck = (allOnesBitmask >> (stateBits - width)) << startingYIndex;
+					const StateType bitsCheck = (allOnesBitmask >> (stateBitsCount - width)) << startingYIndex;
 
 					// Check if all bits are set if the bitwise AND operation returns the same as the bitmask
 					// This skips having to check if each block is the same when an invalid block is present.
@@ -341,7 +340,7 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 					// can be extended on this axis)
 					bool allValid = true;
 					for (int nextStateIndex = startingYIndex, end = currentBitIndex; nextStateIndex < end; ++nextStateIndex) {
-						if (inlineBlockArray[blocksZXIndex + nextStateIndex] == blockType) continue;
+						if (blockArray[blocksZXIndex + nextStateIndex] == blockType) continue;
 						// Different block found - exit out of both loops to stop trying to extend height
 						allValid = false;
 						break;

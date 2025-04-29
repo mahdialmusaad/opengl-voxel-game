@@ -1,5 +1,9 @@
 #include "Application/Application.hpp"
 
+// Initialize globals from Globals/Definitions.hpp
+BadcraftGameObject game{};
+ChunkLookupTable chunkLookupData{};
+
 // Debug OpenGL functions for errors
 static void GLDebugOutput(
 	GLenum source, 
@@ -12,7 +16,7 @@ static void GLDebugOutput(
 ) {
 	if (id == 131185 || id == 131154) return;
 	std::string sourcestr, typestr, severitystr;
-
+	
 	switch (source) {
 		case GL_DEBUG_SOURCE_API:				sourcestr = "[API]"; break;
 		case GL_DEBUG_SOURCE_WINDOW_SYSTEM:		sourcestr = "[Window System]"; break;
@@ -94,7 +98,7 @@ static void Initialize()
 		TextFormat::warn("GLFW initialization failed", "Init failed");
 		throw std::runtime_error("GLFW failure");
 	}
-
+	
 	TextFormat::log("GLFW initialized");
 
 	// Window hints (OGL core 4.6)
@@ -141,14 +145,12 @@ static void Initialize()
 
 	// Attempt to find resources folder
 	const std::filesystem::path currentPath = std::filesystem::current_path();
-	const std::string endPath = "\\src\\Resources\\";
+	const std::string endPath = "\\Resources\\";
 
-	// Lazy solution, I know.
+	// Resources (textures and shaders) are located in same directory as exe
 	const std::string directory1 = currentPath.string() + endPath;
-	const std::string directory2 = currentPath.parent_path().string() + endPath;
 
 	if (std::filesystem::exists(directory1)) game.resourcesFolder = directory1;
-	else if (std::filesystem::exists(directory2)) game.resourcesFolder = directory2;
 	else throw std::runtime_error("Resources folder not found");
 
 	game.shader.InitShader(); // Initialize shader class

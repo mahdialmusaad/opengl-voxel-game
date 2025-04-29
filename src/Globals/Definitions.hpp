@@ -176,7 +176,7 @@ struct WorldNoise
 	static constexpr int numNoises = 5;
 };
 
-struct Game
+struct BadcraftGameObject
 {
 	GLFWwindow* window = nullptr;
 
@@ -217,6 +217,6 @@ struct Game
 	OGLImageInfo inventoryTextureInfo;
 
 	std::unordered_map<int, int> keyboardState;
-} inline game;
+} extern game;
 
 #endif

@@ -536,9 +536,6 @@ void Player::UpdateInventory() noexcept
 	InventoryInstance* data = new InventoryInstance[maxInstances];
 	data[m_totalInventoryInstances++] = InventoryInstance(0.5f, 0.5f, 0.01f, 0.01f * game.aspect, TI_Crosshair); // Crosshair at center of screen (always visible)
 
-	// Bits used to store X and Y position in first uint32
-	constexpr std::uint32_t positionShift = 16u;
-
 	// Position-related floats
 	constexpr float 
 		inventorySlotsYPosition = 0.18f,
