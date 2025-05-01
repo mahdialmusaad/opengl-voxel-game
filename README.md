@@ -79,8 +79,8 @@ $ cmake -S [source-dir] -B [build-dir]
 
 An example on Windows (assuming using Visual Studio) would be:
 
-```bash
-$ cmake -S C:/Users/.../Downloads/badcraft-main -B C:/Users/.../Downloads/badcraft-main/build -G "Visual Studio 17 2022"
+```
+C:/Users/.../Downloads> cmake -S badcraft-main -B badcraft-main/build -G "Visual Studio 17 2022"
 ```
 
 If you encounter any problems, please create a new issue so it can be resolved.
@@ -88,10 +88,12 @@ If you encounter any problems, please create a new issue so it can be resolved.
 <sup>Tip: If you are using MSVC, you can compile using the /MP flag to do so in parallel.</sup>
 
 ## Libraries
+Badcraft makes use of a few libraries to work. They can be seen in the 'libraries' folder or below. Make sure to support them, this would not be possible without them!
+
 [lodepng](https://github.com/lvandeve/lodepng) - PNG encoder and decoder
 
 [GLM](https://github.com/icaven/glm) - OpenGL maths library
 
 [GLFW](https://github.com/glfw/glfw) - Window and input library
 
-[GLAD](https://github.com/Dav1dde/glad) - OpenGL loader/generator
+[glad](https://github.com/Dav1dde/glad) - OpenGL loader/generator
