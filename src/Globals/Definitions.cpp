@@ -1,5 +1,7 @@
 #include "Definitions.hpp"
 
+// -------------------- Math struct -------------------- 
+
 std::size_t WorldPosHash::operator()(const WorldPos& vec) const noexcept
 {
 	return 
@@ -41,25 +43,34 @@ PosType Math::toWorld(double a) noexcept
 	return a < 0.0 ? pos - 1 : pos;
 }
 
+// -------------------- TextFormat struct -------------------- 
 
-void TextFormat::log(std::string t, bool nl)
+void TextFormat::log(std::string t, bool nl) noexcept
 {
 	// Print out string with current time for logging purposes
-	std::cout << std::fixed << std::setprecision(3) << "[ " << (glfwGetTime() * 1000.0) << "ms ]\t" << t << (nl ? "\n" : "");
+	fmt::print("[ {:.3f}ms ]\t{}{}", glfwGetTime() * 1000.0, t, (nl ? "\n" : ""));
 }
-bool TextFormat::stringEndsWith(const std::string &str, const std::string &ending)
-{
-	// std::string::ends_with only available in c++20, trying not to rely on new versions especially since 
-	// there is no guarantee that very new functions may not be supported on all compilers/platforms.
-	return str.compare(str.length() - ending.length(), ending.length(), ending) == 0;
-}
-void TextFormat::warn(std::string t, std::string ttl)
+void TextFormat::warn(std::string t, std::string ttl) noexcept
 {
 	// Warning log for any issues
 	std::cout << "\n";
 	log("************************ " + ttl, false);
 	std::cout << " ************************\n" << t << "\n"; 
 }
+
+bool TextFormat::stringEndsWith(const std::string &str, const std::string &ending) noexcept
+{
+	// std::string::ends_with only available in c++20, trying not to rely on new versions especially since 
+	// there is no guarantee that very new functions may not be supported on all compilers/platforms.
+	return str.compare(str.length() - ending.length(), ending.length(), ending) == 0;
+}
+std::string TextFormat::getParentDirectory(const std::string& dir) noexcept
+{
+	const std::size_t pos = dir.find_last_of("\\/");
+	return pos == std::string::npos ? "" : dir.substr(0u, pos);
+}
+
+// -------------------- OGL struct -------------------- 
 
 GLuint OGL::CreateVAO() noexcept
 {
@@ -70,7 +81,7 @@ GLuint OGL::CreateVAO() noexcept
 }
 std::uint8_t OGL::CreateVAO8() noexcept
 {
-	return narrow_cast<std::uint8_t>(CreateVAO());
+	return static_cast<std::uint8_t>(CreateVAO());
 }
 GLuint OGL::CreateBuffer(GLenum type) noexcept
 {
@@ -81,11 +92,7 @@ GLuint OGL::CreateBuffer(GLenum type) noexcept
 }
 std::uint8_t OGL::CreateBuffer8(GLenum type) noexcept
 {
-	return narrow_cast<std::uint8_t>(CreateBuffer(type));
-}
-std::uint16_t OGL::CreateBuffer16(GLenum type) noexcept
-{
-	return narrow_cast<std::uint16_t>(CreateBuffer(type));
+	return static_cast<std::uint8_t>(CreateBuffer(type));
 }
 void OGL::SetupUBO(std::uint8_t& ubo, GLuint index, std::size_t uboSize) noexcept
 {
@@ -99,6 +106,7 @@ void OGL::UpdateUBO(std::uint8_t& ubo, GLintptr offset, GLsizeiptr bytes, const 
 	glBufferSubData(GL_UNIFORM_BUFFER, offset, bytes, data);
 }
 
+// -------------------- Shader struct -------------------- 
 
 void Shader::InitShader()
 {
@@ -114,9 +122,10 @@ void Shader::InitShader()
 			char* infolog = new char[length] {};
 			glGetProgramInfoLog(program, length, nullptr, infolog);
 
-			std::stringstream errfmt;
-			errfmt << "Linked vertex shader: " << vertex << "\nLinked fragment shader: " << fragment << "Error message:\n" << infolog;
-			TextFormat::warn(errfmt.str(), "Shader Program Error - ID: " + std::to_string(program));
+			TextFormat::warn(
+				fmt::format("Linked vertex shader: {}\nLinked fragment shader: {}\nError message:\n{}", vertex, fragment, infolog), 
+				"Shader Program Error - ID: " + std::to_string(program)
+			);
 
 			delete[] infolog;
 		}
@@ -133,9 +142,10 @@ void Shader::InitShader()
 			char* infolog = new char[length] {};
 			glGetShaderInfoLog(shader, length, nullptr, infolog);
 
-			std::stringstream errfmt;
-			errfmt << "Filename: " << filename << "\nError message:\n" << infolog;
-			TextFormat::warn(errfmt.str(), "Shader Error - ID: " + std::to_string(shader));
+			TextFormat::warn(
+				fmt::format("Filename: {}\nError message:\n{}", filename, infolog), 
+				"Shader Error - ID: " + std::to_string(shader)
+			);
 
 			delete[] infolog;
 			return true;
@@ -220,11 +230,9 @@ void Shader::InitShader()
 		CheckProgramError(programID, vertexFileName, fragmentFileName);
 
 		// Add to shader program array
-		m_programs[programIndex] = narrow_cast<std::uint8_t>(programID);
-
-		std::stringstream shaderfmt;
-		shaderfmt << "Shader program " << programID << " created using vertex " << vertexFileName << " and fragment " << fragmentFileName;
-		TextFormat::log(shaderfmt.str());
+		m_programs[programIndex] = static_cast<std::uint8_t>(programID);
+		
+		TextFormat::log(fmt::format("Shader program {} created using {} and {}", programID, vertexFileName, fragmentFileName));
 	}
 }
 
@@ -232,7 +240,6 @@ GLuint Shader::ShaderFromID(ShaderID id) const noexcept
 {
 	return static_cast<GLuint>(m_programs[static_cast<int>(id)]);
 }
-
 void Shader::UseShader(ShaderID id) const noexcept
 {
 	glUseProgram(ShaderFromID(id));
@@ -251,6 +258,10 @@ void Shader::SetInt(ShaderID id, const char* name, int value) const noexcept
 	glUseProgram(program);
 	SetInt(GetLocation(program, name), value);
 }
+void Shader::SetInt(GLint location, int value) noexcept
+{
+	glUniform1i(location, value);
+}
 
 void Shader::SetFloat(ShaderID id, const char* name, float value) const noexcept
 {
@@ -258,20 +269,14 @@ void Shader::SetFloat(ShaderID id, const char* name, float value) const noexcept
 	glUseProgram(program);
 	SetFloat(GetLocation(program, name), value);
 }
+void Shader::SetFloat(GLint location, float value) noexcept
+{
+	glUniform1f(location, value);
+}
 
 GLint Shader::GetLocation(GLuint shader, const char* name) noexcept
 {
 	return glGetUniformLocation(shader, name);
-}
-
-void Shader::SetInt(GLint location, int value) noexcept
-{
-	glUniform1i(location, value);
-}
-
-void Shader::SetFloat(GLint location, float value) noexcept
-{
-	glUniform1f(location, value);
 }
 
 std::string Shader::ReadFileFromDisk(const std::string& filename)
@@ -335,8 +340,9 @@ Shader::~Shader() noexcept
 	}
 }
 
+// -------------------- WorldNoise struct -------------------- 
 
-WorldNoise::WorldNoise(WorldPerlin::NoiseSpline *splines, std::uint64_t *seeds)
+WorldNoise::WorldNoise(WorldPerlin::NoiseSpline *splines, std::int64_t *seeds)
 {
 	WorldPerlin* perlins[] = { &continentalness, &flatness, &depth, &temperature, &humidity };
 	for (int i = 0; i < numNoises; ++i) {
@@ -353,6 +359,6 @@ WorldNoise::WorldNoise(WorldPerlin::NoiseSpline *splines)
 	for (int i = 0; i < numNoises; ++i) {
 		WorldPerlin *perlin = perlins[i];
 		if (!DEBUGNOSPLINES) perlin->noiseSplines = splines[i];
-		perlin->ChangeSeed(1337u); 
+		perlin->ChangeSeed(); 
 	}
 }

@@ -32,10 +32,10 @@ struct WorldPerlin {
 	};
 
 	NoiseSpline noiseSplines;
-	std::uint64_t seed = 0;
+	std::int64_t seed = 0;
 
 	void ChangeSeed();
-	void ChangeSeed(std::uint64_t newSeed);
+	void ChangeSeed(std::int64_t newSeed);
 
 	static constexpr double defaultY = 0.64847273f;
 	static constexpr double defaultZ = 0.23569347f;

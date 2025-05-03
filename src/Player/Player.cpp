@@ -5,7 +5,8 @@ Player::Player() noexcept
 	TextFormat::log("Player enter");
 
 	// temporary inventory test
-	for (PlayerObject::InventorySlot& s : player.inventory) s.objectID = narrow_cast<ObjectID>((rand() % 8) + 1);
+	for (PlayerObject::InventorySlot& s : player.inventory) 
+		s.objectID = static_cast<ObjectID>((rand() % 8) + 1);
 	//inventoryCountText = new TextRenderer::ScreenText*[36];
 
 	// Setup VAO and VBO for selection outline
@@ -450,7 +451,7 @@ void Player::UpdateFrustum() noexcept
 
 void Player::UpdateOffset() noexcept
 {
-	#ifndef BADCRAFT_1THREAD
+	#ifndef GAME_SINGLE_THREAD
 	player.offset = Math::toWorld(player.position * ChunkSettings::CHUNK_SIZE_RECIP_DBL);
 	#else
 	const WorldPos org = player.offset;
@@ -479,7 +480,7 @@ void Player::UpdateCameraVectors() noexcept
 void Player::UpdateScroll(float yoffset) noexcept
 {
 	const int newSelection = static_cast<int>(selected) + (yoffset > 0.0f ? 1 : -1);
-	selected = narrow_cast<std::uint8_t>(Math::loopAroundInteger(newSelection, 0, 9));
+	selected = static_cast<std::uint8_t>(Math::loopAroundInteger(newSelection, 0, 9));
 	UpdateInventory();
 }
 

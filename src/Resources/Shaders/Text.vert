@@ -29,7 +29,7 @@ void main()
 	float y = (data.x >> 12 & 0xFFF) / 2047.5 - 1.0;
 
 	uint textindex = (data.x >> 24) & 0x7F;
-	float fontSize = ((data.y >> 24) & 0xFF) / 16.0;
+	float fontSize = ((data.y >> 24) & 0xFF) / 16.0 * screenAspect;
 	float charSize = textureSizes[textindex] * fontSize;
 
 	gl_Position = vec4(

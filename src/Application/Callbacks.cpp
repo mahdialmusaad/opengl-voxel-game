@@ -7,14 +7,14 @@
 // The 'Callbacks' struct still needs to be inside the Application header as it requires access to its members
 // and functions (e.g. resizing window needs to update the perspective matrix, which is in the Badcraft class)
 
-Badcraft::Callbacks::Callbacks()
+GameObject::Callbacks::Callbacks()
 {
 	glfwGetWindowPos(game.window, &game.windowX, &game.windowY);
 	glfwGetWindowSize(game.window, &game.width, &game.height);
 }
 
 // The window is already defined, so no need for the first argument
-void Badcraft::Callbacks::KeyPressCallback(int key, int, int action, int)
+void GameObject::Callbacks::KeyPressCallback(int key, int, int action, int)
 {
 	// Chat is handled by CharCallback
 	if (game.chatting) {
@@ -56,18 +56,18 @@ void Badcraft::Callbacks::KeyPressCallback(int key, int, int action, int)
 	ApplyInput(key, action);
 }
 
-void Badcraft::Callbacks::CharCallback(unsigned codepoint)
+void GameObject::Callbacks::CharCallback(unsigned codepoint)
 {
 	// Add inputted char into chat message
 	if (game.chatting) {
 		app->world.textRenderer.ChangeText(
 			app->m_chatText,
-			app->m_chatText->GetText() + narrow_cast<char>(codepoint)
+			app->m_chatText->GetText() + static_cast<char>(codepoint)
 		);
 	}
 }
 
-void Badcraft::Callbacks::MouseClickCallback(int button, int action, int) noexcept
+void GameObject::Callbacks::MouseClickCallback(int button, int action, int) noexcept
 {
 	// Re-capture mouse as some actions can free the mouse
 	if (!app->player.inventoryOpened) glfwSetInputMode(game.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -81,13 +81,13 @@ void Badcraft::Callbacks::MouseClickCallback(int button, int action, int) noexce
 	}
 }
 
-void Badcraft::Callbacks::ScrollCallback(double, double yoffset) noexcept
+void GameObject::Callbacks::ScrollCallback(double, double yoffset) noexcept
 {
 	// Scroll through inventory
 	app->playerFunctions.UpdateScroll(static_cast<float>(yoffset));
 }
 
-void Badcraft::Callbacks::ResizeCallback(int width, int height) noexcept
+void GameObject::Callbacks::ResizeCallback(int width, int height) noexcept
 {
 	// No need to update or recalculate if the game has just been minimized,
 	// lower the FPS instead to decrease unecessary usage
@@ -111,7 +111,7 @@ void Badcraft::Callbacks::ResizeCallback(int width, int height) noexcept
 	app->UpdateAspect();
 }
 
-void Badcraft::Callbacks::MouseMoveCallback(double xpos, double ypos) noexcept
+void GameObject::Callbacks::MouseMoveCallback(double xpos, double ypos) noexcept
 {
 	// Avoid large jumps in camera direction when window gains focus
 	if (game.focusChanged) {
@@ -126,20 +126,20 @@ void Badcraft::Callbacks::MouseMoveCallback(double xpos, double ypos) noexcept
 	}
 }
 
-void Badcraft::Callbacks::WindowMoveCallback(int x, int y) noexcept
+void GameObject::Callbacks::WindowMoveCallback(int x, int y) noexcept
 {
 	// Store window location for information purposes
 	game.windowX = x;
 	game.windowY = y;
 }
 
-void Badcraft::Callbacks::CloseCallback() noexcept
+void GameObject::Callbacks::CloseCallback() noexcept
 {
 	// Exit out of main game loop
 	game.mainLoopActive = false;
 }
 
-void Badcraft::Callbacks::TakeScreenshot() noexcept
+void GameObject::Callbacks::TakeScreenshot() noexcept
 {
 	bool error = false;
 	constexpr const char* screenshotfolder = "Screenshots";
@@ -154,28 +154,27 @@ void Badcraft::Callbacks::TakeScreenshot() noexcept
 			std::filesystem::create_directory(screenshotfolder);
 		}
 	}
-	catch (std::filesystem::filesystem_error e) { error = true; }
+	catch (const std::filesystem::filesystem_error& _) { error = true; }
 
 	// The resulting text to be displayed on screen
 	std::string newScreenshotText = "Failed to save screenshot";
 
 	if (!error) {
-		std::stringstream filenamefmt, directoryfmt;
-
-		// Lodepng needs pixel array in std::vector - 3 per pixel for R,G,B colours
+		// Lodepng needs pixel array in vector - 3 per pixel for RGB values
 		const unsigned w = game.width, h = game.height;
 		std::vector<unsigned char> pixels(3u * w * h);
 
 		// Read pixels from screen to vector
+		glReadBuffer(GL_FRONT);
 		glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
 
-		// Get time in milliseconds (avoid name conflicts when taking lots of screenshots)
-		const double timeDouble = glfwGetTime();
-		const int milliseconds = static_cast<int>((timeDouble - floor(timeDouble)) * 1000.0f);
+		// Get time in milliseconds (avoid name conflicts when taking screenshots in the same second)
+		const double currentSecs = glfwGetTime();
+		const int milliseconds = static_cast<int>((currentSecs - floor(currentSecs)) * 1000.0f);
 
-		// Get *thread-safe* formatted time values (made complicated by different operating systems) - prevent unsafe warning
+		// Get *thread-safe* formatted time values
+		const std::time_t timeSecs = time(0u);
 		std::tm timeValues;
-		std::time_t timeSecs;
 
 		#if defined(__unix__)
 			localtime_r(&timeSecs, &timeValues);
@@ -188,33 +187,29 @@ void Badcraft::Callbacks::TakeScreenshot() noexcept
 		#endif
 
 		// File name for displaying and creating directory path
-		filenamefmt << "Screenshot " << timeValues.tm_year + 1900 << "-" << timeValues.tm_mon + 1 << "-" << timeValues.tm_mday << " " 
-					<< timeValues.tm_hour << "-" << std::setw(2) << std::setfill('0') << timeValues.tm_min << "-" 
-					<< timeValues.tm_sec << std::setw(3) << milliseconds; 
+		const std::string filenamefmt = fmt::format("Screenshot {:%Y-%m-%d %H-%M-%S}-{:03}.png", timeValues, milliseconds);
 
 		// Get full path of image to save to
-		directoryfmt << screenshotfolder << "/" << filenamefmt.str();
+		const std::string directoryfmt = fmt::format("{}/{}", screenshotfolder, filenamefmt);
 
 		// Flip Y axis as OGL uses opposite Y coordinates (bottom-top instead of top-bottom)
 		std::vector<unsigned char> newHalf(3u * w * h);
 		for (unsigned x = 0; x < w; ++x) {
 			for (unsigned y = 0; y < h; ++y) {
 				for (int s = 0; s < 3; ++s) {
-					int start = (x + y * w) * 3 + s;
-					int end = (x + (h - 1 - y) * w) * 3 + s;
-					newHalf[start] = pixels[end];
+					newHalf[(x + y * w) * 3 + s] = pixels[(x + (h - 1 - y) * w) * 3 + s];
 				}
 			}
 		}
 
 		// Save to PNG file in directory constructed above (RGB colours, no alpha)
-		const bool success = lodepng::encode(directoryfmt.str(), newHalf, w, h, LodePNGColorType::LCT_RGB) == 0;
+		const bool success = lodepng::encode(directoryfmt, newHalf, w, h, LodePNGColorType::LCT_RGB) == 0u;
 
 		newHalf.clear();
 		pixels.clear();
 
 		// Create result text to be displayed
-		if (success) newScreenshotText = "Screenshot saved as " + filenamefmt.str();
+		if (success) newScreenshotText = "Screenshot saved as " + filenamefmt;
 	}
 
 	// Update text with results
@@ -223,7 +218,7 @@ void Badcraft::Callbacks::TakeScreenshot() noexcept
 	app->m_screenshotText->ResetTextTime();
 }
 
-void Badcraft::Callbacks::ToggleInventory() noexcept
+void GameObject::Callbacks::ToggleInventory() noexcept
 {
 	// Open or close the inventory
 	b_not(app->player.inventoryOpened);
@@ -233,7 +228,7 @@ void Badcraft::Callbacks::ToggleInventory() noexcept
 	game.focusChanged = true;
 }
 
-void Badcraft::Callbacks::ApplyInput(int key, int action) noexcept
+void GameObject::Callbacks::ApplyInput(int key, int action) noexcept
 {
 	constexpr int repeatableInput = GLFW_PRESS | GLFW_REPEAT;
 	constexpr int pressInput = GLFW_PRESS;
@@ -319,13 +314,13 @@ void Badcraft::Callbacks::ApplyInput(int key, int action) noexcept
 	}
 }
 
-void Badcraft::Callbacks::BeginChat() noexcept
+void GameObject::Callbacks::BeginChat() noexcept
 {
 	app->m_chatText->type = TextRenderer::T_Type::Default;
 	game.chatting = true;
 }
 
-void Badcraft::Callbacks::ApplyChat()
+void GameObject::Callbacks::ApplyChat()
 {
 	// Check if there is any text in the first place
 	std::string& command = app->m_chatText->GetText();
@@ -484,10 +479,11 @@ void Badcraft::Callbacks::ApplyChat()
 	if (commandKeyFind != commandsMap.end()) { // Check if command exists
 		args.erase(args.begin()); // Erase default command so args[0] is the first command argument
 		try { commandKeyFind->second(); } // Execute linked function
-		catch (std::exception err) {
-			std::stringstream errfmt;
-			errfmt << "Error during command parsing:\nArgument index: " << currentArgumentCheck << "\nArgument: " << currentArgument;
-			TextFormat::warn(errfmt.str(), err.what());
+		catch (const std::invalid_argument& err) {
+			TextFormat::warn(
+				fmt::format("Error during command parsing:\nArgument index: {}\nArgument: {}", currentArgumentCheck, currentArgument),
+				err.what()
+			);
 		}
 	}
 }

@@ -1,16 +1,17 @@
 cmake_minimum_required(VERSION 3.10)
-project(badcraft)
+project(Game)
 
-# GLFW build options for... GLFW!
+# GLFW build options
 option(GLFW_BUILD_DOCS OFF)
 option(GLFW_BUILD_EXAMPLES OFF)
 option(GLFW_BUILD_TESTS OFF)
 
-# Compiler warning settings (you need to hold yourselves to higher standards!)
+# Compiler warning settings
 if(MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
 else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Wno-reorder")
+	# Define glad library
     if(NOT WIN32)
         set(GLAD_LIBRARIES dl)
     endif()
@@ -26,14 +27,16 @@ include_directories(
 	${BCL}
 	# Game source folder
 	${BC_SRC}
-	# Some external library folders that would be annoying to write in '#include'
+	# Some external library folders that would be annoying 
+	# to write out in full when doing '#include'
 	${BCL}/glfw/include
+	${BCL}/fmt/include
 	${BCL}/glm
 	${BCL}/glad
 )
 
 # Add GLFW to project
-add_subdirectory(${BCL}/glfw)
+add_subdirectory(${BCL}/glfw/)
 # Get OpenGL package
 find_package(OpenGL REQUIRED)
 
@@ -49,10 +52,12 @@ set(BCS_G ${BC_SRC}/Globals)
 add_executable(
 	# Initial project argument
 	${PROJECT_NAME}
-	# glad.c
-	${BCL}/glad/glad.c
-	# lodepng.cpp
+
+	# lodepng
 	${BCL}/lodepng/lodepng.cpp
+	# glad
+	${BCL}/glad/gl.c
+
 	# src/Globals
     ${BCS_G}/Definitions.cpp
 	# src/Player
@@ -72,7 +77,6 @@ add_executable(
 	# src/
     ${BC_SRC}/Main.cpp
 )
-
 
 # Link external libraries
 target_link_libraries(

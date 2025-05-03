@@ -2,19 +2,32 @@
 #ifndef _SOURCE_UTILITY_UTILS_HEADER_
 #define _SOURCE_UTILITY_UTILS_HEADER_
 
-#define BADCRAFT_1THREAD
+#define GAME_SINGLE_THREAD
 
-#include "glad/glad.h"
+// glad - OpenGL loader/generator
+#include "glad/gl.h"
+
+// GLFW - Window and input library
 #include "GLFW/glfw3.h"
 
+// glm - OpenGL maths library
 #define GLM_FORCE_XYZW_ONLY
 #include "glm/glm.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/ext/matrix_clip_space.hpp"
 
+// lodepng - PNG encoder and decoder
 #include "lodepng/lodepng.h"
+
+// fmt - text formatting library
+#define FMT_HEADER_ONLY
+#include "fmt/format.h"
+#include "fmt/chrono.h"
+
+// Perlin noise generator
 #include "World/Generation/Perlin.hpp"
 
+// C++ standard libraries
 #include <mutex>
 #include <thread>
 
@@ -29,11 +42,7 @@
 #include <functional>
 #include <unordered_map>
 
-template <class T, class U>
-constexpr T narrow_cast(U&& u) noexcept
-{
-	return static_cast<T>(std::forward<U>(u));
-}
+// Easily reverse a bool without having to type the name twice, e.g. longboolname = !longboolname
 constexpr bool b_not(bool& x) noexcept
 {
 	x = !x;
@@ -44,11 +53,11 @@ typedef std::int64_t PosType; // Switch between 32-bit and 64-bit positioning
 typedef glm::vec<3, PosType> WorldPos;
 typedef glm::vec<2, PosType> ChunkOffset;
 
+// OpenGL function shorcuts
 struct OGL 
 {
 	static GLuint CreateBuffer(GLenum type) noexcept;
 	static std::uint8_t CreateBuffer8(GLenum type) noexcept;
-	static std::uint16_t CreateBuffer16(GLenum type) noexcept;
 
 	static GLuint CreateVAO() noexcept;
 	static std::uint8_t CreateVAO8() noexcept;
@@ -56,17 +65,19 @@ struct OGL
 	static void SetupUBO(std::uint8_t& ubo, GLuint index, std::size_t uboSize) noexcept;
 	static void UpdateUBO(std::uint8_t& ubo, GLintptr offset, GLsizeiptr bytes, const void* data) noexcept;
 };
+// Image information
 struct OGLImageInfo
 {
 	std::uint32_t width = 0, height = 0;
 	std::vector<unsigned char> data;
 };
-
+// Hashing function for WorldPos vector struct
 struct WorldPosHash
 {
 	std::size_t operator()(const WorldPos& vec) const noexcept;
 };
 
+// Mathematical functions
 struct Math
 {
 	static float loopAround(float x, float min, float max) noexcept;
@@ -129,13 +140,17 @@ struct Math
 	static constexpr float TORADIANS_FLT = static_cast<float>(TORADIANS_DBL);
 };
 
+// Logging and text formatting
 struct TextFormat
 {
-	static void warn(std::string t, std::string ttl);
-	static void log(std::string t, bool nl = true);
-	static bool stringEndsWith(const std::string& str, const std::string& ending);
+	static void warn(std::string t, std::string ttl) noexcept;
+	static void log(std::string t, bool nl = true) noexcept;
+
+	static bool stringEndsWith(const std::string& str, const std::string& ending) noexcept;
+	static std::string getParentDirectory(const std::string& dir) noexcept;
 };
 
+// Vertex and fragment shader loader as well and disk reading
 class Shader
 {
 public:
@@ -162,21 +177,24 @@ private:
 	std::uint8_t m_programs[static_cast<int>(ShaderID::MAX)] {};
 };
 
+// Combined perlin noise struct
 struct WorldNoise
 {
 	WorldNoise() noexcept = default;
 	WorldNoise(WorldPerlin::NoiseSpline *splines);
-	WorldNoise(WorldPerlin::NoiseSpline *splines, std::uint64_t *seeds);
+	WorldNoise(WorldPerlin::NoiseSpline *splines, std::int64_t *seeds);
 	
 	WorldPerlin continentalness;
 	WorldPerlin flatness;
 	WorldPerlin depth;
 	WorldPerlin temperature;
 	WorldPerlin humidity;
+
 	static constexpr int numNoises = 5;
 };
 
-struct BadcraftGameObject
+// Globals
+struct GameGlobalsObject
 {
 	GLFWwindow* window = nullptr;
 
@@ -210,6 +228,7 @@ struct BadcraftGameObject
 	double deltaTime = 0.016;
 
 	//std::string worldName;
+	std::string currentDirectory;
 	std::string resourcesFolder;
 
 	OGLImageInfo blocksTextureInfo;

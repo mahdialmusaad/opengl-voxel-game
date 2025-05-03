@@ -15,6 +15,7 @@ TextRenderer::TextRenderer() noexcept
 		1.0f, 0.0f,  
 		1.0f, 1.0f
 	};
+
 	glBufferStorage(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, 0u); 
 
 	// Instanced attributes for individual text VBOs
@@ -25,38 +26,41 @@ TextRenderer::TextRenderer() noexcept
 	glEnableVertexAttribArray(1u);
 	glVertexAttribPointer(1u, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
 
-	// Calculate size of a pixel on font texture (used for relative texture coordinate, 0.0 to 1.0)
+	// Calculate size of a pixel on the font texture
 	const float pxSize = 1.0f / static_cast<float>(game.textTextureInfo.width);
 
 	struct TextSSBOData {
-		float positionData[95]; // 94 unique characters + 1 for end of image
-		float sizeData[94]; // Floating point number for the size of each character
-	};
+		float positions[95]; // 94 unique characters + 1 for end of image
+		float sizes[94]; // Floating point representation of each character's size
+	} textSSBOData;
 
-	TextSSBOData tssbodata{};
-	tssbodata.positionData[94] = 1.0f; // End of image coordinate
+	textSSBOData.positions[94] = 1.0f; // End of image coordinate
 
-	// Get relative coordinates of each chararcter (each is seperated by 2 pixels)
-	float currentImageOffset = 0.0f; // Current coordinate of character (0.0 - 1.0)
+	// Each character is seperated by a pixel on either side to ensure that parts 
+	// don't get cut off due to precision errors in the texture coordinates.
+
+	float currentImageOffset = 0.0f; // Current coordinate of character
 	for (std::size_t i = 0u; i < sizeof(m_charSizes); ++i) {
-		const float charSize = static_cast<float>(m_charSizes[i]);
-		tssbodata.positionData[i] = currentImageOffset;
-		tssbodata.sizeData[i] = charSize;
-		currentImageOffset += pxSize * (charSize + 2.0f);
+		const float charSize = static_cast<float>(m_charSizes[i]) + 2.0f; // Add 2 for the extra pixel on both sides
+		textSSBOData.positions[i] = currentImageOffset; // Current position
+		textSSBOData.sizes[i] = charSize; // Floating point representation of the gap-inclusive size
+		currentImageOffset += pxSize * charSize; // Advance to next character
 	}
 
 	// Send the pixel offsets of each letter in font texture to shader
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1u, OGL::CreateBuffer(GL_SHADER_STORAGE_BUFFER));
-	glBufferStorage(GL_SHADER_STORAGE_BUFFER, sizeof(tssbodata), &tssbodata, 0u);
+	glBufferStorage(GL_SHADER_STORAGE_BUFFER, sizeof(textSSBOData), &textSSBOData, 0u);
 
 	TextFormat::log("Text renderer exit");
 }
 
 void TextRenderer::RenderText() const noexcept
 {
+	// Use correct buffers and the text shader
 	game.shader.UseShader(Shader::ShaderID::Text);
 	glBindVertexArray(m_textVAO);
 
+	// Render text if it is not marked as hidden
 	for (const auto& [id, text] : m_screenTexts) {
 		if (text->type == T_Type::Hidden) continue;
 		glBindBuffer(GL_ARRAY_BUFFER, text->vbo);
@@ -84,6 +88,7 @@ uint16_t TextRenderer::GetNewID() noexcept
 	bool found = true;
 	std::uint16_t id = 0;
 
+	// Random number generator
 	std::mt19937 gen(std::random_device{}());
 	std::uniform_int_distribution<std::uint16_t> dist(1, UINT16_MAX);
 	
@@ -205,9 +210,9 @@ void TextRenderer::UpdateText(ScreenText* screenText) const noexcept
 	const uint8_t fontSize = screenText->GetFontSize();
 	bool invalidTextAttempt = false;
 
-	enum WarningBits : uint8_t { Warning_OOB = 1, Warning_InvalidChar };
+	enum WarningBits : uint8_t { Warning_OOB = 1u, Warning_InvalidChar };
 
-	const float sizeMultiplier = static_cast<float>(fontSize) / 16.0f;
+	const float sizeMultiplier = static_cast<float>(fontSize) / 12.0f;
 	const float pixelSize = 1.0f / static_cast<float>(game.textTextureInfo.width);
 
 	const std::string& textString = screenText->GetText();
@@ -220,43 +225,36 @@ void TextRenderer::UpdateText(ScreenText* screenText) const noexcept
 		(static_cast<uint32_t>(fontSize) << 24u);
 
 	int dataIndex = 0;
-	for (int i = 0, end = narrow_cast<int>(textString.size()); i < end; ++i) {
-		const char currentChar = textString[i];
-		if (currentChar == '\0') break; // End of text check
-
+	for (const char& currentChar : textString) {
+		// For a new line character, reset the X position offset and set the Y position lower
 		if (currentChar == '\n') {
-			// For a new line character, reset the X position offset
-			// and set the Y position to be lower
 			pos.y -= lineSpacing * sizeMultiplier;
 			pos.x = screenText->GetPosition().x;
 			continue;
-		} else if (currentChar == ' ') {
-			// For a space, just increase the X position offset by an amount
-			pos.x += letterSpacing;
+		}
+		// For a space, just increase the X position offset by an amount 
+		else if (currentChar == ' ') {
+			
+			pos.x += letterSpacing * 2.0f * sizeMultiplier;
 			continue;
 		}
-		else if (currentChar < ' ' || currentChar > '~') { // Make sure only compatible text is shown
+		// Make sure only compatible text is shown
+		else if (currentChar < ' ' || currentChar > '~') { 
 			invalidTextAttempt = true;
-			const int id = static_cast<int>(GetIDFromText(screenText));
-			const std::string errChar = static_cast<int>(currentChar) < ' ' ? std::string("(CONTROL)") : std::string(1, currentChar);
+			std::string errfmt = fmt::format(
+				"Character: {} ({})\nText id: {}\n Failed position: {}, {}",
+				static_cast<int>(currentChar) < ' ' ? std::string("(CONTROL)") : std::string(1, currentChar), 
+				static_cast<int>(currentChar), GetIDFromText(screenText), pos.x, pos.y
+			);
 
-			std::stringstream formatted;
-			formatted << "Character: " << errChar << " (" << static_cast<int>(currentChar) << ")\nText id: " << id 
-				<< "\nFailed index: " << i << "\nFailed position: " << pos.x << ", " << pos.y;
-
-			TextFormat::warn(formatted.str(), "Invalid text character in text object");
+			TextFormat::warn(errfmt, "Invalid text character in text object");
 			continue;
 		}
-
 		// Check for out of bounds text
-		if (pos.x < 0.0f || pos.x > 1.0f || pos.y < 0.0f || pos.y > 1.0f) {
+		else if (pos.x < 0.0f || pos.x > 1.0f || pos.y < 0.0f || pos.y > 1.0f) {
 			if (!(screenText->loggedErrors & Warning_OOB)) {
-				const int id = static_cast<int>(GetIDFromText(screenText));
-
-				std::stringstream formatted;
-				formatted << "Text id: " << id << "\nPosition: " << pos.x << ", " << pos.y;
-
-				TextFormat::warn(formatted.str(), "Attempted text rendering off-screen");
+				std::string errfmt = fmt::format("Text id: {}\nPosition: {}, {}", GetIDFromText(screenText), pos.x, pos.y);
+				TextFormat::warn(errfmt, "Attempted text rendering off-screen");
 				screenText->loggedErrors |= Warning_OOB;
 			}
 			
@@ -278,7 +276,7 @@ void TextRenderer::UpdateText(ScreenText* screenText) const noexcept
 
 		// Make sure characters aren't rendered on top of each other; 
 		// increase X position offset by the size of the character and a set amount
-		pos.x += sizeMultiplier * ((m_charSizes[charIndex] * pixelSize) + letterSpacing) / game.aspect;
+		pos.x += sizeMultiplier * (((m_charSizes[charIndex] + 1.0f) * pixelSize) + letterSpacing);
 	}
 
 	// Prevent repeatedly warning about same error each update
@@ -347,7 +345,7 @@ void TextRenderer::ScreenText::_ChangeInternalText(std::string newText) noexcept
 	// Update the 'display length' variable with how many *visible* characters are present (no spaces, newlines, etc)
 	int len = 0;
 	for (char x : m_text) if (x > ' ') ++len;
-	m_displayLength = narrow_cast<std::uint16_t>(len);
+	m_displayLength = static_cast<std::uint16_t>(len);
 }
 void TextRenderer::ScreenText::ResetTextTime() noexcept
 { 

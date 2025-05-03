@@ -1,6 +1,6 @@
 #include "Application.hpp"
 
-Badcraft::Badcraft() :
+GameObject::GameObject() :
 	world(player),
 	player(playerFunctions.player)
 {
@@ -42,19 +42,23 @@ Badcraft::Badcraft() :
 	//		correct size multipliers without needing to be recalculated ***
 	UpdateAspect();
 
-	// Text object creation
+	// Text objects creation
 	TextRenderer &tr = world.textRenderer;
 
-	std::stringstream textfmt;
-	textfmt << glfwGetVersionString() << "\n" << glGetString(GL_RENDERER) << "\n" << "Seed: " << game.noiseGenerators.continentalness.seed;
-	tr.CreateText(glm::vec2(0.01f, 0.01f), textfmt.str()); // Combine static text for less draw calls and memory
+	const std::string infofmt = fmt::format(
+		"{}\n{}\nSeed: {}", 
+		glfwGetVersionString(), 
+		reinterpret_cast<const char*>(glGetString(GL_RENDERER)), 
+		game.noiseGenerators.continentalness.seed
+	);
+	tr.CreateText(glm::vec2(0.01f, 0.01f), infofmt); // Combine static text for less draw calls and memory
 
-	m_screenshotText = tr.CreateText(glm::vec2(0.18f, 0.8f), "", TextRenderer::T_Type::Hidden, 12u); // Screenshot info
+	m_screenshotText = tr.CreateText(glm::vec2(0.18f, 0.8f), "", TextRenderer::T_Type::Hidden, 8u); // Screenshot info
 	m_chatText = tr.CreateText(glm::vec2(0.01f, 0.85f), "", TextRenderer::T_Type::Hidden); // Chat text
 	m_infoText = tr.CreateText(glm::vec2(0.01f, 0.18f), ""); // Reserve text object for dynamic info text
 	m_debugText = tr.CreateText(glm::vec2(0.01f, 0.3f), ""); // Debugging purposes
 
-	#ifndef BADCRAFT_1THREAD
+	#ifndef GAME_SINGLE_THREAD
 	world.StartThreadChunkUpdate(); // Update chunks when needed on a seperate thread
 	#endif
 
@@ -66,7 +70,7 @@ Badcraft::Badcraft() :
 	TextFormat::log("Application exit");
 }
 
-void Badcraft::Main()
+void GameObject::Main()
 {
 	constexpr double windowUpdateInterval = 1.0f / 20.0f; // Information update frequency
 	double windowTitleUpdateTime = 0.0; // The time since the last window title update
@@ -138,7 +142,7 @@ void Badcraft::Main()
 	ExitGame();
 }
 
-void Badcraft::MovementUpdate()
+void GameObject::MovementUpdate()
 {
 	player.moved = false;
 	// Update view matrix for complicated 3D maths to determine screen position of vertices in shader
@@ -157,7 +161,7 @@ void Badcraft::MovementUpdate()
 	OGL::UpdateUBO(m_matricesUBO, 0, sizeof(glm::mat4[2]), m_matrices + 2);
 }
 
-void Badcraft::TextUpdate()
+void GameObject::TextUpdate()
 {
 	/*
 		Even if the game runs with no framerate cap, there are a few things that
@@ -167,9 +171,7 @@ void Badcraft::TextUpdate()
 		values that change frequently.
 	*/
 
-	std::stringstream fpsfmt;
-	fpsfmt << m_nowFPS << " FPS | " << m_avgFPS << " AVG | " << m_lowFPS << " LOW";
-	const std::string FPStext = fpsfmt.str();
+	const std::string FPStext = fmt::format("{} FPS | {} AVG | {} LOW", m_nowFPS, m_avgFPS, m_lowFPS);
 
 	// Update window title
 	glfwSetWindowTitle(game.window, ("badcraft - " + FPStext).c_str());
@@ -178,23 +180,23 @@ void Badcraft::TextUpdate()
 	glm::dvec3& pos = player.position;
 	WorldPos& off = player.offset;
 
-	std::stringstream infofmt;
-	
-	infofmt << std::fixed << std::setprecision(3) 
-			<< "\n" << pos.x << " " << pos.y << " " << pos.z << " (" << off.x << " " << off.y << " " << off.z << ")"
-			<< "\nYaw:" << player.yaw << " Ptc:" << player.pitch << "" << " Spd:" << player.currentSpeed 
-			<< "\nTime:" << game.currentFrameTime << " (" << game.tickedFrameTime << ")"
-			<< "\nTri: " << world.squaresCount * 2u;
+	std::string infofmt = fmt::format(
+		"\n{:.3f} {:.3f} {:.3f} ({} {} {})\nYaw:{:.1f} Ptc:{:.1f} Spd:{:.1f}\nTime:{:.3f} ({:.3f})\nTri:{}",
+		pos.x, pos.y, pos.z, off.x, off.y, off.z, 
+		player.yaw, player.pitch, player.currentSpeed, 
+		game.currentFrameTime, game.tickedFrameTime, 
+		fmt::group_digits(world.squaresCount * 2u)
+	);
 
 	// Update text buffer with new string
-	world.textRenderer.ChangeText(m_infoText, FPStext + infofmt.str());
+	world.textRenderer.ChangeText(m_infoText, FPStext + infofmt);
 
 	// Check the status of text objects to determine visibility
 	world.textRenderer.CheckTextStatus();
 	m_updateTime = 0.0; // Reset function wait timer
 }
 
-void Badcraft::ExitGame()
+void GameObject::ExitGame()
 {
 	TextFormat::log("Game exit");
 	world.threadUpdateBuffers = false;
@@ -210,7 +212,7 @@ void Badcraft::ExitGame()
 	glfwTerminate();
 }
 
-void Badcraft::UpdateAspect()
+void GameObject::UpdateAspect()
 {
 	// Get window dimensions as float
 	const float w = static_cast<float>(game.width),
@@ -220,7 +222,7 @@ void Badcraft::UpdateAspect()
 	game.aspect = w / h;
 
 	// Used for resizing GUI elements
-	const float textWidth = 0.007f,
+	const float textWidth = 0.005f,
 		textHeight = 0.08f,
 		inventoryWidth = 1.0f,
 		inventoryHeight = 1.0f;
@@ -230,7 +232,7 @@ void Badcraft::UpdateAspect()
 	OGL::UpdateUBO(m_sizesUBO, sizeof(float[2]), sizeof(sizesData), sizesData);
 
 	// Update text values
-	world.textRenderer.letterSpacing = textWidth * game.aspect * game.aspect;
+	world.textRenderer.letterSpacing = game.aspect * textWidth;
 	world.textRenderer.lineSpacing = textHeight * 0.5f;
 	world.textRenderer.RecalculateAllText();
 
@@ -241,7 +243,7 @@ void Badcraft::UpdateAspect()
 	UpdatePerspective();
 }
 
-void Badcraft::UpdatePerspective()
+void GameObject::UpdatePerspective()
 {
 	// Update the perspective matrix with the current saved variables
 	m_matrices[Matrix_Perspective] = glm::perspective(
@@ -256,7 +258,7 @@ void Badcraft::UpdatePerspective()
 	playerFunctions.UpdateFrustum();
 }
 
-void Badcraft::UpdateFrameValues()
+void GameObject::UpdateFrameValues()
 {
 	// Update positions UBO
 	const double gamePositions[] = {
@@ -328,7 +330,7 @@ void Badcraft::UpdateFrameValues()
 	OGL::UpdateUBO(m_coloursUBO, 0, sizeof(gameColours), gameColours);
 }
 
-Badcraft::~Badcraft()
+GameObject::~GameObject()
 {
 	// Delete each UBO
 	const GLuint deleteUBOs[] = {

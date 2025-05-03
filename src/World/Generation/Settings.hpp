@@ -358,7 +358,7 @@ struct ChunkLookupTable
 				);
 
 				ChunkLookupData& data = lookupData[index++];
-				data.blockIndex = narrow_cast<std::uint16_t>(targetPosIndex);
+				data.blockIndex = static_cast<std::uint16_t>(targetPosIndex);
 				const bool isOverflowing = nxt.x < 0 || nxt.x > cs || nxt.y < 0 || nxt.y > cs || nxt.z < 0 || nxt.z > cs;
 				data.nearbyIndex = isOverflowing ? face : static_cast<std::uint8_t>(6u);
 			}

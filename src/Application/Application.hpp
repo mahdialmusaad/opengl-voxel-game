@@ -5,13 +5,13 @@
 #include "Player/Player.hpp"
 #include "World/Sky.hpp"
 
-class Badcraft
+class GameObject
 {
 public:
 	struct Callbacks
 	{
 		Callbacks();
-		Badcraft* app = nullptr;
+		GameObject* app = nullptr;
 		std::string previousChat;
 
 		void KeyPressCallback(int key, int scancode, int action, int mods);
@@ -39,13 +39,13 @@ public:
 	bool maxFPS = false;
 	bool wireframe = false;
 
-	Badcraft();
+	GameObject();
 	void Main();
 
 	void UpdateAspect();
 	void UpdatePerspective();
 
-	~Badcraft();
+	~GameObject();
 private:
 	void ExitGame();
 

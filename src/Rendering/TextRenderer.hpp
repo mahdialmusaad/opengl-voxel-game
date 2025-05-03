@@ -57,7 +57,7 @@ public:
 	TextRenderer() noexcept;
 	void RenderText() const noexcept;
 
-	ScreenText* CreateText(glm::vec2 pos, std::string text, T_Type textType = T_Type::Default, std::uint8_t fontSize = 16u) noexcept;
+	ScreenText* CreateText(glm::vec2 pos, std::string text, T_Type textType = T_Type::Default, std::uint8_t fontSize = 12u) noexcept;
 	void RecalculateAllText() noexcept;
 
 	ScreenText* GetTextFromID(std::uint16_t id) noexcept;

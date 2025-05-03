@@ -1,7 +1,7 @@
 #include "Application/Application.hpp"
 
 // Initialize globals from Globals/Definitions.hpp
-BadcraftGameObject game{};
+GameGlobalsObject game{};
 ChunkLookupTable chunkLookupData{};
 
 // Debug OpenGL functions for errors
@@ -37,27 +37,23 @@ static void GLDebugOutput(
 		case GL_DEBUG_TYPE_OTHER:               typestr = "[Other]"; break;
 	} 
 	switch (severity) {
-		case GL_DEBUG_SEVERITY_HIGH:			severitystr = "[High] - ID "; break;
-		case GL_DEBUG_SEVERITY_MEDIUM:			severitystr = "[Medium] - ID "; break;
-		case GL_DEBUG_SEVERITY_LOW:				severitystr = "[Low] - ID "; break;
-		case GL_DEBUG_SEVERITY_NOTIFICATION:	severitystr = "[Notification] - ID "; break;
+		case GL_DEBUG_SEVERITY_HIGH:			severitystr = "[High]"; break;
+		case GL_DEBUG_SEVERITY_MEDIUM:			severitystr = "[Medium]"; break;
+		case GL_DEBUG_SEVERITY_LOW:				severitystr = "[Low]"; break;
+		case GL_DEBUG_SEVERITY_NOTIFICATION:	severitystr = "[Notification]"; break;
 	}
 
-	std::stringstream errfmt;
-	errfmt << message << " - " << sourcestr << typestr << severitystr << id;
-	TextFormat::log(errfmt.str());
+	TextFormat::log(fmt::format("{} - {}{}{} - ID {}", message, sourcestr, typestr, severitystr, id));
 }
 static void GLErrorCallback(int err, const char* description)
 {
 	if (!game.mainLoopActive) return;
-	std::stringstream errfmt;
-	errfmt << "OGL error (ID " << err << "): " << description;
-	TextFormat::log(errfmt.str());
+	TextFormat::log(fmt::format("OGL error {}: {}", err, description));
 }
 
 // OpenGL I/O callbacks can only be set as global functions, 
 // so create wrappers for the actual functions defined in the 'callbacks' struct instead
-Badcraft::Callbacks* cb;
+GameObject::Callbacks* cb;
 static void CharCallback(GLFWwindow*, unsigned codepoint)
 {
 	cb->CharCallback(codepoint);
@@ -127,9 +123,9 @@ static void Initialize()
 
 	// Set GLFW functions to operate on the newly created window
 	glfwMakeContextCurrent(game.window);
-
+	
 	// Initialize OGL function loader
-	if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
+	if (!gladLoadGL(glfwGetProcAddress)) {
 		TextFormat::warn("GLAD initialization failed", "GLAD fail");
 		glfwDestroyWindow(game.window);
 		glfwTerminate();
@@ -143,14 +139,9 @@ static void Initialize()
 	glfwSetInputMode(game.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); // Disable moving the cursor so it doesn't go outside the window
 	glfwSwapInterval(1); // Swap buffers with screen's refresh rate
 
-	// Attempt to find resources folder
-	const std::filesystem::path currentPath = std::filesystem::current_path();
-	const std::string endPath = "\\Resources\\";
-
-	// Resources (textures and shaders) are located in same directory as exe
-	const std::string directory1 = currentPath.string() + endPath;
-
-	if (std::filesystem::exists(directory1)) game.resourcesFolder = directory1;
+	// Attempt to find resources folder - located in the same directory as exe
+	const std::string resFolder = game.currentDirectory + "\\Resources\\";
+	if (std::filesystem::exists(resFolder)) game.resourcesFolder = resFolder;
 	else throw std::runtime_error("Resources folder not found");
 
 	game.shader.InitShader(); // Initialize shader class
@@ -184,13 +175,16 @@ static void SetCallbacks()
 	glfwSetErrorCallback(GLErrorCallback);
 }
 
-int main()
+int main(int, char *argv[])
 {
+	// Get current directory for finding resources and shaders folders
+	game.currentDirectory = TextFormat::getParentDirectory(argv[0]);
+	
 	// Initialize game (load libraries, shaders, textures, etc)
 	Initialize();
 	
 	// Create application class
-	Badcraft bc = Badcraft();
+	GameObject bc = GameObject();
 	cb = &bc.callbacks;
 
 	// Set all input and debug callbacks

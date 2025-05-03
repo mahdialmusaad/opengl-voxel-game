@@ -232,9 +232,8 @@ void World::UpdateRenderDistance(std::int32_t newRenderDistance) noexcept
 	// SSBO (used to store offset data and face index in world shader)
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ShaderChunkOffset) * maxChunkFaces, nullptr, GL_STATIC_DRAW);
 
-	// Fill the newly sized buffers (empty now) with new valid data
+	// Fill the newly sized buffers (empty) with new valid data
 	STChunkUpdate();
-	SortWorldBuffers();
 }
 
 void World::RemoveChunk(Chunk* chunk) noexcept
@@ -418,7 +417,7 @@ void World::UpdateWorldBuffers() noexcept
 		return;
 	}
 
-	#ifndef BADCRAFT_1THREAD
+	#ifndef GAME_SINGLE_THREAD
 	// Vectors of chunks to be removed - cannot delete while looping through map at the same time
 	std::vector<Chunk*> chunksToRemove;
 	#endif
@@ -436,7 +435,7 @@ void World::UpdateWorldBuffers() noexcept
 	// Loop through all of the chunks and each of their 6 face data to determine how much memory is needed
 	// overall and accumulate all the valid pointer data into the array, as well as preparing to delete any far away chunks
 	for (const auto& [offset, chunk] : chunks) {
-		#ifndef BADCRAFT_1THREAD
+		#ifndef GAME_SINGLE_THREAD
 		// Add to deletion vector if the amount of offsets between the two is larger than current render distance
 		if (!ChunkSettings::InRenderDistance(player.offset, offset)) {
 			chunksToRemove.emplace_back(chunk);
@@ -453,7 +452,7 @@ void World::UpdateWorldBuffers() noexcept
 		}
 	}
 
-	#ifndef BADCRAFT_1THREAD
+	#ifndef GAME_SINGLE_THREAD
 	// Remove all chunks that are further than current render distance
 	for (Chunk* chunk : chunksToRemove) RemoveChunk(chunk);
 	chunksToRemove.clear();

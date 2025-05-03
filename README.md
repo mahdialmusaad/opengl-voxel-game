@@ -2,7 +2,7 @@
 A voxel game built to be performant, memory-efficient and cross compatible.
 
 <img src="markdown/main.png"/>
-<sup>In-game screenshot of Badcraft (Windows)</sup>
+<sup>In-game screenshot (Windows)</sup>
 
 ## Features
 - 64-bit rendering and generation system, allowing for worlds to span **trillions** of blocks with no issues*
@@ -14,8 +14,8 @@ A voxel game built to be performant, memory-efficient and cross compatible.
 <sup>\*Due to precision limitations, terrain rendering begins to break down at 2<sup>53</sup> (9 quadrillion) blocks away from the origin.</sup>
 
 ## Goal
-Badcraft was developed with performance and cross-compatibility in mind to ensure that anyone can use it, no matter their hardware or operating system.
-See the [Build](ttps://github.com/mahdialmusaad/badcraft/tree/main?tab=readme-ov-file#build) section for more details.
+This game was developed with performance and cross-compatibility in mind to ensure that anyone can use it, no matter their hardware or operating system.
+See the [Build](https://github.com/mahdialmusaad/badcraft/tree/main?tab=readme-ov-file#build) section for more details.
 
 ### Possible additions
 There are still many things that could be improved about the game, but implementing them could prove to be difficult or possibly involve major changes of existing parts of the source code:
@@ -61,26 +61,19 @@ The implementations of controls can also be viewed and easily edited in the [app
 Only keyboard and mouse input is supported as of now. Controllers and other input devices will currently not function.
 
 ## Build
-To run Badcraft, you can use [CMake](https://cmake.org/) and the provided [CMakeLists.txt](https://github.com/mahdialmusaad/badcraft/blob/main/CMakeLists.txt).
+To compile and run the game, you can simply use [CMake](https://cmake.org/).
 
 If you are using the **CMake GUI**, you can follow these steps:
-- Specify root directory for 'source code'
-- Specify a folder (e.g. badcraft/build/) for where CMake will build the binaries
+- Specify root and build directory
 - Press 'Configure' on the left above the output section
 - Press 'Yes' on the prompt to create a new folder (if the folder does not exist)
 - Specify generator and other settings if needed and press 'Finish'
-- Press 'Generate' to create the binaries
+- Press 'Configure' again then 'Generate' to create the binaries
 
-If you are using CMake in a **terminal**, you can simply run the following, providing your own directories and other settings (generator, toolset, etc).
+If you are using CMake in a **terminal**, you can run the following (with your own directories and settings):
 
 ```bash
 $ cmake -S [source-dir] -B [build-dir]
-```
-
-An example on Windows (assuming using Visual Studio) would be:
-
-```bash
-$ cmake -S C:/Users/.../Downloads/badcraft-main -B C:/Users/.../Downloads/badcraft-main/build -G "Visual Studio 17 2022"
 ```
 
 If you encounter any problems, please create a new issue so it can be resolved.

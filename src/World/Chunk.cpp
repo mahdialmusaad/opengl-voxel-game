@@ -5,7 +5,7 @@ Chunk::Chunk(
 	WorldPerlin::NoiseResult* perlinResults
 ) noexcept :
 	offsetX(offset.x),
-	offsetY(narrow_cast<std::int8_t>(offset.y)),
+	offsetY(static_cast<std::int8_t>(offset.y)),
 	offsetZ(offset.z),
 	positionMagnitude(sqrt(static_cast<double>((offset.x * offset.x) + (offset.y * offset.y) + (offset.z * offset.z))))
 {
@@ -241,7 +241,6 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 	// bits 1-5 = Y position, bits 5-10 = X position, bits 10-15 = Z position
 
 	// If you have any questions on how this works, just create a new discussion on GitHub.
-	// You can do so at https://github.com/mahdialmusaad/badcraft/discussions
 	
 	for (int z = 0; z < ChunkSettings::CHUNK_SIZE; ++z) {
 		StateType (&innerChunkState)[ChunkSettings::CHUNK_SIZE] = chunkFaceStates[z]; // Reference to 1D array
