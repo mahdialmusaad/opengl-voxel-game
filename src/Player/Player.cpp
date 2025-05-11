@@ -7,7 +7,6 @@ Player::Player() noexcept
 	// temporary inventory test
 	for (PlayerObject::InventorySlot& s : player.inventory) 
 		s.objectID = static_cast<ObjectID>((rand() % 8) + 1);
-	//inventoryCountText = new TextRenderer::ScreenText*[36];
 
 	// Setup VAO and VBO for selection outline
 	m_outlineVAO = OGL::CreateVAO8();
@@ -90,21 +89,45 @@ Player::Player() noexcept
 	TextFormat::log("Player exit");
 }
 
+void Player::InitializeText() noexcept
+{
+	// Create text objects as now the text renderer class has been initialized
+
+	// Selected block information text - created in player class instead of
+	// with other text objects so it can be updated only when the selected block changes
+	//m_blockText = world->textRenderer.CreateText(glm::vec2(0.0f, 0.0f), "");
+
+	// Inventory item counters
+	//inventoryCountText = new TextRenderer::ScreenText*[36];
+}
+
 void Player::CheckInput() noexcept 
 {
-	const auto CheckKey = [](int key, int action) noexcept {
+	// Check for any input that requires holding
+
+	// Get key state
+	const auto CheckKey = [](int key, int action = GLFW_PRESS) noexcept {
 		return glfwGetKey(game.window, key) == action;
 	};
 
+	// Only check if there is a key being pressed and if the player isn't chatting
 	if (game.anyKeyPressed && !game.chatting) {
-		// Frame-dependent inputs (not toggle inputs)
-		if (CheckKey(GLFW_KEY_W, GLFW_PRESS)) ProcessKeyboard(WorldDirection::Front);
-		if (CheckKey(GLFW_KEY_S, GLFW_PRESS)) ProcessKeyboard(WorldDirection::Back);
-		if (CheckKey(GLFW_KEY_A, GLFW_PRESS)) ProcessKeyboard(WorldDirection::Left);
-		if (CheckKey(GLFW_KEY_D, GLFW_PRESS)) ProcessKeyboard(WorldDirection::Right);
+		// Movement inputs
+		if (CheckKey(GLFW_KEY_W)) ProcessKeyboard(WorldDirection::Front);
+		if (CheckKey(GLFW_KEY_S)) ProcessKeyboard(WorldDirection::Back);
+		if (CheckKey(GLFW_KEY_A)) ProcessKeyboard(WorldDirection::Left);
+		if (CheckKey(GLFW_KEY_D)) ProcessKeyboard(WorldDirection::Right);
 
-		if (CheckKey(GLFW_KEY_LEFT_SHIFT, GLFW_PRESS)) player.currentSpeed = player.defaultSpeed * 2.0f;
-		else if (CheckKey(GLFW_KEY_LEFT_CONTROL, GLFW_PRESS)) player.currentSpeed = player.defaultSpeed * 0.25f;
+		// Noclip/flying mode inputs
+		bool alreadyControl = false;
+		if (!player.collisionEnabled) {
+			if (CheckKey(GLFW_KEY_SPACE)) ProcessKeyboard(WorldDirection::Up);
+			if (CheckKey(GLFW_KEY_LEFT_CONTROL)) { ProcessKeyboard(WorldDirection::Down); alreadyControl = true; }
+		}
+
+		// Speed modifiers
+		if (CheckKey(GLFW_KEY_LEFT_SHIFT)) player.currentSpeed = player.defaultSpeed * 2.0f;
+		else if (!alreadyControl && CheckKey(GLFW_KEY_LEFT_CONTROL)) player.currentSpeed = player.defaultSpeed * 0.5f;
 		else player.currentSpeed = player.defaultSpeed;
 	}
 }
@@ -113,9 +136,9 @@ void Player::UpdateMovement() noexcept
 {
 	// Player should slowly come to a stop instead of immediately stopping when no movement is applied
 	// TODO: Framerate-independent lerp/smoothing
-	m_velocity.x = Math::lerp(m_velocity.x, 0.0, game.deltaTime);
-	m_velocity.y = Math::lerp(m_velocity.y, 0.0, game.deltaTime);
-	m_velocity.z = Math::lerp(m_velocity.z, 0.0, game.deltaTime);
+	m_velocity.x = Math::lerp(m_velocity.x, 0.0, game.deltaTime * 5.0);
+	m_velocity.y = Math::lerp(m_velocity.y, 0.0, game.deltaTime * 5.0);
+	m_velocity.z = Math::lerp(m_velocity.z, 0.0, game.deltaTime * 5.0);
 
 	// Check if the player velocity is close enough to zero to simply treat it as not moving
 	// (Smooth player movement means the player could move by a millionth of a block, which is basically 
@@ -178,7 +201,8 @@ void Player::UpdateMovement() noexcept
 		// The new position to check collisions for
 		const glm::dvec3 newPosition = player.position + m_velocity;
 
-		// Collision checks in each axis (order doesn't matter - same results)
+		// Collision checks in each axis:
+		// X axis
 		for (const CollisionInfo& colInfo : X_collisionPositions) {
 			const WorldPos pos = newPosition + colInfo.direction;
 			if (ChunkSettings::GetBlockData(world->GetBlock(pos.x, pos.y, pos.z)).isSolid) {
@@ -186,7 +210,7 @@ void Player::UpdateMovement() noexcept
 				if ((axis >= 0.0) == colInfo.positiveAxis) { axis = 0.0; break; }
 			}
 		}
-
+		// Y axis
 		for (const CollisionInfo& colInfo : Y_collisionPositions) {
 			const WorldPos pos = newPosition + colInfo.direction;
 			if (ChunkSettings::GetBlockData(world->GetBlock(pos.x, pos.y, pos.z)).isSolid) {
@@ -194,7 +218,7 @@ void Player::UpdateMovement() noexcept
 				if ((axis >= 0.0) == colInfo.positiveAxis) { axis = 0.0; break; }
 			}
 		}
-
+		// Z axis
 		for (const CollisionInfo& colInfo : Z_collisionPositions) {
 			const WorldPos pos = newPosition + colInfo.direction;
 			if (ChunkSettings::GetBlockData(world->GetBlock(pos.x, pos.y, pos.z)).isSolid) {
@@ -233,7 +257,10 @@ void Player::BreakBlock() noexcept
 
 ModifyWorldResult Player::PlaceBlock() noexcept
 {
+	// Determine selected block in inventory
 	const ObjectID placeBlock = player.inventory[selected].objectID;
+
+	// Only place if the current selected block is valid
 	if (placeBlock != ObjectID::Air && ChunkSettings::GetBlockData(player.targetBlock).isSolid) {
 		const ModifyWorldResult result = world->SetBlock(
 			player.targetBlockPosition.x, 
@@ -251,24 +278,35 @@ ModifyWorldResult Player::PlaceBlock() noexcept
 
 void Player::ProcessKeyboard(WorldDirection direction) noexcept
 {
-	const float directionMultiplier = static_cast<float>(player.currentSpeed * game.deltaTime);
+	const double directionMultiplier = player.currentSpeed * game.deltaTime;
 
+	// Add to velocity based on frame time and input
 	switch (direction) {
+		// Player movement
 		case WorldDirection::Front:
-			m_velocity += static_cast<glm::dvec3>(m_camFront * directionMultiplier);
+			m_velocity += m_camFront * directionMultiplier;
 			break;
 		case WorldDirection::Back:
-			m_velocity += static_cast<glm::dvec3>(-m_camFront * directionMultiplier);
+			m_velocity += -m_camFront * directionMultiplier;
 			break;
 		case WorldDirection::Left:
-			m_velocity += static_cast<glm::dvec3>(-m_camRight * directionMultiplier);
+			m_velocity += -m_camRight * directionMultiplier;
 			break;
 		case WorldDirection::Right:
-			m_velocity += static_cast<glm::dvec3>(m_camRight * directionMultiplier);
+			m_velocity += m_camRight * directionMultiplier;
 			break;
+		// Flying movement
 		case WorldDirection::Up:
-			// TODO: jump direction variable
-			m_velocity += glm::dvec3(0.0, 10.0, 0.0);
+			m_velocity += m_camUp * directionMultiplier;
+			break;
+		case WorldDirection::Down:
+			m_velocity += -m_camUp * directionMultiplier;
+			break;
+		// Jumping logic
+		case WorldDirection::None:
+			// Lazy 'grounded' check
+			if (abs(m_velocity.y) < 0.1) break;
+			m_velocity += glm::dvec3(0.0, 5.0, 0.0);
 			break;
 		default:
 			break;
@@ -300,8 +338,11 @@ void Player::RenderBlockOutline() const noexcept
 
 void Player::RenderPlayerGUI() const noexcept
 {
+	// Bind VAO and use inventory shader
 	game.shader.UseShader(Shader::ShaderID::Inventory);
 	glBindVertexArray(m_inventoryVAO);
+
+	// Only draw the inventory if it is opened
 	const int instances = static_cast<int>(player.inventoryOpened ? m_totalInventoryInstances : m_hotbarInstances);
 	glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, instances);
 }
@@ -320,133 +361,133 @@ void Player::MouseMoved(double x, double y) noexcept
 	if (player.inventoryOpened) return;
 	float fx = static_cast<float>(x), fy = static_cast<float>(y);
 
-	constexpr float not90 = 90.0f - 1e-05f;
-	player.yaw = Math::loopAround(player.yaw + (fx * player.sensitivity), -180.0f, 180.0f);
-	player.pitch = Math::clamp(player.pitch + (fy * player.sensitivity), -not90, not90);
-	player.moved = true;
+	// Looking straight up causes camera to flip, so stop just before 90 degrees
+	constexpr double not90 = 89.9999;
 
+	// Calculate camera angles
+	player.yaw = Math::loopAround(player.yaw + (fx * player.sensitivity), -180.0, 180.0);
+	player.pitch = Math::clamp(player.pitch + (fy * player.sensitivity), -not90, not90);
+	player.moved = true; // Update other camera variables
+
+	// Determine camera direction (unused for now)
 	player.lookDirectionPitch =
 		player.pitch > 60.0f ? WorldDirection::Up :
 		player.pitch < -60.0f ? WorldDirection::Down : WorldDirection::None;
-
 	player.lookDirectionYaw =
 		player.yaw >= -45.0f && player.yaw < 45.0f ? WorldDirection::Front :
 		player.yaw >= 45.0f && player.yaw < 135.0f ? WorldDirection::Right :
 		player.yaw >= 135.0f || player.yaw < -135.0f ? WorldDirection::Back : WorldDirection::Left;
 
+	// Other camera related functions
 	UpdateCameraVectors();
 	RaycastBlock();
 }
 
 void Player::RaycastBlock() noexcept
 {
-	glm::vec3 rayDirection = m_camFront;
-
-	glm::vec3 rayUnitStep = {
-		sqrt(1.0f + (rayDirection.y / rayDirection.x) * (rayDirection.y / rayDirection.x)),
-		sqrt(1.0f + (rayDirection.x / rayDirection.y) * (rayDirection.x / rayDirection.y)),
-		sqrt(1.0f + (rayDirection.z / rayDirection.y) * (rayDirection.z / rayDirection.y))
+	// Determine steps in each axis
+	glm::dvec3 deltaRay = { 
+		fabs(1.0 / fmax(m_camFront.x, 0.01)), 
+		fabs(1.0 / fmax(m_camFront.y, 0.01)), 
+		fabs(1.0 / fmax(m_camFront.z, 0.01)) 
 	};
 
-	m_rayResult = player.position;
-	player.targetBlockPosition = m_rayResult;
-	glm::vec3 rayLength{};
-	WorldPos step{};
+	// Initial values for raycasting
+	player.targetBlockPosition = Math::toWorld(player.position);
+	glm::dvec3 sideDistance;
+	WorldPos step;
 
-	// Determine the amount and direction to move in each axis
-	constexpr PosType onePosType = static_cast<PosType>(1);
-
+	// Determine directions and magnitude in each axis
 	// X axis
-	if (rayDirection.x < 0.0f) {
-		step.x = -onePosType;
-		rayLength.x = static_cast<float>(m_rayResult.x - static_cast<double>(player.targetBlockPosition.x)) * rayUnitStep.x;
-	}
-	else {
-		step.x = onePosType;
-		rayLength.x = static_cast<float>(static_cast<double>(player.targetBlockPosition.x + onePosType) - m_rayResult.x) * rayUnitStep.x;
-	}
-
+	double currentSign = m_camFront.x >= 0.0 ? 1.0 : -1.0;
+	step.x = currentSign;
+	sideDistance.x = (player.position.x - static_cast<double>(player.targetBlockPosition.x) + fmax(currentSign, 0.0)) * deltaRay.x * currentSign;
 	// Y axis
-	if (rayDirection.y < 0.0f) {
-		step.y = -onePosType;
-		rayLength.y = static_cast<float>(m_rayResult.y - static_cast<double>(player.targetBlockPosition.y)) * rayUnitStep.y;
-	}
-	else {
-		step.y = onePosType;
-		rayLength.y = static_cast<float>(static_cast<double>(player.targetBlockPosition.y + onePosType) - m_rayResult.y) * rayUnitStep.y;
-	}
-
+	currentSign = m_camFront.y >= 0.0 ? 1.0 : -1.0;
+	step.y = currentSign;
+	sideDistance.y = (player.position.y - static_cast<double>(player.targetBlockPosition.y) + fmax(currentSign, 0.0)) * deltaRay.y * currentSign;
 	// Z axis
-	if (rayDirection.z < 0.0f) {
-		step.z = -onePosType;
-		rayLength.z = static_cast<float>(m_rayResult.z - static_cast<double>(player.targetBlockPosition.z)) * rayUnitStep.z;
-	}
-	else {
-		step.z = onePosType;
-		rayLength.z = static_cast<float>(static_cast<double>(player.targetBlockPosition.z + onePosType) - m_rayResult.z) * rayUnitStep.z;
-	}
+	currentSign = m_camFront.z >= 0.0 ? 1.0 : -1.0;
+	step.z = currentSign;
+	sideDistance.z = (player.position.z - static_cast<double>(player.targetBlockPosition.z) + fmax(currentSign, 0.0)) * deltaRay.z * currentSign;
 
-	float distanceTravelled = 0.0f;
-	enum class Axis : int { X, Y, Z };
-	int maxBlocks = 5;
+	// Determines reach distance
+	//constexpr double maxDistTravel = 5.5;
+	double distanceTravelled = 0.0;
+	int maxloops = 100;
 
-	while (distanceTravelled < player.reachDistance && --maxBlocks) {
+	//const ObjectID initialSelectedBlock = player.targetBlock;
+
+	while (/*distanceTravelled < maxDistTravel && */maxloops--) {
 		// Check shortest axis and move in that direction
+		enum Axis { X, Y, Z };
 		Axis shortestAxis = Axis::X;
-		if (rayLength.y < rayLength.x) shortestAxis = Axis::Y;
-		//if (rayLength.z < rayLength.y) shortestAxis = Axis::Z;
+		if (sideDistance.y < sideDistance.x) shortestAxis = Axis::Y;
+		//if (sideDistance.z < sideDistance[static_cast<int>(shortestAxis)]) shortestAxis = Axis::Z;
 
 		switch (shortestAxis)
 		{
 			case Axis::X:
 				player.targetBlockPosition.x += step.x;
-				distanceTravelled += rayLength.x;
-				rayLength.x += rayUnitStep.x;
+				distanceTravelled += sideDistance.x;
+				sideDistance.x += deltaRay.x;
 				break;
 			case Axis::Y:
 				player.targetBlockPosition.y += step.y;
-				distanceTravelled += rayLength.y;
-				rayLength.y += rayUnitStep.y;
+				distanceTravelled += sideDistance.y;
+				sideDistance.y += deltaRay.y;
 				break;
-				/*case Axis::Z:
-					player.targetBlockPosition.z += step.z;
-					distanceTravelled += rayLength.z;
-					rayLength.z += rayUnitStep.z;
-					break;*/
+			case Axis::Z:
+				player.targetBlockPosition.z += step.z;
+				distanceTravelled += sideDistance.z;
+				sideDistance.z += deltaRay.z;
+				break;
 			default:
 				break;
 		}
-
-		// Check if the reached block is a solid block (not air, water, etc)
-		m_rayResult = m_rayResult + static_cast<glm::dvec3>(rayDirection * distanceTravelled);
-		player.targetBlockPosition = Math::toWorld(m_rayResult);
-
+		
+		// Determine block at current raycast position
 		player.targetBlock = world->GetBlock(
 			player.targetBlockPosition.x,
 			player.targetBlockPosition.y,
-			player.targetBlockPosition.z
+			Math::toWorld(player.position.z)
 		);
+		
+		// Stop if the reached block is a solid block
+		if (ChunkSettings::GetBlockData(player.targetBlock).isSolid) break;
 	}
+
+	// Set raycast position for future use
+	m_rayResult	= player.position + sideDistance;
+
+	// Update block text if needed
+	/*if (initialSelectedBlock != player.targetBlock) {
+		const WorldBlockData blockData = ChunkSettings::GetBlockData(player.targetBlock); // Get block properties
+		const std::string nameText = blockData.name;
+		// Update position to fit all text on screen
+		world->textRenderer.ChangePosition(m_blockText, { 1.0f - (0.01f * nameText.size()), 0.18f }, false);
+		// Update text with block information
+		world->textRenderer.ChangeText(m_blockText, fmt::format("{} ({})", 5, blockData.id));
+	}*/
 }
 
 void Player::UpdateFrustum() noexcept
 {
 	// Calculate frustum values
-	const float halfVside = player.farPlaneDistance * tanf(player.fov * 0.6f);
-	const float halfHside = halfVside * game.aspect;
-	const glm::vec3 frontMultFar = m_camFront * player.farPlaneDistance;
+	const double halfVside = player.farPlaneDistance * tan(player.fov);
+	const double halfHside = halfVside * game.aspect;
+	const glm::dvec3 frontMultFar = m_camFront * player.farPlaneDistance;
 
 	// Set each of the frustum planes of the camera
-	glm::vec3 p_pos = static_cast<glm::vec3>(player.position);
-	player.frustum.near = { p_pos + (player.nearPlaneDistance * m_camFront), m_camFront };
+	player.frustum.near = { player.position + (player.nearPlaneDistance * m_camFront), m_camFront };
 
-	glm::vec3 planeCalc = m_camRight * halfHside;
-	player.frustum.right = { p_pos, glm::cross(frontMultFar - planeCalc, m_camUp) };
-	player.frustum.left = { p_pos, glm::cross(m_camUp, frontMultFar + planeCalc) };
+	glm::dvec3 planeCalc = m_camRight * halfHside;
+	player.frustum.right = { player.position, glm::cross(frontMultFar - planeCalc, m_camUp) };
+	player.frustum.left = { player.position, glm::cross(m_camUp, frontMultFar + planeCalc) };
 
 	planeCalc = m_camUp * halfVside;
-	player.frustum.top = { p_pos, glm::cross(m_camRight, frontMultFar - planeCalc) };
-	player.frustum.bottom = { p_pos, glm::cross(frontMultFar + planeCalc, m_camRight) };
+	player.frustum.top = { player.position, glm::cross(m_camRight, frontMultFar - planeCalc) };
+	player.frustum.bottom = { player.position, glm::cross(frontMultFar + planeCalc, m_camRight) };
 }
 
 void Player::UpdateOffset() noexcept
@@ -455,24 +496,25 @@ void Player::UpdateOffset() noexcept
 	player.offset = Math::toWorld(player.position * ChunkSettings::CHUNK_SIZE_RECIP_DBL);
 	#else
 	const WorldPos org = player.offset;
-	player.offset = Math::toWorld(player.position * ChunkSettings::CHUNK_SIZE_RECIP_DBL);
+	const glm::dvec3 currentOffset = player.position * ChunkSettings::CHUNK_SIZE_RECIP_DBL;
+	player.offset = Math::toWorld(currentOffset);
 	if (!game.noGeneration && (org.x != player.offset.x || org.z != player.offset.z)) world->STChunkUpdate();
 	#endif
 }
 
 void Player::UpdateCameraVectors() noexcept
 {
-	const float pitchRadians = Math::TORADIANS_FLT * player.pitch;
-	const float yawRadians = Math::TORADIANS_FLT * player.yaw;
-	const float cosPitchRadians = cosf(pitchRadians);
+	const double pitchRadians = Math::TORADIANS_FLT * player.pitch;
+	const double yawRadians = Math::TORADIANS_FLT * player.yaw;
+	const double cosPitchRadians = cosf(pitchRadians);
 
 	m_camFront = glm::normalize(glm::vec3(
-		cosf(yawRadians) * cosPitchRadians,
-		sinf(pitchRadians),
-		sinf(yawRadians) * cosPitchRadians)
-	);
+		cos(yawRadians) * cosPitchRadians,
+		sin(pitchRadians),
+		sin(yawRadians) * cosPitchRadians
+	));
 
-	constexpr const glm::vec3 vecUp = glm::vec3(0.0f, 1.0f, 0.0f);
+	constexpr glm::dvec3 vecUp = glm::dvec3(0.0, 1.0, 0.0);
 	m_camRight = glm::normalize(glm::cross(m_camFront, vecUp));
 	m_camUp = glm::normalize(glm::cross(m_camRight, m_camFront));
 }
@@ -490,7 +532,7 @@ void Player::UpdateInventory() noexcept
 	glBindVertexArray(m_inventoryVAO);
 
 	glBindBuffer(GL_ARRAY_BUFFER, m_inventoryIVBO);
-	glVertexAttribIPointer(0u, 2, GL_UNSIGNED_INT, sizeof(uint32_t[2]), nullptr);
+	glVertexAttribIPointer(0u, 2, GL_UNSIGNED_INT, sizeof(std::uint32_t[2]), nullptr);
 
 	// Data layout:
 	// First:   YYYY YYYY YYYY YYYY XXXX XXXX XXXX XXXX

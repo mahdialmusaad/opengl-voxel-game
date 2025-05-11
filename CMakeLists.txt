@@ -97,4 +97,5 @@ set_target_properties(
 )
 
 # Add resources (shaders and textures) to resulting folder
+message("-- Copying game resources")
 file(COPY ${BC_SRC}/Resources DESTINATION ${RESULT_FLD})

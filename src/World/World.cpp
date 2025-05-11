@@ -64,6 +64,14 @@ void World::DrawWorld() const noexcept
 	glMultiDrawArraysIndirect(GL_TRIANGLE_STRIP, nullptr, m_indirectCalls, 0);
 }
 
+void World::DebugReset() noexcept
+{
+	for (const auto& [offset, chunk] : chunks) RemoveChunk(chunk);
+	#ifdef GAME_SINGLE_THREAD
+	STChunkUpdate();
+	#endif
+}
+
 Chunk* World::WorldPositionToChunk(PosType x, PosType y, PosType z) const noexcept
 {
 	// Gets the chunk that contains position x, y, z
@@ -344,7 +352,11 @@ void World::STChunkUpdate() noexcept
 		}
 	}
 
-	for (const auto& [offset, chunk] : unique) chunk->CalculateChunk(finder);
+	if (game.testbool) {
+		for (const auto& [offset, chunk] : unique) chunk->CalculateChunkGreedy(finder);
+	} else {
+		for (const auto& [offset, chunk] : unique) chunk->CalculateChunk(finder);
+	}
 
 	m_transferChunks.clear();
 	UpdateWorldBuffers();
@@ -464,7 +476,7 @@ void World::UpdateWorldBuffers() noexcept
 
 	// World data buffer (on initial update, all chunk faces have instance data so the nullptr world data is not accessed)
 	std::uint32_t* activeWorldData = nullptr;
-	if (canMap) activeWorldData = static_cast<uint32_t*>(glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY));
+	if (canMap) activeWorldData = static_cast<std::uint32_t*>(glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY));
 
 	// Create new int array for all chunk data and index value
 	std::uint32_t* newWorldData = new std::uint32_t[squaresCount];
@@ -511,11 +523,11 @@ void World::UpdateWorldBuffers() noexcept
 void World::SortWorldBuffers() noexcept
 {
 	// The total amount of 'chunk faces' as seen in the 'world buffer update' function
-	const std::size_t chunkFacesTotal = chunks.size() * static_cast<std::size_t>(6);
+	const std::size_t chunkFacesTotal = chunks.size() * 6u;
 
 	// Two per chunk face is needed to render translucent objects seperately
-	IndirectDrawCommand* worldIndirectData = new IndirectDrawCommand[chunkFacesTotal * static_cast<std::size_t>(2)];
-	ShaderChunkOffset* worldOffsetData = new ShaderChunkOffset[chunkFacesTotal * static_cast<std::size_t>(2)];
+	IndirectDrawCommand* worldIndirectData = new IndirectDrawCommand[chunkFacesTotal * 2u];
+	ShaderChunkOffset* worldOffsetData = new ShaderChunkOffset[chunkFacesTotal * 2u];
 
 	// Offset value data
 	ShaderChunkOffset offsetData {};
@@ -553,13 +565,7 @@ void World::SortWorldBuffers() noexcept
 
 			// Check if it would even be possible to see this (opaque) face of the chunk
 			// e.g. you can't see forward faces when looking north at a chunk
-
-			//	2d example:		---------
-			//	 				|opaque |
-			//	 O ----------->	| shape | <---- impossible to see this face on the opposite side
-			//	/|\				|		|
-			//	/ \				---------
-
+			
 			switch (offsetData.faceIndex) {
 				case IWorldDir_Up:
 					if (player.offset.y < offset.y) continue;

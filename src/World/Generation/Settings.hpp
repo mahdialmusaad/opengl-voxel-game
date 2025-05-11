@@ -3,7 +3,7 @@
 #define _SOURCE_GENERATION_SETTINGS_HDR_
 
 #include "Globals/Definitions.hpp"
-#include "Rendering/FrustumCulling.hpp"
+#include "Rendering/Frustum.hpp"
 
 enum class WorldDirection : std::int8_t
 {
@@ -61,7 +61,7 @@ struct WorldBlockData
 	typedef int(*renderLookupDefinition)(const WorldBlockData& original, const WorldBlockData& target);
 
 	constexpr WorldBlockData(
-		ObjectID oid, 
+		ObjectID oid, const char* name,
 		TextureIDTypeof t0, TextureIDTypeof t1, TextureIDTypeof t2, TextureIDTypeof t3, TextureIDTypeof t4, TextureIDTypeof t5,
 		bool hasTransparency, 
 		bool isSolid, 
@@ -70,6 +70,7 @@ struct WorldBlockData
 		renderLookupDefinition renderFunc
 	) noexcept :
 		id(static_cast<int>(oid)),
+		name(name),
 		textures{ t0, t1, t2, t3, t4, t5 },
 		lightEmission(light),
 		hasTransparency(hasTransparency),
@@ -79,6 +80,7 @@ struct WorldBlockData
 	}
 
 	const int id;
+	const char* name;
 	const std::uint8_t textures[6];
 	const std::uint8_t lightEmission;
 	const bool hasTransparency, isSolid, natureReplaceable;
@@ -113,7 +115,7 @@ namespace WorldBlockData_DEF
 		Irreplaceable = false
 	};
 
-	enum LightStages : uint8_t {
+	enum LightStages : std::uint8_t {
 		LightN,
 		Light1,
 		Light2,
@@ -135,47 +137,47 @@ namespace WorldBlockData_DEF
 	constexpr WorldBlockData BlockIDData[static_cast<int>(ObjectID::NumUnique)] = {
 	// ID, textures, transparency, 'solidness', replaceable, emission, render function index
 		{ 
-			ObjectID::Air, 
+			ObjectID::Air, "Air",
 			DefaultTex, DefaultTex, DefaultTex, DefaultTex, DefaultTex, DefaultTex, 
 			Transparency, NotSolid, Replaceable, LightN, R_Never
 		},
 		{ 
-			ObjectID::Grass, 
+			ObjectID::Grass, "Grass",
 			GrassTop, Dirt, GrassSide, GrassSide, GrassSide, GrassSide, 
 			Opaque, Solid, Irreplaceable, LightN, R_Default
 		},
 		{
-			ObjectID::Dirt,
+			ObjectID::Dirt, "Dirt",
 			Dirt, Dirt, Dirt, Dirt, Dirt, Dirt,
 			Opaque, Solid, Irreplaceable, LightN, R_Default
 		},
 		{
-			ObjectID::Stone,
+			ObjectID::Stone, "Stone",
 			Stone, Stone, Stone, Stone, Stone, Stone,
 			Opaque, Solid, Irreplaceable, LightN, R_Default
 		},
 		{
-			ObjectID::Sand,
+			ObjectID::Sand, "Sand",
 			Sand, Sand, Sand, Sand, Sand, Sand,
 			Opaque, Solid, Irreplaceable, LightN, R_Default
 		},
 		{
-			ObjectID::Water,
+			ObjectID::Water, "Water",
 			Water, Water, Water, Water, Water, Water,
 			Transparency, NotSolid, Replaceable, LightN, R_HideSelf
 		},
 		{
-			ObjectID::Log,
+			ObjectID::Log, "Log",
 			LogInner, LogInner, LogSide, LogSide, LogSide, LogSide,
 			Opaque, Solid, Irreplaceable, LightN, R_Default
 		},
 		{
-			ObjectID::Leaves,
+			ObjectID::Leaves, "Leaves",
 			Leaves, Leaves, Leaves, Leaves, Leaves, Leaves,
 			Opaque, Solid, Replaceable, LightN, R_Default
 		},
 		{
-			ObjectID::Planks,
+			ObjectID::Planks, "Planks",
 			Planks, Planks, Planks, Planks, Planks, Planks,
 			Opaque, Solid, Irreplaceable, LightN, R_Default
 		},
@@ -366,8 +368,8 @@ struct ChunkLookupTable
 	}
 
 	struct ChunkLookupData {
-		uint16_t blockIndex = 0u;
-		uint8_t nearbyIndex = 0u;
+		std::uint16_t blockIndex = 0u;
+		std::uint8_t nearbyIndex = 0u;
 	};
 
 	ChunkLookupData lookupData[ChunkSettings::CHUNK_UNIQUE_FACES]{}; 

@@ -8,15 +8,16 @@
 class Player
 {
 private:
-	uint8_t m_outlineVAO, m_inventoryVAO, m_inventoryIVBO, m_inventoryQuadVBO, m_outlineVBO;
-	uint8_t m_hotbarInstances, m_totalInventoryInstances;
-	uint8_t selected = 0;
-	TextRenderer::ScreenText** inventoryCountText;
+	std::uint8_t m_outlineVAO, m_inventoryVAO, m_inventoryIVBO, m_inventoryQuadVBO, m_outlineVBO;
+	std::uint8_t m_hotbarInstances, m_totalInventoryInstances;
+	std::uint8_t selected = 0;
+	TextRenderer::ScreenText** m_inventoryCountText, *m_blockText;
 public:
 	PlayerObject player;
 	World *world;
 
 	Player() noexcept;
+	void InitializeText() noexcept;
 	void CheckInput() noexcept;
 	void UpdateMovement() noexcept;
 	void SetPosition(glm::dvec3 newPos) noexcept;
@@ -43,9 +44,9 @@ private:
 	void UpdateCameraVectors() noexcept;
 	void RaycastBlock() noexcept;
 
-	glm::vec3 m_camUp{};
-	glm::vec3 m_camFront{};
-	glm::vec3 m_camRight{};
+	glm::dvec3 m_camUp{};
+	glm::dvec3 m_camFront{};
+	glm::dvec3 m_camRight{};
 
 	glm::dvec3 m_rayResult{};
 	glm::dvec3 m_velocity{};

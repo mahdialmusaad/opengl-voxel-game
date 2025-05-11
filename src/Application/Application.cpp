@@ -58,6 +58,9 @@ GameObject::GameObject() :
 	m_infoText = tr.CreateText(glm::vec2(0.01f, 0.18f), ""); // Reserve text object for dynamic info text
 	m_debugText = tr.CreateText(glm::vec2(0.01f, 0.3f), ""); // Debugging purposes
 
+	// Initialize player text
+	playerFunctions.InitializeText();
+
 	#ifndef GAME_SINGLE_THREAD
 	world.StartThreadChunkUpdate(); // Update chunks when needed on a seperate thread
 	#endif
@@ -86,14 +89,13 @@ void GameObject::Main()
 		glfwPollEvents(); // Poll I/O such as key and mouse events
 
 		// Time values
-		game.currentFrameTime = glfwGetTime();
-		game.deltaTime = game.currentFrameTime - m_lastFrameTime;
+		game.deltaTime = glfwGetTime() - m_lastTime;
 		game.tickedDeltaTime = game.deltaTime * game.tickSpeed;
 		if (game.deltaTime > largestUpdateTime) largestUpdateTime = game.deltaTime;
-		game.tickedFrameTime += game.tickedDeltaTime;
+		game.gameTime += game.tickedDeltaTime;
 		windowTitleUpdateTime += game.deltaTime;
 		m_updateTime += game.deltaTime;
-		m_lastFrameTime = game.currentFrameTime;
+		m_lastTime = game.deltaTime + m_lastTime;
 		avgFPSCount++;
 
 		playerFunctions.CheckInput(); // Check for per-frame inputs
@@ -111,7 +113,7 @@ void GameObject::Main()
 		m_skybox.RenderStars();
 		m_skybox.RenderClouds();
 
-		if (showGUI) {
+		if (game.showGUI) {
 			glClear(GL_DEPTH_BUFFER_BIT); // Clear depth again to guarantee GUI draws on top
 			world.textRenderer.RenderText();
 			playerFunctions.RenderPlayerGUI();
@@ -181,10 +183,10 @@ void GameObject::TextUpdate()
 	WorldPos& off = player.offset;
 
 	std::string infofmt = fmt::format(
-		"\n{:.3f} {:.3f} {:.3f} ({} {} {})\nYaw:{:.1f} Ptc:{:.1f} Spd:{:.1f}\nTime:{:.3f} ({:.3f})\nTri:{}",
+		"\n{:.3f} {:.3f} {:.3f} ({} {} {})\nYaw:{:.1f} Ptc:{:.1f}\nSpd:{:.1f} Time:{:.3f}\nTris:{}",
 		pos.x, pos.y, pos.z, off.x, off.y, off.z, 
-		player.yaw, player.pitch, player.currentSpeed, 
-		game.currentFrameTime, game.tickedFrameTime, 
+		player.yaw, player.pitch, 
+		player.currentSpeed, game.gameTime, 
 		fmt::group_digits(world.squaresCount * 2u)
 	);
 
@@ -214,26 +216,28 @@ void GameObject::ExitGame()
 
 void GameObject::UpdateAspect()
 {
-	// Get window dimensions as float
-	const float w = static_cast<float>(game.width),
-		h = static_cast<float>(game.height);
-
+	// Get window dimensions as a floating point value
+	const float w = static_cast<float>(game.width), h = static_cast<float>(game.height);
 	// Aspect ratio of screen
 	game.aspect = w / h;
 
 	// Used for resizing GUI elements
-	const float textWidth = 0.005f,
-		textHeight = 0.08f,
-		inventoryWidth = 1.0f,
-		inventoryHeight = 1.0f;
+	world.textRenderer.textWidth = 0.006f;
+	world.textRenderer.textHeight = 0.07f;
+	const float inventoryWidth = 1.0f, inventoryHeight = 1.0f;
 
 	// Update the shader UBO values
-	float sizesData[] = { game.aspect, textWidth, textHeight, inventoryWidth, inventoryHeight };
+	float sizesData[] = { 
+		game.aspect,
+		world.textRenderer.textWidth,
+		world.textRenderer.textHeight,
+		inventoryWidth,
+		inventoryHeight
+	};
 	OGL::UpdateUBO(m_sizesUBO, sizeof(float[2]), sizeof(sizesData), sizesData);
 
 	// Update text values
-	world.textRenderer.letterSpacing = game.aspect * textWidth;
-	world.textRenderer.lineSpacing = textHeight * 0.5f;
+	world.textRenderer.characterSpacingUnits = 0.001f;
 	world.textRenderer.RecalculateAllText();
 
 	// Update player inventory GUI
@@ -248,7 +252,7 @@ void GameObject::UpdatePerspective()
 	// Update the perspective matrix with the current saved variables
 	m_matrices[Matrix_Perspective] = glm::perspective(
 		player.fov,
-		game.aspect,
+		static_cast<double>(game.aspect),
 		player.nearPlaneDistance,
 		player.farPlaneDistance
 	);
@@ -274,7 +278,7 @@ void GameObject::UpdateFrameValues()
 	OGL::UpdateUBO(m_positionsUBO, 0, sizeof(gamePositions), gamePositions);
 
 	// Time values for shaders
-	const float crntFrame = static_cast<float>(game.tickedFrameTime);
+	const float crntFrame = static_cast<float>(game.gameTime);
 	float m_gameDayTime = sinf((crntFrame * Skybox::dayNightTimeReciprocal * Math::PI_FLT) - Math::HALF_PI) + 1.0f;
 
 	const float skyLerp = m_gameDayTime * 0.5f;

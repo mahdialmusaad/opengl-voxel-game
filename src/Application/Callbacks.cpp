@@ -99,7 +99,7 @@ void GameObject::Callbacks::ResizeCallback(int width, int height) noexcept
 	else if (game.minimized) {
 		game.minimized = false;
 		// Set to default game frame update state
-		glfwSwapInterval(app->maxFPS ? 0 : 1);
+		glfwSwapInterval(game.maxFPS ? 0 : 1);
 	}
 
 	// Update graphics viewport and settings
@@ -245,10 +245,10 @@ void GameObject::Callbacks::ApplyInput(int key, int action) noexcept
 			ToggleInventory();
 		}}},
 		{ GLFW_KEY_Z, { pressInput, [&]() {
-			glPolygonMode(GL_FRONT_AND_BACK, b_not(app->wireframe) ? GL_LINE : GL_FILL);
+			glPolygonMode(GL_FRONT_AND_BACK, b_not(game.wireframe) ? GL_LINE : GL_FILL);
 		}}},
 		{ GLFW_KEY_X, { pressInput, [&]() {
-			glfwSwapInterval(!b_not(app->maxFPS));
+			glfwSwapInterval(!b_not(game.maxFPS));
 		}}},
 		{ GLFW_KEY_C, { pressInput, [&]() {
 			b_not(app->player.collisionEnabled);
@@ -260,8 +260,12 @@ void GameObject::Callbacks::ApplyInput(int key, int action) noexcept
 			game.shader.InitShader();
 			app->UpdateAspect();
 		}}},
+		{ GLFW_KEY_T, { pressInput, [&]() {
+			b_not(game.testbool);
+			app->world.DebugReset();
+		}}},
 		{ GLFW_KEY_F1, { pressInput, [&]() {
-			b_not(app->showGUI);
+			b_not(game.showGUI);
 		}}},
 		{ GLFW_KEY_F2, { pressInput, [&]() {
 			TakeScreenshot();
@@ -271,7 +275,7 @@ void GameObject::Callbacks::ApplyInput(int key, int action) noexcept
 			game.focusChanged = true;
 		}}},
 		{ GLFW_KEY_SLASH, { pressInput, [&]() {
-			app->showGUI = true;
+			game.showGUI = true;
 			BeginChat();
 		}}},
 		{ GLFW_KEY_LEFT_BRACKET, { pressInput, [&]() {
@@ -387,6 +391,7 @@ void GameObject::Callbacks::ApplyChat()
 	const auto getBlk = [&](int ind) { return static_cast<ObjectID>(std::stoi(getArg(ind))); };
 	const auto getDbl = [&](int ind) { return std::stod(getArg(ind)); };
 	const auto getFlt = [&](int ind) { return std::stof(getArg(ind)); };
+	const auto hasArg = [&](int ind) { return a.size() > static_cast<std::size_t>(ind); };
 
 	enum class CVALS { X, Y, Z };
 	typedef std::pair<int, CVALS> ConversionPair;
@@ -420,6 +425,7 @@ void GameObject::Callbacks::ApplyChat()
 
 	// Macro for argument size check
 	#define argnum(x) if (args.size() != x) return;
+	#define argmax(x) if (args.size() > x) return;
 
 	// Map of all commands and their functions
 	typedef std::function<void()> func;
@@ -440,20 +446,18 @@ void GameObject::Callbacks::ApplyChat()
 			plr.defaultSpeed = getDbl(0);
 		}},
 		{ "testval", [&]() {
-			argnum(2);
+			argmax(2);
 			game.testfloat = getFlt(0);
-			game.testfloat2 = getFlt(1);
-			fplayer.UpdateInventory();
+			if (hasArg(1)) game.testfloat2 = getFlt(1);
+			app->UpdateAspect();
 		}},
 		{ "tick", [&]() {
 			argnum(1);
-			game.tickSpeed = getDbl(0);
+			game.tickSpeed = std::clamp(getDbl(0), -100.0, 100.0);
 		}},
 		{ "time", [&]() {
 			argnum(1);
-			const double newTime = getDbl(0);
-			game.currentFrameTime = newTime;
-			game.tickedFrameTime = newTime;
+			game.gameTime = getDbl(0);
 		}},
 		{ "fill", [&]() {
 			argnum(7);

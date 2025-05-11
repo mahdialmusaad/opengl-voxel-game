@@ -33,7 +33,7 @@ double Math::lerp(double a, double b, double t) noexcept
 {
 	return a + (b - a) * t;
 }
-WorldPos Math::toWorld(glm::dvec3 v) noexcept
+WorldPos Math::toWorld(const glm::dvec3& v) noexcept
 {
 	return { toWorld(v.x), toWorld(v.y), toWorld(v.z) };
 }
@@ -48,7 +48,7 @@ PosType Math::toWorld(double a) noexcept
 void TextFormat::log(std::string t, bool nl) noexcept
 {
 	// Print out string with current time for logging purposes
-	fmt::print("[ {:.3f}ms ]\t{}{}", glfwGetTime() * 1000.0, t, (nl ? "\n" : ""));
+	fmt::print("[ {:.3f}ms ] {}{}",  glfwGetTime() * 1000.0, t, (nl ? "\n" : ""));
 }
 void TextFormat::warn(std::string t, std::string ttl) noexcept
 {
@@ -334,7 +334,7 @@ void Shader::LoadTexture(OGLImageInfo& info, const char* filename, bool border, 
 Shader::~Shader() noexcept
 {
 	// Delete all valid shader programs
-	for (const uint8_t& program : m_programs) {
+	for (const std::uint8_t& program : m_programs) {
 		if (program == 0) continue;
 		glDeleteProgram(program);
 	}

@@ -4,17 +4,17 @@
 
 #include "Globals/Definitions.hpp"
 
-struct FrustumPlane 
-{
-	glm::vec3 normal = { 0.0f, 1.0f, 0.0f };
-	float distance = 0.0f;
-
-	FrustumPlane() noexcept {};
-	FrustumPlane(const glm::vec3& distVec, const glm::vec3& _normal) noexcept : normal(_normal), distance(glm::dot(_normal, distVec)) {}
-	constexpr float DistToPlane(const glm::vec3& point) const noexcept { return glm::dot(normal, point) - distance; }
-};
-
 struct CameraFrustum {
+	struct FrustumPlane 
+	{
+		glm::dvec3 normal = { 0.0, 1.0, 0.0 };
+		double distance = 0.0;
+
+		FrustumPlane() noexcept {};
+		FrustumPlane(const glm::dvec3& distVec, const glm::dvec3& _normal) noexcept : normal(_normal), distance(glm::dot(_normal, distVec)) {}
+		constexpr float DistToPlane(const glm::dvec3& point) const noexcept { return glm::dot(normal, point) - distance; }
+	};
+
 	FrustumPlane top;
 	FrustumPlane bottom;
 
@@ -24,10 +24,11 @@ struct CameraFrustum {
 	FrustumPlane near;
 };
 
+/*
 struct FrustumSphere 
 {
-	glm::vec3 center;
-	float radius = 0.0f;
+	glm::dvec3 center;
+	double radius = 0.0;
 
 	FrustumSphere(const glm::vec3& center, float radius) noexcept : center(center), radius(radius) {}
 
@@ -41,5 +42,6 @@ struct FrustumSphere
 			OnPlane(frustum.near);
 	}
 };
+*/
 
 #endif // _SOURCE_RENDERING_FRSTCLL_HDR_

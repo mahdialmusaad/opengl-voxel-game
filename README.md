@@ -27,8 +27,8 @@ There are still many things that could be improved about the game, but implement
 - Controller support
 
 ## Commands
-Commands are also available to make exploring and editing the world easier! The implementations can be seen in the [application source file](https://github.com/mahdialmusaad/badcraft/blob/main/src/Utility/Application.cpp) ('ApplyChat' function)
-- /tp x y z - Teleport to specified x, y and z coordinates. Scientific notation and other keywords are allowed (e.g. inf, NaN).
+Commands are also available to make exploring and editing the world easier! The implementations can be seen in the [callbacks file](https://github.com/mahdialmusaad/badcraft/blob/main/src/Application/Callbacks.cpp).
+- /tp x y z - Teleport to specified x, y and z coordinates. Scientific notation and other keywords are allowed.
 - /speed n - Change the player's current speed to the specified value.
 - /tick n - Change the tick speed to the specified value, which affects the speed at which in-game time passes.
 - /time n - Change the current in-game time to the specified value.
@@ -41,7 +41,7 @@ Commands are also available to make exploring and editing the world easier! The 
 <sup>Commands feature (see bottom-left of image)</sup>
 
 ## Controls
-The implementations of controls can also be viewed and easily edited in the [application source file](https://github.com/mahdialmusaad/badcraft/blob/main/src/Utility/Application.cpp). Currently, they are:
+The implementations of controls can also be viewed and easily edited in the [callbacks file](https://github.com/mahdialmusaad/badcraft/blob/main/src/Application/Callbacks.cpp). Currently, they are:
 - Movement: **WASD**
 - Toggle VSYNC: **X**
 - Wireframe: **Z**
@@ -49,8 +49,6 @@ The implementations of controls can also be viewed and easily edited in the [app
 - Exit game or cancel command (if currently typing one): **ESCAPE**
 - Reload shaders: **R**
 - Toggle inventory: **E**
-- (DEBUG) Toggle collision: **C**
-- (DEBUG) Toggle generation: **V**
 - Change speed (increase and decrease respectively): **COMMA** and **PERIOD**
 - Change FOV (increase and decrease respectively): **I** and **O**
 - Change render distance (increase and decrease respectively): **[** and **]** (square brackets)
@@ -58,7 +56,7 @@ The implementations of controls can also be viewed and easily edited in the [app
 - Take screenshot: **F2**
 - Free cursor: **F3**
 
-Only keyboard and mouse input is supported as of now. Controllers and other input devices will currently not function.
+<sub>(Debug controls not included)<br>Only keyboard and mouse input is supported as of now.</sub>
 
 ## Build
 To compile and run the game, you can simply use [CMake](https://cmake.org/).

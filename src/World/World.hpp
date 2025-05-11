@@ -17,6 +17,7 @@ public:
 
 	World(PlayerObject& player) noexcept;
 	void DrawWorld() const noexcept;
+	void DebugReset() noexcept;
 
 	Chunk* WorldPositionToChunk(PosType x, PosType y, PosType z) const noexcept;
 	ObjectID *EditBlock(PosType x, PosType y, PosType z) const noexcept;

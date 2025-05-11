@@ -124,7 +124,7 @@ struct Math
 	static float lerp(float a, float b, float t) noexcept;
 	static double lerp(double a, double b, double t) noexcept;
 
-	static WorldPos toWorld(glm::dvec3 v) noexcept;
+	static WorldPos toWorld(const glm::dvec3& v) noexcept;
 	static PosType toWorld(double a) noexcept;
 
 	static constexpr double PI_DBL = 3.141592653589793;
@@ -207,6 +207,7 @@ struct GameGlobalsObject
 	float aspect = 1.0f;
 
 	float testfloat = 0.0f, testfloat2 = 0.0f;
+	bool testbool = false;
 
 	Shader shader;
 
@@ -217,12 +218,13 @@ struct GameGlobalsObject
 	bool minimized = false;
 	bool isServer = false;
 	bool noGeneration = false;
+	bool showGUI = true;
+	bool maxFPS = false;
+	bool wireframe = false;
 
 	double tickSpeed = 1.0;
 	double tickedDeltaTime = 0.016;
-
-	double currentFrameTime = 0.0;
-	double tickedFrameTime = 0.0;
+	double gameTime = 0.0;
 
 	double mouseX = 0.0, mouseY = 0.0;
 	double deltaTime = 0.016;

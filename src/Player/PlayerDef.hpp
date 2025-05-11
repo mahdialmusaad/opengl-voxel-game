@@ -31,7 +31,7 @@ struct PlayerObject
 
 	glm::dvec3 position = { 
 		ChunkSettings::CHUNK_SIZE_DBL / 2.0, 
-		static_cast<double>(fmin(ChunkSettings::MAX_WORLD_HEIGHT, 64.0)),
+		static_cast<double>(fmin(ChunkSettings::MAX_WORLD_HEIGHT, 64)),
 		ChunkSettings::CHUNK_SIZE_DBL / 2.0
 	};
 
@@ -42,19 +42,17 @@ struct PlayerObject
 	InventorySlot inventory[36];
 	WorldPos targetBlockPosition {};
 
-	float fov = 1.8f;
-	float sensitivity = 0.1f;
-	float pitch = 0.0f, yaw = 0.0f;
+	double fov = 1.8;
+	double sensitivity = 0.1f;
+	double pitch = 0.0f, yaw = 0.0f;
 
 	double currentSpeed = 2.0, defaultSpeed = 2.0;
 
 	static constexpr double gravity = -3.0;
 	static constexpr double maxGravity = -100.0;
 
-	static constexpr float farPlaneDistance = 10000.0f;
-	static constexpr float nearPlaneDistance = 0.1f;
-
-	static constexpr float reachDistance = 10.0f;
+	static constexpr double farPlaneDistance = 10000.0;
+	static constexpr double nearPlaneDistance = 0.1;
 };
 
 #endif // _SOURCE_PLAYER_PLRDEF_HDR_
