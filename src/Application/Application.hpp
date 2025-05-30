@@ -26,8 +26,9 @@ public:
 		void TakeScreenshot() noexcept;
 		void ToggleInventory() noexcept;
 		void ApplyInput(int key, int action) noexcept;
+		void AddChatMessage(std::string message) noexcept;
 		void BeginChat() noexcept;
-		void ApplyChat();
+		void ApplyCommand();
 	};
 
 	Callbacks callbacks;
@@ -58,7 +59,7 @@ private:
 	double m_lastTime = 0.0, m_updateTime = 0.0;
 	int m_nowFPS, m_avgFPS, m_lowFPS;
 
-	TextRenderer::ScreenText *m_infoText, *m_debugText, *m_screenshotText, *m_chatText, *m_blockText;
+	TextRenderer::ScreenText *m_infoText, *m_debugText, *m_chatText, *m_commandText, *m_blockText;
 };
 
 #endif // _SOURCE_UTILITY_APPLICATION_HDR_

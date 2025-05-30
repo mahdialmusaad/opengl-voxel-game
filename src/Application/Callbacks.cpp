@@ -1,11 +1,11 @@
 #include "Application.hpp"
 
-// Although the 'Callbacks' struct is also part of the 'Badcraft' class (seen in the Application.hpp),
+// Although the 'Callbacks' struct is also part of the 'GameObject' class (seen in the Application.hpp),
 // they are still two distinct objects and including both the class and the inner struct would make
 // the Application.cpp file very large, a pain to debug and scroll through and take long to compile.
 
 // The 'Callbacks' struct still needs to be inside the Application header as it requires access to its members
-// and functions (e.g. resizing window needs to update the perspective matrix, which is in the Badcraft class)
+// and functions (e.g. resizing window needs to update the perspective matrix, which is in the GameObject class)
 
 GameObject::Callbacks::Callbacks()
 {
@@ -21,15 +21,18 @@ void GameObject::Callbacks::KeyPressCallback(int key, int, int action, int)
 		if (action == GLFW_RELEASE) return;
 
 		static const auto ExitChat = [&]() {
-			// Hide the text object and empty the inputted message
-			app->world.textRenderer.ChangeText(app->m_chatText, "");
-			app->m_chatText->type = TextRenderer::T_Type::Hidden;
+			// Hide the text object and empty the inputted message, chat log should stay visible for a bit
+			app->world.textRenderer.ChangeText(app->m_commandText, "");
+			app->m_commandText->textType = TextRenderer::TextType::Hidden;
 			game.chatting = false; // Exit chat mode
+			// Chat log temporarily stays visible
+			app->m_chatText->ResetTextTime();
+			app->m_chatText->textType = TextRenderer::TextType::TemporaryShow;
 		};
 
 		// See if they want to confirm chat message/command rather than adding more text to it
 		if (key == GLFW_KEY_ENTER) {
-			ApplyChat();
+			ApplyCommand();
 			ExitChat();
 		}
 		// Exit chat if escape is pressed
@@ -38,22 +41,19 @@ void GameObject::Callbacks::KeyPressCallback(int key, int, int action, int)
 		}
 		// Chat message editing is done by CharCallback but it does not include backspace
 		else if (key == GLFW_KEY_BACKSPACE) {
-			std::string chatText = app->m_chatText->GetText();
+			std::string chatText = app->m_commandText->GetText();
 			if (chatText.size()) { // Check if there is any text present
 				chatText.erase(chatText.end() - 1); // Remove last char
-				app->world.textRenderer.ChangeText(app->m_chatText, chatText);
+				app->world.textRenderer.ChangeText(app->m_commandText, chatText);
 			}
 		}
 		// Set current message to the previous one (if its valid)
 		else if (key == GLFW_KEY_UP && previousChat.size()) {
-			app->world.textRenderer.ChangeText(app->m_chatText, previousChat);
+			app->world.textRenderer.ChangeText(app->m_commandText, previousChat);
 		}
-		
-		return;
 	}
-
-	// Determine if the input has a linked function and execute if so
-	ApplyInput(key, action);
+	// Determine if the input has a linked function and execute if so 
+	else ApplyInput(key, action);
 }
 
 void GameObject::Callbacks::CharCallback(unsigned codepoint)
@@ -61,8 +61,8 @@ void GameObject::Callbacks::CharCallback(unsigned codepoint)
 	// Add inputted char into chat message
 	if (game.chatting) {
 		app->world.textRenderer.ChangeText(
-			app->m_chatText,
-			app->m_chatText->GetText() + static_cast<char>(codepoint)
+			app->m_commandText,
+			app->m_commandText->GetText() + static_cast<char>(codepoint)
 		);
 	}
 }
@@ -142,7 +142,7 @@ void GameObject::Callbacks::CloseCallback() noexcept
 void GameObject::Callbacks::TakeScreenshot() noexcept
 {
 	bool error = false;
-	constexpr const char* screenshotfolder = "Screenshots";
+	const char* screenshotfolder = "Screenshots";
 
 	// Ensure screenshot folder is valid by either creating or replacing
 	try {
@@ -212,10 +212,8 @@ void GameObject::Callbacks::TakeScreenshot() noexcept
 		if (success) newScreenshotText = "Screenshot saved as " + filenamefmt;
 	}
 
-	// Update text with results
-	app->world.textRenderer.ChangeText(app->m_screenshotText, newScreenshotText);
-	app->m_screenshotText->type = TextRenderer::T_Type::TemporaryShow;
-	app->m_screenshotText->ResetTextTime();
+	// Update chat with results
+	AddChatMessage(newScreenshotText);
 }
 
 void GameObject::Callbacks::ToggleInventory() noexcept
@@ -230,8 +228,8 @@ void GameObject::Callbacks::ToggleInventory() noexcept
 
 void GameObject::Callbacks::ApplyInput(int key, int action) noexcept
 {
-	constexpr int repeatableInput = GLFW_PRESS | GLFW_REPEAT;
-	constexpr int pressInput = GLFW_PRESS;
+	static const int repeatableInput = GLFW_PRESS | GLFW_REPEAT;
+	static const int pressInput = GLFW_PRESS;
 
 	typedef std::pair<int, std::function<void()>> pair;
 	static const std::unordered_map<int, pair> keyFunctionMap = {
@@ -294,11 +292,11 @@ void GameObject::Callbacks::ApplyInput(int key, int action) noexcept
 			app->player.defaultSpeed -= 1.0f;
 		}}},
 		{ GLFW_KEY_I, { repeatableInput, [&]() {
-			app->player.fov += Math::TORADIANS_FLT;
+			app->player.fov += glm::radians(1.0f);
 			app->UpdatePerspective();
 		}}},
 		{ GLFW_KEY_O, { repeatableInput, [&]() {
-			app->player.fov -= Math::TORADIANS_FLT;
+			app->player.fov -= glm::radians(1.0f);
 			app->UpdatePerspective();
 		}}}
 	};
@@ -318,16 +316,56 @@ void GameObject::Callbacks::ApplyInput(int key, int action) noexcept
 	}
 }
 
-void GameObject::Callbacks::BeginChat() noexcept
+void GameObject::Callbacks::AddChatMessage(std::string message) noexcept
 {
-	app->m_chatText->type = TextRenderer::T_Type::Default;
-	game.chatting = true;
+	if (!message.size()) { TextFormat::log("Empty chat message"); return; }
+	
+	// Adding on to previous chat logs; add new line if there is existing text
+	std::string newText = app->m_chatText->GetText();
+	if (app->m_chatText->GetText().size()) newText += '\n';
+
+	// Add a split-up version of the given message to ensure it doesn't take up too much of the screen
+	int splitCounter = 0;
+	for (char x : message) {
+		if (splitCounter == TextRenderer::maxChatCharacterWidth) {
+			newText += "\n";
+			splitCounter = 0;
+		}
+		newText += x;
+		splitCounter++;
+	}
+
+	// Remove possible trailing new line
+	if (TextFormat::stringEndsWith(newText, "\n")) newText.pop_back();
+
+	// Remove previous lines if the line count is too high
+	int removeLines = std::count(newText.begin(), newText.end(), '\n') - TextRenderer::maxChatLines;
+	if (removeLines >= 0) {
+		for (; removeLines >= 0; --removeLines) {
+			newText = newText.substr(newText.find_first_of('\n') + 1);
+		}
+	}
+
+	// Update text with new message
+	app->world.textRenderer.ChangeText(app->m_chatText, newText);
+
+	// Make chat visible for some time
+	app->m_chatText->ResetTextTime();
+	app->m_chatText->textType = TextRenderer::TextType::TemporaryShow;
 }
 
-void GameObject::Callbacks::ApplyChat()
+void GameObject::Callbacks::BeginChat() noexcept
+{
+	// Make command and chat log text visible
+	app->m_commandText->textType = TextRenderer::TextType::Default;
+	app->m_chatText->textType = TextRenderer::TextType::Default;
+	game.chatting = true; // Enter chat mode
+}
+
+void GameObject::Callbacks::ApplyCommand()
 {
 	// Check if there is any text in the first place
-	std::string& command = app->m_chatText->GetText();
+	std::string& command = app->m_commandText->GetText();
 
 	const int cmdSize = static_cast<int>(command.size());
 	if (!cmdSize) return; // Do nothing if empty
@@ -336,7 +374,7 @@ void GameObject::Callbacks::ApplyChat()
 	previousChat = command;
 
 	if (command[0] != '/') {
-		// TODO: normal chat
+		AddChatMessage("[YOU] " + command);
 		return;
 	}
 
@@ -376,13 +414,13 @@ void GameObject::Callbacks::ApplyChat()
 	glm::dvec3 &pos = plr.position;
 
 	// For debug purposes
-	int currentArgumentCheck = 0;
+	int currentArgumentIndex = 0;
 	std::string currentArgument;
 	bool isConverting = false;
 
 	const auto getArg = [&](int ind) -> std::string& {
 		std::string& arg = a[ind];
-		currentArgumentCheck = ind;
+		currentArgumentIndex = ind;
 		currentArgument = arg;
 		return arg;
 	};
@@ -426,6 +464,7 @@ void GameObject::Callbacks::ApplyChat()
 	// Macro for argument size check
 	#define argnum(x) if (args.size() != x) return;
 	#define argmax(x) if (args.size() > x) return;
+	#define argmin(x) if (args.size() < x) return;
 
 	// Map of all commands and their functions
 	typedef std::function<void()> func;
@@ -433,31 +472,44 @@ void GameObject::Callbacks::ApplyChat()
 		{ "tp", [&]() {
 			argnum(3);
 			cvrt({ { 0, CVALS::X }, { 1, CVALS::Y }, { 2, CVALS::Z } });
+			// 'Stripe-lands': 9,007,199,254,740,992
 			fplayer.SetPosition(glm::dvec3(getDbl(0), getDbl(1), getDbl(2)));
+		}},
+		{ "fov", [&]() {
+			argmax(1);
+			if (hasArg(0)) {
+				plr.fov = glm::radians(getDbl(0));
+				app->UpdatePerspective();
+			} else AddChatMessage(fmt::format("Current FOV is {:.1f}", glm::degrees(plr.fov)));
 		}},
 		{ "exit", [&]() {
 			game.mainLoopActive = false;
 		}},
 		{ "help", [&]() {
-			game.mainLoopActive = false; // TODO: do something useful instead of quitting
+			AddChatMessage("Go view github??");
 		}},
 		{ "speed", [&]() {
-			argnum(1);
-			plr.defaultSpeed = getDbl(0);
+			argmax(1);
+			if (hasArg(0)) plr.defaultSpeed = getDbl(0);
+			else AddChatMessage(fmt::format("Current speed is {:.1f}", plr.defaultSpeed));
 		}},
-		{ "testval", [&]() {
-			argmax(2);
-			game.testfloat = getFlt(0);
-			if (hasArg(1)) game.testfloat2 = getFlt(1);
+		{ "test", [&]() {
+			argmax(4);
+			if (hasArg(0)) game.testvals.x = getFlt(0);
+			if (hasArg(1)) game.testvals.y = getFlt(1);
+			if (hasArg(2)) game.testvals.z = getFlt(2);
+			if (hasArg(3)) game.testvals.w = getFlt(3);
 			app->UpdateAspect();
 		}},
 		{ "tick", [&]() {
-			argnum(1);
-			game.tickSpeed = std::clamp(getDbl(0), -100.0, 100.0);
+			argmax(1);
+			if (hasArg(0)) game.tickSpeed = std::clamp(getDbl(0), -100.0, 100.0);
+			else AddChatMessage(fmt::format("Current tick speed is {:.1f}", game.tickSpeed));
 		}},
 		{ "time", [&]() {
-			argnum(1);
-			game.gameTime = getDbl(0);
+			argmax(1);
+			if (hasArg(0)) game.gameTime = getDbl(0);
+			else AddChatMessage(fmt::format("Current time is {:.2f}", game.gameTime));
 		}},
 		{ "fill", [&]() {
 			argnum(7);
@@ -484,10 +536,8 @@ void GameObject::Callbacks::ApplyChat()
 		args.erase(args.begin()); // Erase default command so args[0] is the first command argument
 		try { commandKeyFind->second(); } // Execute linked function
 		catch (const std::invalid_argument& err) {
-			TextFormat::warn(
-				fmt::format("Error during command parsing:\nArgument index: {}\nArgument: {}", currentArgumentCheck, currentArgument),
-				err.what()
-			);
+			// Warn about invalid argument
+			AddChatMessage(fmt::format("Unexpected '{}' at command argument {}", currentArgument, currentArgumentIndex + 1));
 		}
 	}
 }

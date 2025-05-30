@@ -126,18 +126,6 @@ struct Math
 
 	static WorldPos toWorld(const glm::dvec3& v) noexcept;
 	static PosType toWorld(double a) noexcept;
-
-	static constexpr double PI_DBL = 3.141592653589793;
-	static constexpr float PI_FLT = static_cast<float>(PI_DBL);
-
-	static constexpr float PI_M2 = PI_FLT * 2.0f;
-	static constexpr float HALF_PI = PI_FLT * 0.5f;
-	static constexpr float RECIP_PI = 1.0f / PI_FLT;
-
-	static constexpr double TODEGREES_DBL = 57.29577951308233;
-	static constexpr double TORADIANS_DBL = 0.0174532925199433;
-	static constexpr float TODEGREES_FLT = static_cast<float>(TODEGREES_DBL);
-	static constexpr float TORADIANS_FLT = static_cast<float>(TORADIANS_DBL);
 };
 
 // Logging and text formatting
@@ -157,17 +145,9 @@ public:
 	void InitShader();
 	enum class ShaderID { Blocks, Clouds, Inventory, Outline, Sky, Stars, Text, MAX };
 
+	static GLint GetLocation(GLuint shader, const char* name) noexcept;
 	GLuint ShaderFromID(ShaderID id) const noexcept;
 	void UseShader(ShaderID id) const noexcept;
-
-	void SetBool(ShaderID id, const char* name, bool value) const noexcept;
-	void SetInt(ShaderID id, const char* name, int value) const noexcept;
-	void SetFloat(ShaderID id, const char* name, float value) const noexcept;
-
-	static GLint GetLocation(GLuint shader, const char* name) noexcept;
-
-	static void SetInt(GLint location, int value) noexcept;
-	static void SetFloat(GLint location, float value) noexcept;
 
 	static std::string ReadFileFromDisk(const std::string& filename);
 	static void LoadTexture(OGLImageInfo& info, const char* filename, bool border, int filterParam, bool mipmap);
@@ -206,7 +186,7 @@ struct GameGlobalsObject
 	int updateInterval = 1;
 	float aspect = 1.0f;
 
-	float testfloat = 0.0f, testfloat2 = 0.0f;
+	glm::vec4 testvals { 1.0f, 1.0f, 1.0f, 1.0f };
 	bool testbool = false;
 
 	Shader shader;

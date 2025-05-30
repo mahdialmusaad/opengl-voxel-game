@@ -31,7 +31,7 @@ struct PlayerObject
 
 	glm::dvec3 position = { 
 		ChunkSettings::CHUNK_SIZE_DBL / 2.0, 
-		static_cast<double>(fmin(ChunkSettings::MAX_WORLD_HEIGHT, 64)),
+		static_cast<double>(ChunkSettings::CHUNK_WATER_HEIGHT + 1),
 		ChunkSettings::CHUNK_SIZE_DBL / 2.0
 	};
 
@@ -42,7 +42,7 @@ struct PlayerObject
 	InventorySlot inventory[36];
 	WorldPos targetBlockPosition {};
 
-	double fov = 1.8;
+	double fov = glm::radians(90.0);
 	double sensitivity = 0.1f;
 	double pitch = 0.0f, yaw = 0.0f;
 

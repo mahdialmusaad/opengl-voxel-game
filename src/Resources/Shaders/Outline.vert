@@ -8,11 +8,11 @@ layout (std140, binding = 0) uniform GameMatrices {
 };
 
 layout (std140, binding = 3) uniform GamePositions {
-	dvec4 raycastBlockPosition;
+	dvec4 relativeRaycastBlockPosition;
 	dvec4 playerPosition;
 };
 
 void main()
 {
-	gl_Position = originMatrix * vec4(basePos + (raycastBlockPosition.xyz - playerPosition.xyz), 1.0);
+	gl_Position = originMatrix * vec4(basePos + relativeRaycastBlockPosition.xyz, 1.0);
 }

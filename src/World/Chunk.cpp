@@ -23,9 +23,9 @@ Chunk::Chunk(
 	std::uint32_t airCounter = 0u;
 
 	for (int z = 0, perlin = 0; z < ChunkSettings::CHUNK_SIZE; ++z) {
-		const int zIndex = z << ChunkSettings::CHUNK_SIZE_POW2; // The Z position index for block array
+		//const int zIndex = z << ChunkSettings::CHUNK_SIZE_POW2; // The Z position index for block array
 		for (int x = 0; x < ChunkSettings::CHUNK_SIZE; ++x) {
-			const int xIndex = x << ChunkSettings::CHUNK_SIZE_POW; // The X position index for block array
+			//const int xIndex = x << ChunkSettings::CHUNK_SIZE_POW; // The X position index for block array
 
 			// Chunks with the same XZ offset (different Y) will use the same XZ values for the perlin noise calculation
 			// and so will get the same result each time, so it's much better to precalculate the full chunk values
@@ -61,7 +61,8 @@ Chunk::Chunk(
 				}
 
 				// Finally, set the block at the corresponding array index 
-				blockDataArray[y + xIndex + zIndex] = finalBlock;
+				//blockDataArray[y + xIndex + zIndex] = finalBlock;
+				blockDataArray[z][x][y] = finalBlock;
 			}
 		}
 	}
@@ -129,33 +130,44 @@ void Chunk::CalculateChunk(const ChunkGetter& findFunction) noexcept
 		faceData.faceCount = 0u;
 
 		// Loop through all the chunk's blocks for each face direction
-		for (int i = 0; i <= ChunkSettings::CHUNK_BLOCKS_AMOUNT_INDEX; ++i) {
-			// Get properties of the current block
-			const WorldBlockData& currentBlockData = ChunkSettings::GetBlockData(static_cast<int>(blockArray[i]));
-			// Get precalculated results for this position index and face
-			const ChunkLookupTable::ChunkLookupData& surroundingData = chunkLookupData.lookupData[lookupIndex++];
-			// Get the data of the block next to the current face, which could be in this or a surrounding chunk
-			const WorldBlockData& targetBlockData = ChunkSettings::GetBlockData((*localNearby[surroundingData.nearbyIndex])[surroundingData.blockIndex]);
+		for (int z = 0; z < ChunkSettings::CHUNK_SIZE; ++z) {
+			const std::uint32_t zIndex = z << ChunkSettings::CHUNK_SIZE_POW2;
+			const ObjectID (&outerBlockArray)[ChunkSettings::CHUNK_SIZE][ChunkSettings::CHUNK_SIZE] = blockArray[z];
 
-			// Check if the face is not obscured by the block found to be next to it
-			if (currentBlockData.notObscuredBy(currentBlockData, targetBlockData)) {
-				// Compress the position and texture data into one integer
-				const std::uint32_t newData = 
-					 static_cast<std::uint32_t>(i) + 
-					(static_cast<std::uint32_t>(currentBlockData.textures[faceIndex]) << 25u);
+			for (int x = 0; x < ChunkSettings::CHUNK_SIZE; ++x) {
+				const std::uint32_t zxIndex = zIndex + (x << ChunkSettings::CHUNK_SIZE_POW);
+				const ObjectID (&innerBlockArray)[ChunkSettings::CHUNK_SIZE] = outerBlockArray[x];
 
-				// Blocks with transparency need to be rendered last for them to be rendered
-				// correctly on top of existing terrain, so they can be placed starting from
-				// the end of the data array instead to be seperated from the opaque blocks
-				if (currentBlockData.hasTransparency) {
-					// Set the data in reverse order, starting from the end of the array 
-					// (pre-increment to avoid writing to out of bounds the first time)
-					const std::uint16_t reverseIndex = ChunkSettings::U16CHUNK_BLOCKS_AMOUNT - ++faceData.translucentFaceCount;
-					outer[reverseIndex] = newData;
-				}
-				else {
-					// Append the new data to the current chunk face data and increment face index
-					outer[faceData.faceCount++] = newData;
+				for (int y = 0; y < ChunkSettings::CHUNK_SIZE; ++y) {
+					// Get properties of the current block
+					const WorldBlockData& currentBlockData = ChunkSettings::GetBlockData(innerBlockArray[y]);
+					// Get precalculated results for this position index and face
+					const ChunkLookupTable::ChunkLookupData& nearbyData = chunkLookupData.lookupData[lookupIndex++];
+					// Get the data of the block next to the current face, which could be in this or a surrounding chunk
+					const WorldBlockData& targetBlockData = ChunkSettings::GetBlockData((*localNearby[nearbyData.nearbyIndex])[nearbyData.blockPos.z][nearbyData.blockPos.x][nearbyData.blockPos.y]);
+
+					// Check if the face is not obscured by the block found to be next to it
+					if (currentBlockData.notObscuredBy(currentBlockData, targetBlockData)) {
+						// Compress the position and texture data into one integer
+						// Layout: TTTT TTTH HHHH WWWW WZZZ ZZXX XXXY YYYY
+						const std::uint32_t positionIndex = zxIndex + static_cast<std::uint32_t>(y);
+						const std::uint32_t textureData = static_cast<std::uint32_t>(currentBlockData.textures[faceIndex]) << 25u;
+						const std::uint32_t newData = positionIndex + textureData;
+
+						// Blocks with transparency need to be rendered last for them to be rendered
+						// correctly on top of existing terrain, so they can be placed starting from
+						// the end of the data array instead to be seperated from the opaque blocks
+						if (currentBlockData.hasTransparency) {
+							// Set the data in reverse order, starting from the end of the array 
+							// (pre-increment to avoid writing to out of bounds the first time)
+							const std::uint16_t reverseIndex = ChunkSettings::U16CHUNK_BLOCKS_AMOUNT - ++faceData.translucentFaceCount;
+							outer[reverseIndex] = newData;
+						}
+						else {
+							// Append the new data to the current chunk face data and increment normal face count
+							outer[faceData.faceCount++] = newData;
+						}
+					}
 				}
 			}
 		}
@@ -192,12 +204,8 @@ void Chunk::CalculateChunk(const ChunkGetter& findFunction) noexcept
 
 void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 {
-	// TODO: simple algorithm that will most likely be optimized to the ground later (**if** it works)
-
-	// WARNING to 'never-nesters': You might want to close your eyes whilst scrolling down here...
-	// Max indentation level: 7 (depends on your editor's indentation size really)
-	// Record indentation level from doing logic inside if statements rather than breaking when false: 9
-	// Performace is unaffected, but it becomes extremely unreadable when half of the screen is just indents.
+	// TODO: Simple algorithm that will most likely be optimized to the ground later (**if** it works)
+	// Note 28/5/2025: 'Simple'???
 
 	if (ChunkSettings::IsAirChunk(chunkBlocks)) return;
 	if (chunkBlocks == nullptr) {
@@ -240,7 +248,8 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 	// best cache locality - avoid large jumps in array lookup by traversing through Y then X then Z:
 	// bits 1-5 = Y position, bits 5-10 = X position, bits 10-15 = Z position
 
-	// If you have any questions on how this works, just create a new discussion on GitHub.
+	// If you have any questions on how this works, feel free to ask me on GitHub!
+	// Or you could just... read the comments?
 	
 	for (int z = 0; z < ChunkSettings::CHUNK_SIZE; ++z) {
 		StateType (&innerChunkState)[ChunkSettings::CHUNK_SIZE] = chunkFaceStates[z]; // Reference to 1D array
@@ -254,8 +263,8 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 				if (shift == 0) {
 					// Check if face is obscured by another block in this chunk
 					const int blockIndex = zxIndex + y; 
-					const WorldBlockData& currentProperties = ChunkSettings::GetBlockData(blockArray[blockIndex]);
-					const WorldBlockData& otherProperties = ChunkSettings::GetBlockData(blockArray[blockIndex + nextZIndex]);
+					const WorldBlockData& currentProperties = ChunkSettings::GetBlockData(blockArray[z][x][y]);
+					const WorldBlockData& otherProperties = ChunkSettings::GetBlockData(blockArray[z + 1][x][y]);
 					shift = currentProperties.notObscuredBy(currentProperties, otherProperties);
 				}
 				
@@ -267,55 +276,64 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 
 	std::uint32_t* currentFaceData = new std::uint32_t[ChunkSettings::CHUNK_BLOCKS_AMOUNT];
 
-	// Go through each bit in the chunk state, building faces from adjacent bits that refer to the same block type
-	for (int stateZ = 0; stateZ < ChunkSettings::CHUNK_SIZE; ++stateZ) {
-		StateType (&innerState)[ChunkSettings::CHUNK_SIZE] = chunkFaceStates[stateZ]; // Reference to 1D array
-		const int zIndex = stateZ << ChunkSettings::CHUNK_SIZE_POW2;
-		for (int stateX = 0; stateX < ChunkSettings::CHUNK_SIZE; ++stateX) {
-			const int xIndex = stateX << ChunkSettings::CHUNK_SIZE_POW;
-			StateType& state = innerState[stateX]; // Unsigned value with set bits determining visible faces
-			int currentBitIndex = 0; // What bit is going to be checked
+	const int p2 = ChunkSettings::CHUNK_SIZE_POW2;
+	const int p1 = ChunkSettings::CHUNK_SIZE_POW;
+	const int p0 = 0;
 
-			// Do greedy meshing whilst the current bitmap has some bits set - valid blocks present
+	const int outerAxisShift = p0;
+	const int innerAxisShift = p1;
+	const int incrementShift = p2;
+
+	// Go through each bit in the chunk state, building faces from adjacent bits that refer to the same block type
+	for (int outerAxisIndex = 0; outerAxisIndex < ChunkSettings::CHUNK_SIZE; ++outerAxisIndex) {
+		StateType (&innerState)[ChunkSettings::CHUNK_SIZE] = chunkFaceStates[outerAxisIndex]; // Reference to 1D array
+		//const int zIndex = outerAxisIndex << ChunkSettings::CHUNK_SIZE_POW2;
+		for (int innerAxisIndex = 0; innerAxisIndex < ChunkSettings::CHUNK_SIZE; ++innerAxisIndex) {
+			//const int xIndex = innerAxisIndex << ChunkSettings::CHUNK_SIZE_POW;
+			StateType& state = innerState[innerAxisIndex]; // Unsigned value with set bits determining visible faces
+			int incrementAxisIndex = 0; // What bit is going to be checked
+
+			// Do greedy meshing whilst the current bitmap has some bits set -> valid blocks are present
 			while (state) {
-				if (!(state & (1 << currentBitIndex))) { 
-					currentBitIndex++; 
-					continue;  // The current bit is not set - no valid block here, check the next one
+				if (!(state & (1 << incrementAxisIndex))) { 
+					incrementAxisIndex++; 
+					continue;  // The current bit is not set -> no valid block here, check the next one
 				}
 
 				// Block array index of two axis from 'for' loops above
-				const int blocksZXIndex = zIndex + xIndex;
+				//const int blocksZXIndex = zIndex + xIndex;
 
 				// Get the current block from the state and bit indexes
-				ObjectID blockType = blockArray[blocksZXIndex + currentBitIndex];
-				const int startingYIndex = currentBitIndex; // Save Z axis for later
+				const ObjectID (&blocksAxisLine)[ChunkSettings::CHUNK_SIZE] = blockArray[outerAxisIndex][innerAxisIndex]; 
+				ObjectID blockType = blocksAxisLine[incrementAxisIndex];
+				const int incrementAxisStartIndex = incrementAxisIndex; // Save Z axis for later
 				int width = 1, height = 1; // Width and height of the resulting face, will increase if space is found
 				
 				// The logic here is quite similar to what is done in the below loops, but since
 				// it is the first one, it determines what face is going to be extended and the block type.
 				// The below loops also clear the bits, but they are checking if they refer to the above type.
 
-				state &= ~(1u << currentBitIndex++); // Clear the current bit as it has been searched
+				state &= ~(1u << incrementAxisIndex++); // Clear the current bit as it has been searched
 				
 				// Loop through Z axis seperately from the above while loop to check for current block type
 				// instead of just checking for any set bits (extending face 'width' now)
 				while (state) {
-					if (!(state & (1 << currentBitIndex))) {
-						currentBitIndex++;
+					if (!(state & (1 << incrementAxisIndex))) {
+						incrementAxisIndex++;
 						break; // Invalid block found (bit not set): face width cannot be exteneded
 					}
 					
 					// Also stop extending if the next valid block turns out to be of a different block type
-					if (blockArray[blocksZXIndex + currentBitIndex++] != blockType) break; 
+					if (blocksAxisLine[incrementAxisIndex++] != blockType) break; 
 
-					state &= ~(1 << currentBitIndex); // Clear bit as it has been searched, move on to next bit
+					state &= ~(1 << incrementAxisIndex); // Clear bit as it has been searched, move on to next bit
 					width++; // Increase current face width
 				}
 
 				// Check for valid blocks in other axis (extending face 'height' now)
 				// This 'for' loop does the same 'clearing' logic as above, but since
 				// the 'width'/amount of bits to check are known, it is done all at once.
-				for (int nextStateX = stateX + 1; nextStateX < ChunkSettings::CHUNK_SIZE; ++nextStateX) {
+				for (int nextStateX = innerAxisIndex + 1; nextStateX < ChunkSettings::CHUNK_SIZE; ++nextStateX) {
 					// A similar searching as seen above, however the other axis is 
 					// checked now, which is located on the next face 'state' value.
 					StateType& nextState = innerState[nextStateX];
@@ -328,7 +346,7 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 					*/
 
 					constexpr StateType allOnesBitmask = ~0u; // Full bitmask
-					const StateType bitsCheck = (allOnesBitmask >> (stateBitsCount - width)) << startingYIndex;
+					const StateType bitsCheck = (allOnesBitmask >> (stateBitsCount - width)) << incrementAxisStartIndex;
 
 					// Check if all bits are set if the bitwise AND operation returns the same as the bitmask
 					// This skips having to check if each block is the same when an invalid block is present.
@@ -338,8 +356,8 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 					// (checking the same amount of blocks from the same starting index to see if the face
 					// can be extended on this axis)
 					bool allValid = true;
-					for (int nextStateIndex = startingYIndex, end = currentBitIndex; nextStateIndex < end; ++nextStateIndex) {
-						if (blockArray[blocksZXIndex + nextStateIndex] == blockType) continue;
+					for (int nextIncrementAxisIndex = incrementAxisStartIndex, end = incrementAxisIndex; nextIncrementAxisIndex < end; ++nextIncrementAxisIndex) {
+						if (blocksAxisLine[nextIncrementAxisIndex] == blockType) continue;
 						// Different block found - exit out of both loops to stop trying to extend height
 						allValid = false;
 						break;
@@ -361,8 +379,13 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 				// XYZ: position, WH: size (width and height), T: texture index
 				// TODO: possibly have more bits for texture in the future 
 				const std::uint32_t newFaceData = 
-					static_cast<std::uint32_t>(blocksZXIndex + startingYIndex + (width << 15) + (height << 20)) +
-					(static_cast<std::uint32_t>(textureIndex) << 25u);
+					static_cast<std::uint32_t>(
+						(incrementAxisStartIndex << incrementShift) + 
+						(innerAxisIndex << innerAxisShift) + 
+						(outerAxisIndex << outerAxisShift) + 
+						(width << 15) + 
+						(height << 20)
+					) + (static_cast<std::uint32_t>(textureIndex) << 25u);
 
 				// Blocks with transparency need to be rendered last for them to be rendered
 				// correctly on top of existing terrain, so they can be placed starting from
@@ -380,7 +403,6 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 			}
 		}
 	}
-
 	
 	// Compress the array as there is most likely a gap between the normal face data
 	// and the translucent faces as the total face count is known now

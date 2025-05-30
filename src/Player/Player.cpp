@@ -4,9 +4,8 @@ Player::Player() noexcept
 {
 	TextFormat::log("Player enter");
 
-	// temporary inventory test
-	for (PlayerObject::InventorySlot& s : player.inventory) 
-		s.objectID = static_cast<ObjectID>((rand() % 8) + 1);
+	// Temporary inventory test
+	for (PlayerObject::InventorySlot& s : player.inventory) s.objectID = static_cast<ObjectID>((rand() % 8) + 1);
 
 	// Setup VAO and VBO for selection outline
 	m_outlineVAO = OGL::CreateVAO8();
@@ -61,10 +60,27 @@ Player::Player() noexcept
 
 	// Setup VAO for inventory
 	m_inventoryVAO = OGL::CreateVAO8();
+
+	// Enable attributes 0-2: 0 = vec4, 1 = int, 2 = base vec3
 	glEnableVertexAttribArray(0u);
 	glEnableVertexAttribArray(1u);
-	glVertexAttribDivisor(0u, 1u);
+	glEnableVertexAttribArray(2u);
 
+	// Attribute divisors for instanced rendering
+	glVertexAttribDivisor(0u, 1u);
+	glVertexAttribDivisor(1u, 1u);
+
+	// VBO for the inventory texture data
+	m_inventoryIVBO = OGL::CreateBuffer8(GL_ARRAY_BUFFER);
+
+	// Attribute layout (location 0 and 1)
+	// A0 (vec4): X, Y, W, H
+	// A1 (int): Texture type - text or block (1st bit), inner texture id (other bits)
+	constexpr GLsizei stride = sizeof(float[4]) + sizeof(std::int32_t);
+	glVertexAttribPointer(0u, 4, GL_FLOAT, GL_FALSE, stride, nullptr);
+	glVertexAttribIPointer(1u, 1, GL_INT, stride, reinterpret_cast<const void*>(sizeof(float[4])));
+
+	// Inventory element quad vertex data
 	struct QuadVertex {
 		constexpr QuadVertex(float a, float b, float c) noexcept : a(a), b(b), c(c) {}
 		float a, b, c;
@@ -75,16 +91,14 @@ Player::Player() noexcept
 		{ 1.0f, 0.0f, 1.0f }
 	};
 
-	// VBO for the quad vertices defined above (location 0 and 1)
+	// VBO for the quad vertices for inventory elements (location 2)
 	m_inventoryQuadVBO = OGL::CreateBuffer(GL_ARRAY_BUFFER);
-	glVertexAttribPointer(1u, 3, GL_FLOAT, GL_FALSE, sizeof(float[3]), nullptr);
+	glVertexAttribPointer(2u, 3, GL_FLOAT, GL_FALSE, sizeof(float[3]), nullptr);
 	glBufferStorage(GL_ARRAY_BUFFER, sizeof(quadVerticesData), quadVerticesData, 0u);
-
-	// VBO for the actual inventory texture data
-	m_inventoryIVBO = OGL::CreateBuffer8(GL_ARRAY_BUFFER);
 
 	UpdateCameraVectors();
 	UpdateOffset();
+	// Inventory is updated in aspect function, which is done at start anyways
 
 	TextFormat::log("Player exit");
 }
@@ -177,7 +191,7 @@ void Player::UpdateMovement() noexcept
 		// for collisions on the left and vice versa
 
 		// X axis collision checks
-		constexpr const CollisionInfo X_collisionPositions[4] = {
+		constexpr const CollisionInfo XCollisionChecks[4] = {
 			{ {  0.1, -0.1,  0.0 }, 0, true  },	// On the right at feet height
 			{ { -0.1, -0.1,  0.0 }, 0, false },	// On the left at feet height
 			{ {  0.1,  0.0,  0.0 }, 0, true  },	// On the right at head height
@@ -185,13 +199,13 @@ void Player::UpdateMovement() noexcept
 		};
 
 		// Y axis collision checks
-		constexpr const CollisionInfo Y_collisionPositions[2] = {
+		constexpr const CollisionInfo YCollisionChecks[2] = {
 			{ { 0.0, -0.1,  0.0 }, 1, false },	// Below feet
 			{ { 0.0,  0.1,  0.0 }, 1, true  },	// Above head
 		};
 
 		// Z axis collision checks
-		constexpr const CollisionInfo Z_collisionPositions[4] = {
+		constexpr const CollisionInfo ZCollisionChecks[4] = {
 			{ { 0.0, -0.1,  0.1 }, 2, false },	// In front at feet height
 			{ { 0.0, -0.1, -0.1 }, 2, false },	// Behind at feet height
 			{ { 0.0,  0.0,  0.1 }, 2, true  },	// In front at head height
@@ -203,7 +217,7 @@ void Player::UpdateMovement() noexcept
 
 		// Collision checks in each axis:
 		// X axis
-		for (const CollisionInfo& colInfo : X_collisionPositions) {
+		for (const CollisionInfo& colInfo : XCollisionChecks) {
 			const WorldPos pos = newPosition + colInfo.direction;
 			if (ChunkSettings::GetBlockData(world->GetBlock(pos.x, pos.y, pos.z)).isSolid) {
 				double& axis = m_velocity[colInfo.axis];
@@ -211,7 +225,7 @@ void Player::UpdateMovement() noexcept
 			}
 		}
 		// Y axis
-		for (const CollisionInfo& colInfo : Y_collisionPositions) {
+		for (const CollisionInfo& colInfo : YCollisionChecks) {
 			const WorldPos pos = newPosition + colInfo.direction;
 			if (ChunkSettings::GetBlockData(world->GetBlock(pos.x, pos.y, pos.z)).isSolid) {
 				double& axis = m_velocity[colInfo.axis];
@@ -219,7 +233,7 @@ void Player::UpdateMovement() noexcept
 			}
 		}
 		// Z axis
-		for (const CollisionInfo& colInfo : Z_collisionPositions) {
+		for (const CollisionInfo& colInfo : ZCollisionChecks) {
 			const WorldPos pos = newPosition + colInfo.direction;
 			if (ChunkSettings::GetBlockData(world->GetBlock(pos.x, pos.y, pos.z)).isSolid) {
 				double& axis = m_velocity[colInfo.axis];
@@ -412,18 +426,18 @@ void Player::RaycastBlock() noexcept
 	sideDistance.z = (player.position.z - static_cast<double>(player.targetBlockPosition.z) + fmax(currentSign, 0.0)) * deltaRay.z * currentSign;
 
 	// Determines reach distance
-	//constexpr double maxDistTravel = 5.5;
+	constexpr double maxDistTravel = 5.5;
 	double distanceTravelled = 0.0;
-	int maxloops = 100;
+	int maxloops = 5;
 
 	//const ObjectID initialSelectedBlock = player.targetBlock;
 
-	while (/*distanceTravelled < maxDistTravel && */maxloops--) {
+	while (distanceTravelled <= maxDistTravel && maxloops--) {
 		// Check shortest axis and move in that direction
 		enum Axis { X, Y, Z };
 		Axis shortestAxis = Axis::X;
 		if (sideDistance.y < sideDistance.x) shortestAxis = Axis::Y;
-		//if (sideDistance.z < sideDistance[static_cast<int>(shortestAxis)]) shortestAxis = Axis::Z;
+		if (sideDistance.z < sideDistance[static_cast<int>(shortestAxis)]) shortestAxis = Axis::Z;
 
 		switch (shortestAxis)
 		{
@@ -450,7 +464,7 @@ void Player::RaycastBlock() noexcept
 		player.targetBlock = world->GetBlock(
 			player.targetBlockPosition.x,
 			player.targetBlockPosition.y,
-			Math::toWorld(player.position.z)
+			player.targetBlockPosition.z
 		);
 		
 		// Stop if the reached block is a solid block
@@ -504,8 +518,8 @@ void Player::UpdateOffset() noexcept
 
 void Player::UpdateCameraVectors() noexcept
 {
-	const double pitchRadians = Math::TORADIANS_FLT * player.pitch;
-	const double yawRadians = Math::TORADIANS_FLT * player.yaw;
+	const double pitchRadians = glm::radians(player.pitch);
+	const double yawRadians = glm::radians(player.yaw);
 	const double cosPitchRadians = cosf(pitchRadians);
 
 	m_camFront = glm::normalize(glm::vec3(
@@ -530,37 +544,18 @@ void Player::UpdateInventory() noexcept
 {
 	// Bind VAO and VBO to ensure the correct buffers are edited
 	glBindVertexArray(m_inventoryVAO);
-
 	glBindBuffer(GL_ARRAY_BUFFER, m_inventoryIVBO);
-	glVertexAttribIPointer(0u, 2, GL_UNSIGNED_INT, sizeof(std::uint32_t[2]), nullptr);
-
-	// Data layout:
-	// First:   YYYY YYYY YYYY YYYY XXXX XXXX XXXX XXXX
-	// Second:  BTTT TTTT TTTT TTTT HHHH HHHH WWWW WWWW
+	
+	// Instance of inventory element (item slot, block texture, etc)
 	struct InventoryInstance {
-		constexpr InventoryInstance(float x, float y, float w, float h, std::uint32_t texture, bool isBlockTexture = false) noexcept {
-			const std::uint32_t ux = fltToBits(x, 16);
-			const std::uint32_t uy = fltToBits(y, 16);
-			first = ux + (uy << 16u);
+		constexpr InventoryInstance(
+			float x, float y, float w, float h, 
+			std::int32_t texture, bool isBlockTexture = false
+		) noexcept : x(x), y(y), w(w), h(h), second(static_cast<int>(isBlockTexture) + (texture << 1)) {}
+		constexpr InventoryInstance() noexcept {}
 
-			// Last bit in second uint32 is used to determine if current instance uses the blocks or inventory texture
-			constexpr std::uint32_t blockBit = 1u << 31u;
-
-			const std::uint32_t uw = fltToBits(w, 8);
-			const std::uint32_t uh = fltToBits(h, 8);
-			second = uw + (uh << 8u) + (texture << 16u) + (isBlockTexture ? blockBit : 0u);
-		}
-
-		InventoryInstance() {}
-
-		std::uint32_t first = 0u, second = 0u;
-
-		static constexpr std::uint32_t fltToBits(float x, int bits) noexcept {
-			// Returns the float 'x' [0-1] multiplied by the maximum value representable by the given amount of bits
-			constexpr std::uint32_t full = ~static_cast<std::uint32_t>(0);
-			const std::uint32_t maxval = full >> (32 - bits);
-			return static_cast<std::uint32_t>(x * static_cast<float>(maxval));
-		}
+		float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f;
+		std::int32_t second = 0;
 	};
 
 	// Array amount: 2 uints per instance (InventoryInstance struct)
@@ -574,20 +569,20 @@ void Player::UpdateInventory() noexcept
 	// Each texture index (when data is of an inventory texture rather than a block texture)
 	// is used to index into an array that determines the texture positions in the vertex shader.
 	enum TextureIndex : std::uint32_t { TI_Background, TI_Unequipped, TI_Equipped, TI_Inventory, TI_Crosshair };
-
+	
 	// Compressed buffer data
 	InventoryInstance* data = new InventoryInstance[maxInstances];
-	data[m_totalInventoryInstances++] = InventoryInstance(0.5f, 0.5f, 0.01f, 0.01f * game.aspect, TI_Crosshair); // Crosshair at center of screen (always visible)
+	data[m_totalInventoryInstances++] = InventoryInstance(-0.025f, -0.025f, 0.025f, 0.025f * game.aspect, TI_Crosshair); // Crosshair at center of screen (always visible)
 
-	// Position-related floats
+	// Positions and sizes
 	constexpr float 
-		inventorySlotsYPosition = 0.18f,
-		inventoryXPosition = 0.3f,
-		inventoryXSpacing = 0.047f,
-		inventorySlotSize = 0.05f,
-		inventoryHotbarRowYOffset = 0.03f,
-		blocksPositionOffset = 0.004f,
-		blocksSlotSize = 0.04f;
+		inventorySlotsYPosition = -0.36f,
+		slotsXPosition = -0.4f,
+		slotsXSpacing = 0.094f,
+		inventorySlotSize = 0.1f,
+		inventoryHotbarRowYOffset = 0.06f,
+		blocksPositionOffset = 0.008f,
+		blocksSlotSize = 0.083f;
 
 	for (int inventoryID = 0; inventoryID < 45; ++inventoryID) {
 		int iid = inventoryID;
@@ -596,8 +591,8 @@ void Player::UpdateInventory() noexcept
 			m_hotbarInstances = m_totalInventoryInstances;
 			// Add inventory GUI and background to data
 			const InventoryInstance inventoryData[2] = {
-				InventoryInstance(0.0f, 0.0f, 1.0f, 1.0f, TI_Background),	// Translucent background for inventory GUI (full screen)
-				InventoryInstance(0.27f, 0.12f, 0.485f, 0.7f, TI_Inventory)	// Inventory GUI background
+				InventoryInstance(-1.0f, -1.0f, 2.0f, 2.0f, TI_Background),		// Translucent background for inventory GUI (full screen)
+				InventoryInstance(-0.475f, -0.43f, 1.0f, 0.8f, TI_Inventory)	// Inventory GUI background
 			};
 			std::memcpy(data + m_totalInventoryInstances, inventoryData, sizeof(inventoryData));
 			m_totalInventoryInstances += 2;
@@ -618,8 +613,8 @@ void Player::UpdateInventory() noexcept
 		const float GUIYPosition = inventoryID >= 9 ? inventorySlotsYPosition + // Y pos. spacing between rows in inventory
 			(inventoryID >= 18 ? inventoryHotbarRowYOffset : 0.0f) + // Inventory hotbar row extra spacing
 			((inventorySlotSize * game.aspect) * static_cast<float>(iid / 9)) // Equal spacing between inventory rows
-			: 0.0f;	// Hotbar slots are at the bottom
-		const float GUIXPosition = inventoryXPosition + (inventoryXSpacing * static_cast<float>(iid % 9));
+			: -1.0f; // Hotbar slots are at the bottom
+		const float GUIXPosition = slotsXPosition + (slotsXSpacing * static_cast<float>(iid % 9));
 
 		// Set compressed hotbar data with either unequipped or equipped slot texture
 		data[m_totalInventoryInstances++] = InventoryInstance(

@@ -104,11 +104,8 @@ ObjectID* World::EditBlock(PosType x, PosType y, PosType z) const noexcept
 	// If the chunk exists, return a pointer block found at the position in local chunk coordinates
 	if (chunk != nullptr) {
 		ConvertChunkStorageType(chunk->chunkBlocks); // Convert chunk if it is non-editable
-		// Get the chunk array index from the block's position
-		const glm::ivec3 offsetPosition = ChunkSettings::WorldToLocalPosition(x, y, z);
-		const int blockIndex = ChunkSettings::IndexFromLocalPosition(offsetPosition.x, offsetPosition.y, offsetPosition.z);
 		// Return a pointer to the block
-		return &dynamic_cast<ChunkSettings::ChunkBlockValueFull*>(chunk->chunkBlocks)->chunkBlocks[blockIndex];
+		return &dynamic_cast<ChunkSettings::ChunkBlockValueFull*>(chunk->chunkBlocks)->chunkBlocks[z][x][y];
 	}
 
 	// If no chunk is found in the given position, do not return a block
@@ -119,11 +116,11 @@ ModifyWorldResult World::SetBlock(PosType x, PosType y, PosType z, ObjectID obje
 {
 	// Warning text if the set position is above or below world height
 	if (y > ChunkSettings::MAX_WORLD_HEIGHT) {
-		textRenderer.CreateText({ 0.4f, 0.6f }, "Cannot change blocks above world height", TextRenderer::T_Type::Temporary);
+		textRenderer.CreateText({ 0.4f, 0.6f }, "Cannot change blocks above world height", false, TextRenderer::TextType::Temporary);
 		return ModifyWorldResult::AboveWorld;
 	}
 	else if (y < 0) {
-		textRenderer.CreateText({ 0.4f, 0.6f }, "Cannot change blocks below y = 0", TextRenderer::T_Type::Temporary);
+		textRenderer.CreateText({ 0.4f, 0.6f }, "Cannot change blocks below y = 0", false, TextRenderer::TextType::Temporary);
 		return ModifyWorldResult::BelowWorld;
 	}
 
@@ -230,6 +227,13 @@ void World::UpdateRenderDistance(std::int32_t newRenderDistance) noexcept
 			(2 * chunkRenderDistance * chunkRenderDistance) + (2 * chunkRenderDistance) + 1
 		) * ChunkSettings::HEIGHT_COUNT * 2;
 
+	// Create arrays for face data and chunk sorting with new sizes
+	faceDataPointers = new Chunk::FaceAxisData*[maxChunkFaces];
+
+	worldIndirectData = new IndirectDrawCommand[maxChunkFaces * 2u];
+	worldOffsetData = new ShaderChunkOffset[maxChunkFaces * 2u];
+	translucentChunks = new ChunkTranslucentData[maxChunkFaces];
+
 	// Ensure correct buffers are used
 	glBindVertexArray(m_worldVAO);
 
@@ -238,7 +242,7 @@ void World::UpdateRenderDistance(std::int32_t newRenderDistance) noexcept
 	// Indirect buffer ('draw commands' used for rendering, see 'draw world' function)
 	glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(IndirectDrawCommand) * maxChunkFaces, nullptr, GL_STATIC_DRAW);
 	// SSBO (used to store offset data and face index in world shader)
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ShaderChunkOffset) * maxChunkFaces, nullptr, GL_STATIC_DRAW);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ShaderChunkOffset) * maxChunkFaces, nullptr, GL_STATIC_COPY);
 
 	// Fill the newly sized buffers (empty) with new valid data
 	STChunkUpdate();
@@ -438,12 +442,6 @@ void World::UpdateWorldBuffers() noexcept
 	std::size_t faceDataPointersCount = 0u;
 	squaresCount = 0u;
 
-	// The total number of 'chunk faces' (6 per chunk)
-	const std::size_t chunkFacesTotal = chunks.size() * static_cast<std::size_t>(6);
-
-	// Pointers to chunk face objects
-	Chunk::FaceAxisData** faceDataPointers = new Chunk::FaceAxisData*[chunkFacesTotal];
-
 	// Loop through all of the chunks and each of their 6 face data to determine how much memory is needed
 	// overall and accumulate all the valid pointer data into the array, as well as preparing to delete any far away chunks
 	for (const auto& [offset, chunk] : chunks) {
@@ -510,9 +508,8 @@ void World::UpdateWorldBuffers() noexcept
 	glVertexAttribIPointer(0u, 1, GL_UNSIGNED_INT, 0, nullptr);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(std::uint32_t) * squaresCount, newWorldData, GL_STATIC_DRAW);
 
-	// Free memory from world data array and pointers from 'new'
+	// Free memory from world data array
 	delete[] newWorldData;
-	delete[] faceDataPointers;
 
 	// Ensure new chunk data is used in indirect data and SSBO
 	SortWorldBuffers();
@@ -522,24 +519,11 @@ void World::UpdateWorldBuffers() noexcept
 
 void World::SortWorldBuffers() noexcept
 {
-	// The total amount of 'chunk faces' as seen in the 'world buffer update' function
-	const std::size_t chunkFacesTotal = chunks.size() * 6u;
-
-	// Two per chunk face is needed to render translucent objects seperately
-	IndirectDrawCommand* worldIndirectData = new IndirectDrawCommand[chunkFacesTotal * 2u];
-	ShaderChunkOffset* worldOffsetData = new ShaderChunkOffset[chunkFacesTotal * 2u];
-
 	// Offset value data
 	ShaderChunkOffset offsetData {};
 	m_indirectCalls = 0;
 
-	struct ChunkTranslucentData {
-		ShaderChunkOffset offsetData;
-		Chunk* chunk;
-	};
-
-	// All chunk face data with non-opaque faces go here for sorting later on
-	ChunkTranslucentData* translucentChunks = new ChunkTranslucentData[chunkFacesTotal];
+	// Counter for translucent chunk data array
 	std::size_t translucentChunksCount = 0u;
 
 	// After storing the normal face data for every chunk, loop through the individual chunk faces
@@ -621,11 +605,6 @@ void World::SortWorldBuffers() noexcept
 	// Update SSBO and indirect buffer with their respective data and sizes
 	glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(IndirectDrawCommand) * m_indirectCalls, worldIndirectData);
 	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(ShaderChunkOffset) * m_indirectCalls, worldOffsetData);
-
-	// Free up memory used by arrays created with new
-	delete[] translucentChunks;
-	delete[] worldIndirectData;
-	delete[] worldOffsetData;
 }
 
 World::~World() noexcept

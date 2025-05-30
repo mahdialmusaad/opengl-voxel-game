@@ -37,23 +37,23 @@ void Skybox::CreateClouds() noexcept
 	m_cloudsVAO = OGL::CreateVAO8();
 	glEnableVertexAttribArray(0u);
 	glEnableVertexAttribArray(1u);
-	glVertexAttribDivisor(0u, 1u); // Instanced rendering
+	glVertexAttribDivisor(1u, 1u); // Instanced rendering
 
 	// Cloud shape data
 	constexpr float cloudVertices[24] = {
-		0.0f, 1.0f, 2.5f,	// Front-top-left		0
-		2.5f, 1.0f, 2.5f,	// Front-top-right		1
+		0.0f, 1.0f, 2.5f,	// Front-top-left	0
+		2.5f, 1.0f, 2.5f,	// Front-top-right	1
 		0.0f, 0.0f, 2.5f,	// Front-bottom-left	2
 		2.5f, 0.0f, 2.5f,	// Front-bottom-right	3
 		2.5f, 0.0f, 0.0f,	// Back-bottom-right	4
-		2.5f, 1.0f, 0.0f,	// Back-top-right		5
-		0.0f, 1.0f, 0.0f,	// Back-top-left		6
-		0.0f, 0.0f, 0.0f,	// Back-bottom-left		7
+		2.5f, 1.0f, 0.0f,	// Back-top-right	5
+		0.0f, 1.0f, 0.0f,	// Back-top-left	6
+		0.0f, 0.0f, 0.0f,	// Back-bottom-left	7
 	};
 
 	// Buffer for cloud vertices
 	m_cloudsShapeVBO = OGL::CreateBuffer8(GL_ARRAY_BUFFER);
-	glVertexAttribPointer(1u, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+	glVertexAttribPointer(0u, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
 	glBufferStorage(GL_ARRAY_BUFFER, sizeof(cloudVertices), cloudVertices, 0u);
 
 	constexpr std::uint8_t cloudIndices[14] = {
@@ -66,10 +66,10 @@ void Skybox::CreateClouds() noexcept
 	
 	// Setup instanced cloud buffer
 	m_cloudsInstVBO = OGL::CreateBuffer8(GL_ARRAY_BUFFER);
-	glVertexAttribIPointer(0u, 1, GL_UNSIGNED_INT, 0, nullptr);
+	glVertexAttribPointer(1u, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
 
-	// Compressed cloud data
-	std::uint32_t* cloudData = new std::uint32_t[AMOUNT_OF_CLOUDS];
+	// Cloud data (vec3)
+	float* cloudData = new float[AMOUNT_OF_CLOUDS * 3];
 
 	// Random number generator for cloud positions and size
 	std::mt19937 gen(std::random_device{}());
@@ -77,19 +77,22 @@ void Skybox::CreateClouds() noexcept
 
 	// Cloud generation
 	for (std::size_t i = 0; i < AMOUNT_OF_CLOUDS; ++i) {
-		// X and Z are in the range 0 - 4095 (12 bits each)
-		// Size is in the range 0 - 255 (8 bits), height is a certain fraction of this
-		// Y position is a set amount with slight variation using gl_InstanceID
+		constexpr float positionMultiplier = 4000.0f, 
+			posHalf = positionMultiplier * 0.5f,
+			sizeMultiplier = 60.0f;
+		
+		// Calculate random X, Z and size for each cloud
+		const float x = (dist(gen) * positionMultiplier) - posHalf;
+		const float z = (dist(gen) * positionMultiplier) - posHalf;
+		const float s = dist(gen) * sizeMultiplier;
 
-		// Using bit manipulation to store XZ position and size into a single uint
-		cloudData[i] = 
-			static_cast<std::uint32_t>(dist(gen) * 4095.0f) +						// X position
-			(static_cast<std::uint32_t>(dist(gen) * 4095.0f) << 12u) +				// Z position
-			(static_cast<std::uint32_t>(fmaxf(dist(gen), 0.01f) * 255.0f) << 24u);	// Size
+		// Create vec3 for cloud properties and add it to the cloud data
+		const float newCloud[3] = { x, z, s };
+		std::memcpy(cloudData + (i * 3), newCloud, sizeof(newCloud));
 	}
 
-	// Buffer the compressed integer data into the GPU - use instanced buffer
-	glBufferStorage(GL_ARRAY_BUFFER, sizeof(std::uint32_t) * AMOUNT_OF_CLOUDS, cloudData, 0u);
+	// Buffer the float data into the GPU (in instanced buffer)
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof(float[3]) * AMOUNT_OF_CLOUDS, cloudData, 0u);
 
 	// Free memory used by cloud data
 	delete[] cloudData;
@@ -152,9 +155,9 @@ void Skybox::CreateStars() noexcept
 	m_starsVAO = OGL::CreateVAO8();
 	glEnableVertexAttribArray(0u);
 
-	// Setup star shader attribute (compressed all into 1 int only)
+	// Setup star shader attribute (vec4)
 	OGL::CreateBuffer(GL_ARRAY_BUFFER);
-	glVertexAttribIPointer(0u, 1, GL_UNSIGNED_INT, 0, nullptr);
+	glVertexAttribPointer(0u, 4, GL_FLOAT, GL_FALSE, 0, nullptr);
 
 	/* 
 		Using Fibonnaci sphere algorithm gives more evenly distributed
@@ -174,42 +177,41 @@ void Skybox::CreateStars() noexcept
 		z = sin(u) * r
 	*/
 	
-	constexpr float phi = Math::PI_FLT * (static_cast<float>(Math::sqrt(5.0)) - 1.0f);
-	constexpr float floatAmount = static_cast<float>(AMOUNT_OF_STARS);
+	constexpr float phi = glm::pi<float>() * (static_cast<float>(Math::sqrt(5.0)) - 1.0f);
+	constexpr float floatNumStars = static_cast<float>(AMOUNT_OF_STARS);
 
-	// Random number generator (avoid use of rand() due to predictability and bad results in general)
+	// Random real number (0.0f - 1.0f) generator
 	std::mt19937 gen(std::random_device{}());
-	std::uniform_real_distribution<float> dist(0.0f, floatAmount);
+	std::uniform_real_distribution<float> dist(0.0f, floatNumStars);
 
 	// Weighted randomness list
-	constexpr int randcol[] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3 };
-	constexpr int randcolmax = sizeof(randcol) / sizeof(int);
+	constexpr float weightedColourList[] = { 
+		1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+		2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+		3.0f
+	};
+	constexpr int maxColourIndex = sizeof(weightedColourList) / sizeof(int);
 
-	// Compressed star data array
-	std::uint32_t* starsData = new std::uint32_t[AMOUNT_OF_STARS];
+	// Star data array
+	float* starsData = new float[AMOUNT_OF_STARS * 4];
 
 	for (std::size_t n = 0; n < AMOUNT_OF_STARS; ++n) {
 		const float i = dist(gen); // Randomly selected position
-		const float u = phi * i;
+		const float u = phi * i; // Calculate 'u' value
 
-		// To store the floating point positions, the XYZ position can be multiplied to
-		// the maximum value able to be held in the bits allocated for each (10 in this case = 1023),
-		// so they can be multiplied by half of that (511.5) to get their positions back (1.0f to -1.0f)
-
-		const float y = 1.0f - (i / floatAmount) * 2.0f,
+		// Calculate the star's relative XYZ position
+		const float y = 1.0f - (i / floatNumStars) * 2.0f,
 			r = sqrt(1.0f - (y * y)),
-			x = (cos(u) * r) + 1.0f, // trig(u) * r gives value -1.0f to 1.0f, so add 1.0f to make it positive
-			z = (sin(u) * r) + 1.0f;
+			x = (cos(u) * r),
+			z = (sin(u) * r);
 
 		// Using bit manipulation to store position and colour in a single int 
-		starsData[n] = static_cast<std::uint32_t>(x * 511.5f) + 
-			static_cast<std::uint32_t>(static_cast<int>((y + 1.0f) * 511.5f) << 10) +
-			static_cast<std::uint32_t>(static_cast<int>(z * 511.5f) << 20) + 
-			static_cast<std::uint32_t>(randcol[n % randcolmax] << 30);
+		const float star[4] = { x, y, z, weightedColourList[n % maxColourIndex] };
+		std::memcpy(starsData + (n * 4), star, sizeof(star));
 	}
 
 	// Buffer star int data into GPU
-	glBufferStorage(GL_ARRAY_BUFFER, sizeof(std::uint32_t) * AMOUNT_OF_STARS, starsData, 0u);
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof(float[4]) * AMOUNT_OF_STARS, starsData, 0u);
 
 	// Free memory used by stars data
 	delete[] starsData;

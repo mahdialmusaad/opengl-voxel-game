@@ -10,7 +10,8 @@ GameObject::GameObject() :
 
 	int width, height;
 	glfwGetWindowSize(game.window, &width, &height);
-	callbacks.ResizeCallback(width, height); // Ensure viewport is updated
+
+	glViewport(0, 0, width, height); // Ensure viewport is updated with initial window size
 
 	// OGL rendering settings
 	glEnable(GL_PROGRAM_POINT_SIZE); // Make GL_POINTS size set in shaders instead of having some global value
@@ -44,19 +45,22 @@ GameObject::GameObject() :
 
 	// Text objects creation
 	TextRenderer &tr = world.textRenderer;
+	const std::uint8_t bgAndShadow = TextRenderer::TS_Background | TextRenderer::TS_Shadow;
+	const std::string emptyChatMessage = std::string(' ', TextRenderer::maxChatCharacterWidth) + std::string('\n', 5);
 
+	// Combine static text for less draw calls and memory
 	const std::string infofmt = fmt::format(
 		"{}\n{}\nSeed: {}", 
 		glfwGetVersionString(), 
 		reinterpret_cast<const char*>(glGetString(GL_RENDERER)), 
 		game.noiseGenerators.continentalness.seed
 	);
-	tr.CreateText(glm::vec2(0.01f, 0.01f), infofmt); // Combine static text for less draw calls and memory
+	tr.CreateText(glm::vec2(0.01f, 0.01f), infofmt, bgAndShadow);
 
-	m_screenshotText = tr.CreateText(glm::vec2(0.18f, 0.8f), "", TextRenderer::T_Type::Hidden, 8u); // Screenshot info
-	m_chatText = tr.CreateText(glm::vec2(0.01f, 0.85f), "", TextRenderer::T_Type::Hidden); // Chat text
-	m_infoText = tr.CreateText(glm::vec2(0.01f, 0.18f), ""); // Reserve text object for dynamic info text
-	m_debugText = tr.CreateText(glm::vec2(0.01f, 0.3f), ""); // Debugging purposes
+	m_chatText = 	tr.CreateText(glm::vec2(0.01f, 0.49f), "", bgAndShadow, TextRenderer::TextType::Hidden, 10u); // Chat log
+	m_commandText = tr.CreateText(glm::vec2(0.01f, 0.85f), "", bgAndShadow | TextRenderer::TS_BackgroundFullX, TextRenderer::TextType::Hidden); // Command text
+	m_infoText = 	tr.CreateText(glm::vec2(0.01f, 0.18f), "", bgAndShadow); // Reserve text object for dynamic info text
+	//m_debugText = 	tr.CreateText(glm::vec2(0.01f, 0.30f), "", bgAndShadow); // Debugging purposes
 
 	// Initialize player text
 	playerFunctions.InitializeText();
@@ -75,7 +79,6 @@ GameObject::GameObject() :
 
 void GameObject::Main()
 {
-	constexpr double windowUpdateInterval = 1.0f / 20.0f; // Information update frequency
 	double windowTitleUpdateTime = 0.0; // The time since the last window title update
 	double largestUpdateTime = 0.0; // The largest amount of time between two frames
 	int avgFPSCount = 0; // Number of frames since last title update
@@ -109,7 +112,7 @@ void GameObject::Main()
 		playerFunctions.RenderBlockOutline();
 		world.DrawWorld();
 
-		m_skybox.RenderSky();
+		//m_skybox.RenderSky();
 		m_skybox.RenderStars();
 		m_skybox.RenderClouds();
 
@@ -120,7 +123,7 @@ void GameObject::Main()
 		}
 
 		// Window title update
-		if (windowTitleUpdateTime >= windowUpdateInterval) {
+		if (windowTitleUpdateTime >= 0.05f) {
 			// Determine FPS values
 			m_avgFPS = static_cast<int>(static_cast<double>(avgFPSCount) / windowTitleUpdateTime);
 			m_lowFPS = static_cast<int>(1.0 / largestUpdateTime);
@@ -176,16 +179,16 @@ void GameObject::TextUpdate()
 	const std::string FPStext = fmt::format("{} FPS | {} AVG | {} LOW", m_nowFPS, m_avgFPS, m_lowFPS);
 
 	// Update window title
-	glfwSetWindowTitle(game.window, ("badcraft - " + FPStext).c_str());
+	glfwSetWindowTitle(game.window, FPStext.c_str());
 
 	// Update dynamic information text (shortcut variables to make it less painful)
 	glm::dvec3& pos = player.position;
 	WorldPos& off = player.offset;
 
 	std::string infofmt = fmt::format(
-		"\n{:.3f} {:.3f} {:.3f} ({} {} {})\nYaw:{:.1f} Ptc:{:.1f}\nSpd:{:.1f} Time:{:.3f}\nTris:{}",
+		"\n{:.3f} {:.3f} {:.3f} ({} {} {})\nYaw:{:.1f} Ptc:{:.1f} FOV:{:.1f}\nSpd:{:.1f} Time:{:.2f}\nTris:{}",
 		pos.x, pos.y, pos.z, off.x, off.y, off.z, 
-		player.yaw, player.pitch, 
+		player.yaw, player.pitch, glm::degrees(player.fov),
 		player.currentSpeed, game.gameTime, 
 		fmt::group_digits(world.squaresCount * 2u)
 	);
@@ -266,10 +269,10 @@ void GameObject::UpdateFrameValues()
 {
 	// Update positions UBO
 	const double gamePositions[] = {
-		// raycastBlockPosition
-		static_cast<double>(player.targetBlockPosition.x),
-		static_cast<double>(player.targetBlockPosition.y),
-		static_cast<double>(player.targetBlockPosition.z), 1.0,
+		// relativeRaycastBlockPosition
+		static_cast<double>(player.targetBlockPosition.x) - player.position.x,
+		static_cast<double>(player.targetBlockPosition.y) - player.position.y,
+		static_cast<double>(player.targetBlockPosition.z) - player.position.z, 1.0,
 		// playerPosition
 		player.position.x,
 		player.position.y,
@@ -279,7 +282,7 @@ void GameObject::UpdateFrameValues()
 
 	// Time values for shaders
 	const float crntFrame = static_cast<float>(game.gameTime);
-	float m_gameDayTime = sinf((crntFrame * Skybox::dayNightTimeReciprocal * Math::PI_FLT) - Math::HALF_PI) + 1.0f;
+	const float m_gameDayTime = 1.0f + sinf((crntFrame * Skybox::dayNightTimeReciprocal * glm::pi<float>()) - glm::half_pi<float>());
 
 	const float skyLerp = m_gameDayTime * 0.5f;
 	const float starAlpha = (m_gameDayTime - 0.8f) * 0.5f;
@@ -300,21 +303,18 @@ void GameObject::UpdateFrameValues()
 	};
 	OGL::UpdateUBO(m_timesUBO, 0, sizeof(gameTimes), gameTimes);
 
-	constexpr glm::vec3 skyMorningColour = glm::vec3(0.45f, 0.72f, 0.98f);
-	constexpr glm::vec3 skyTransitionColour = glm::vec3(1.0f, 0.45f, 0.0f);
-	constexpr glm::vec3 skyNightColour = glm::vec3(0.0f, 0.0f, 0.05f);
-
 	const glm::vec3 mainSkyColour = glm::vec3(
-		Math::lerp(skyMorningColour.x, skyNightColour.x, skyLerp),
-		Math::lerp(skyMorningColour.y, skyNightColour.y, skyLerp),
-		Math::lerp(skyMorningColour.z, skyNightColour.z, skyLerp)
+		Math::lerp(0.45f, 0.00f, skyLerp),
+		Math::lerp(0.72f, 0.00f, skyLerp),
+		Math::lerp(0.98f, 0.05f, skyLerp)
 	);
-
+	
 	// Paint/clear background with sky colour instead of having a
 	// massive shape surrounding player (expensive fragment shader)
 	glClearColor(mainSkyColour.x, mainSkyColour.y, mainSkyColour.z, 1.0f);
 	const float eveningLerp = powf(1.0f - m_gameDayTime, 20.0f);
-
+	
+	const glm::vec3 skyTransitionColour = glm::vec3(1.0f, 0.45f, 0.0f);
 	const glm::vec3 eveningSkyColour = glm::vec3(
 		Math::lerp(mainSkyColour.x, skyTransitionColour.x, eveningLerp),
 		Math::lerp(mainSkyColour.y, skyTransitionColour.y, eveningLerp),

@@ -2,16 +2,16 @@
 A voxel game built to be performant, memory-efficient and cross compatible.
 
 <img src="markdown/main.png"/>
-<sup>In-game screenshot (Windows)</sup>
+<sup>In-game screenshot during night</sup>
 
 ## Features
-- 64-bit rendering and generation system, allowing for worlds to span **trillions** of blocks with no issues*
+- 64-bit rendering and generation system
 - Custom text rendering system that supports different sizes and colours
 - Dynamic skybox with clouds and night stars
 - Screenshotting (see [Controls](https://github.com/mahdialmusaad/badcraft/tree/main?tab=readme-ov-file#controls))
 - Commands (see [Commands](https://github.com/mahdialmusaad/badcraft/tree/main?tab=readme-ov-file#commands))
 
-<sup>\*Due to precision limitations, terrain rendering begins to break down at 2<sup>53</sup> (9 quadrillion) blocks away from the origin.</sup>
+<sup>Due to precision limitations, terrain rendering begins to break down at 2<sup>53</sup> (9 quadrillion) blocks away from the origin.</sup>
 
 ## Goal
 This game was developed with performance and cross-compatibility in mind to ensure that anyone can use it, no matter their hardware or operating system.
@@ -32,6 +32,7 @@ Commands are also available to make exploring and editing the world easier! The 
 - /speed n - Change the player's current speed to the specified value.
 - /tick n - Change the tick speed to the specified value, which affects the speed at which in-game time passes.
 - /time n - Change the current in-game time to the specified value.
+- /fov n - Change the camera's field of view to the specified value.
 - /exit - Exits the game.
 - /fill x<sub>1</sub> y<sub>1</sub> z<sub>1</sub>  x<sub>2</sub> y<sub>2</sub> z<sub>2</sub> id - Fills from the first position to the second with the specified block ID*
 
@@ -79,7 +80,7 @@ If you encounter any problems, please create a new issue so it can be resolved.
 <sup>Tip: If you are using MSVC, you can compile using the /MP flag to do so in parallel.</sup>
 
 ## Libraries
-Badcraft makes use of a few libraries to work. They can be seen in the 'libraries' folder or below. Make sure to support them, this would not be possible without them!
+This game makes use of a few libraries to work. They can be seen in the 'libraries' folder or below. Make sure to support them, this would not be possible without them!
 
 [lodepng](https://github.com/lvandeve/lodepng) - PNG encoder and decoder
 

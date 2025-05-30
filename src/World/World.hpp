@@ -92,6 +92,16 @@ private:
 		std::uint32_t first;
 		std::uint32_t baseInstance;
 	};
+
+	struct ChunkTranslucentData {
+		ShaderChunkOffset offsetData;
+		Chunk* chunk;
+	};
+
+	Chunk::FaceAxisData** faceDataPointers;
+	ChunkTranslucentData* translucentChunks;
+	IndirectDrawCommand* worldIndirectData;
+	ShaderChunkOffset* worldOffsetData;
 };
 
 #endif

@@ -245,35 +245,6 @@ void Shader::UseShader(ShaderID id) const noexcept
 	glUseProgram(ShaderFromID(id));
 }
 
-void Shader::SetBool(ShaderID id, const char* name, bool value) const noexcept
-{
-	const GLuint program = ShaderFromID(id);
-	glUseProgram(program);
-	SetInt(GetLocation(program, name), value ? 0 : 1);
-}
-
-void Shader::SetInt(ShaderID id, const char* name, int value) const noexcept
-{
-	const GLuint program = ShaderFromID(id);
-	glUseProgram(program);
-	SetInt(GetLocation(program, name), value);
-}
-void Shader::SetInt(GLint location, int value) noexcept
-{
-	glUniform1i(location, value);
-}
-
-void Shader::SetFloat(ShaderID id, const char* name, float value) const noexcept
-{
-	const GLuint program = ShaderFromID(id);
-	glUseProgram(program);
-	SetFloat(GetLocation(program, name), value);
-}
-void Shader::SetFloat(GLint location, float value) noexcept
-{
-	glUniform1f(location, value);
-}
-
 GLint Shader::GetLocation(GLuint shader, const char* name) noexcept
 {
 	return glGetUniformLocation(shader, name);

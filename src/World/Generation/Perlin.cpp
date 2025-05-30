@@ -3,7 +3,7 @@
 void WorldPerlin::ChangeSeed()
 {
 	std::mt19937_64 gen(std::random_device{}());
-	std::uniform_int_distribution<std::int64_t> dist;
+	std::uniform_int_distribution<std::int64_t> dist(std::numeric_limits<std::int64_t>::min());
 	ChangeSeed(dist(gen));
 }
 

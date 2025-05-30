@@ -191,14 +191,14 @@ namespace ChunkSettings
 	constexpr int CHUNK_SIZE = 32; // (POWER OF 2 ONLY) Changing this requires the world shader to be updated as well.
 	constexpr int HEIGHT_COUNT = 8; // How many chunks in a 'full chunk'
 
-	// Chunk generation settings (feel free to edit)!
+	// Chunk generation settings (editable)
 	constexpr int CHUNK_BASE_DIRT_HEIGHT = HEIGHT_COUNT / 2;
 	constexpr int CHUNK_WATER_HEIGHT = CHUNK_SIZE * HEIGHT_COUNT / 4;
 	constexpr int CHUNK_MOUNTAIN_HEIGHT = CHUNK_WATER_HEIGHT * 3;
 	constexpr int CHUNK_LAND_MINIMUM_HEIGHT = CHUNK_WATER_HEIGHT / 2;
 	constexpr double NOISE_STEP = 0.01;
 	
-	// Calculation shortcuts - do not change!
+	// Calculation shortcuts - do not change
 	constexpr int CHUNK_SIZE_SQUARED = CHUNK_SIZE * CHUNK_SIZE;
 	constexpr int MAX_WORLD_HEIGHT = CHUNK_SIZE * HEIGHT_COUNT;
 
@@ -228,22 +228,9 @@ namespace ChunkSettings
 	constexpr float CHUNK_SIZE_RECIP = 1.0f / CHUNK_SIZE_FLT;
 	constexpr double CHUNK_SIZE_RECIP_DBL = 1.0 / CHUNK_SIZE_DBL;
 
-	// Upcoming biomes settings
-	// struct BiomeData {
-	//     constexpr BiomeData(float heightMult) noexcept : heightMultiplier(heightMult) {};
-	//     float heightMultiplier;
-	// } worldBiomeData[static_cast<size_t>(BiomeID::NumUnique)] = {
-	// //	 height
-	// 	{ 1.0f }, // Plains
-	// 	{ 1.0f }, // Forest
-	// 	{ 1.0f }, // Desert
-	// 	{ 1.0f }  // River
-	// };
-
 	constexpr const WorldBlockData& GetBlockData(ObjectID blockID) noexcept { 
 		return WorldBlockData_DEF::BlockIDData[static_cast<ObjectIDTypeof>(blockID)];
 	}
-
 	constexpr const WorldBlockData& GetBlockData(int blockID) noexcept {
 		return WorldBlockData_DEF::BlockIDData[blockID];
 	}
@@ -261,14 +248,23 @@ namespace ChunkSettings
 		{  1,  0,  0  },	// X+
 		{ -1,  0,  0  },	// X-
 		{  0,  0,  1  },	// Z+
-		{  0,  0, -1  }	// Z-
+		{  0,  0, -1  } 	// Z-
+	};
+
+	constexpr glm::ivec3 worldDirectionsInt[6] = {
+		{  0,  1,  0  },	// Y+
+		{  0, -1,  0  },	// Y-
+		{  1,  0,  0  },	// X+
+		{ -1,  0,  0  },	// X-
+		{  0,  0,  1  },	// Z+
+		{  0,  0, -1  } 	// Z-
 	};
 
 	constexpr WorldPos worldDirectionsXZ[4] = {
 		{  1,  0,  0  },	// X+
 		{ -1,  0,  0  },	// X-
 		{  0,  0,  1  },	// Z+
-		{  0,  0, -1  }	// Z-
+		{  0,  0, -1  } 	// Z-
 	};
 
 	PosType WorldPositionToOffset(PosType x) noexcept;
@@ -281,31 +277,15 @@ namespace ChunkSettings
 	WorldPos GetChunkCenter(const WorldPos& offset) noexcept;
 	bool ChunkOnFrustum(CameraFrustum& frustum, glm::vec3 center) noexcept;
 
-	constexpr glm::ivec3 LocalPositionFromIndex(int index) noexcept
-	{
-		return {
-			(index >> CHUNK_SIZE_POW) & CHUNK_SIZE_M1, 	// X
-			index & CHUNK_SIZE_M1,						// Y
-			(index >> CHUNK_SIZE_POW2) & CHUNK_SIZE_M1	// Z
-		};
-	}
-	constexpr int IndexFromLocalPosition(int x, int y, int z) noexcept
-	{
-		return y + (x << CHUNK_SIZE_POW) + (z << CHUNK_SIZE_POW2); // Y: bits 0-5, X: bits 5-10, Z: bits 10-15
-	}
-
 	enum class ChunkBlockValueType { Full, Compressed, Air };
 
-	typedef ObjectID(blockArray[CHUNK_BLOCKS_AMOUNT]);
+	typedef ObjectID(blockArray[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE]);
 	constexpr blockArray emptyChunk{};
 
 	struct ChunkBlockValue
 	{
-		virtual ObjectID GetBlockIndexed(int i) const noexcept = 0;
-		virtual void SetBlockIndexed(int i, ObjectID block) noexcept = 0;
-
-		virtual ObjectID GetBlock(int x, int y, int z) const noexcept final { return GetBlockIndexed(IndexFromLocalPosition(x, y, z)); }
-		virtual void SetBlock(int x, int y, int z, ObjectID newBlock) noexcept final { SetBlockIndexed(IndexFromLocalPosition(x, y, z), newBlock); }
+		virtual ObjectID GetBlock(int, int, int) const noexcept = 0;
+		virtual void SetBlock(int, int, int, ObjectID) noexcept = 0;
 
 		virtual ChunkBlockValueType GetChunkBlockType() const noexcept = 0;
 		virtual ~ChunkBlockValue() noexcept = default;
@@ -314,26 +294,20 @@ namespace ChunkSettings
 	struct ChunkBlockValueFull : ChunkBlockValue
 	{
 		blockArray chunkBlocks{};
-		ObjectID GetBlockIndexed(int i) const noexcept override { return chunkBlocks[i]; }
-		void SetBlockIndexed(int i, ObjectID block) noexcept override { chunkBlocks[i] = block; }
+
+		ObjectID GetBlock(int x, int y, int z) const noexcept override { return chunkBlocks[z][x][y]; }
+		void SetBlock(int x, int y, int z, ObjectID block) noexcept override { chunkBlocks[z][x][y] = block; }
+
 		ChunkBlockValueType GetChunkBlockType() const noexcept override { return ChunkBlockValueType::Full; }
 		~ChunkBlockValueFull() noexcept = default;
 	};
 
-	struct ChunkBlockValueCompressed : ChunkBlockValue
-	{
-		std::string data;
-		ObjectID GetBlockIndexed(int) const noexcept override { TextFormat::log("Compressed chunk requires conversion for get"); return ObjectID::Air; }
-		void SetBlockIndexed(int, ObjectID) noexcept override { TextFormat::log("Compressed chunk requires conversion for set"); }
-		ChunkBlockValueType GetChunkBlockType() const noexcept override { return ChunkBlockValueType::Compressed; }
-		~ChunkBlockValueCompressed() noexcept = default;
-	};
-
 	struct ChunkBlockAir : ChunkBlockValue
 	{
-		ObjectID GetBlockIndexed(int) const noexcept override { return ObjectID::Air; }
+		ObjectID GetBlock(int, int, int) const noexcept override { return ObjectID::Air; }
+		void SetBlock(int, int, int, ObjectID) noexcept override { TextFormat::log("Single chunk requires conversion for set"); }
+
 		ChunkBlockValueType GetChunkBlockType() const noexcept override { return ChunkBlockValueType::Air; }
-		void SetBlockIndexed(int, ObjectID) noexcept override { TextFormat::log("Single chunk requires conversion for set"); }
 		~ChunkBlockAir() noexcept = default;
 	};
 
@@ -345,30 +319,41 @@ struct ChunkLookupTable
 {
 	constexpr ChunkLookupTable() noexcept
 	{
-		constexpr int cs = ChunkSettings::CHUNK_SIZE_M1;
-		std::size_t index = 0u;
+		// Precalculated results for chunk calculation - use to check which block is 
+		// next to another and in which 'nearby chunk' (if it happens to be outside)
+		constexpr int cs = ChunkSettings::CHUNK_SIZE;
+		std::int32_t lookupIndex = 0;
 
-		for (std::uint8_t face = 0; face < 6; ++face) {
-			const glm::ivec3 epos = glm::ivec3(ChunkSettings::worldDirections[face]);
-			for (int i = 0; i <= ChunkSettings::CHUNK_BLOCKS_AMOUNT_INDEX; ++i) {
-				const glm::ivec3 crnt = ChunkSettings::LocalPositionFromIndex(i);
-				const glm::ivec3 nxt = crnt + epos;
-				const int targetPosIndex = ChunkSettings::IndexFromLocalPosition(
-					Math::loopAroundInteger(nxt.x, 0, ChunkSettings::CHUNK_SIZE),
-					Math::loopAroundInteger(nxt.y, 0, ChunkSettings::CHUNK_SIZE),
-					Math::loopAroundInteger(nxt.z, 0, ChunkSettings::CHUNK_SIZE)
-				);
+		for (std::uint8_t face = 0; face < 6u; ++face) {
+			const glm::ivec3 nextDirection = ChunkSettings::worldDirectionsInt[face];
+			for (int z = 0; z < cs; ++z) {
+				const int nextZ = z + nextDirection.z;
+				const bool zOverflowing = nextZ < 0 || nextZ >= cs;
 
-				ChunkLookupData& data = lookupData[index++];
-				data.blockIndex = static_cast<std::uint16_t>(targetPosIndex);
-				const bool isOverflowing = nxt.x < 0 || nxt.x > cs || nxt.y < 0 || nxt.y > cs || nxt.z < 0 || nxt.z > cs;
-				data.nearbyIndex = isOverflowing ? face : static_cast<std::uint8_t>(6u);
+				for (int x = 0; x < cs; ++x) {
+					const int nextX = x + nextDirection.x;
+					const bool xOverflowing = nextX < 0 || nextX >= cs;
+					const bool xzOverflowing = zOverflowing || xOverflowing;
+
+					for (int y = 0; y < cs; ++y) {
+						const int nextY = y + nextDirection.y;
+						const bool yOverflowing = nextY < 0 || nextY >= cs;
+						ChunkLookupData& data = lookupData[lookupIndex++];
+
+						data.blockPos = glm::i8vec3(
+							Math::loopAroundInteger(nextX, 0, cs),
+							Math::loopAroundInteger(nextY, 0, cs),
+							Math::loopAroundInteger(nextZ, 0, cs)
+						);
+						data.nearbyIndex = (xzOverflowing || yOverflowing) ? face : static_cast<std::uint8_t>(6u);
+					}
+				}
 			}
 		}
 	}
 
 	struct ChunkLookupData {
-		std::uint16_t blockIndex = 0u;
+		glm::i8vec3 blockPos{};
 		std::uint8_t nearbyIndex = 0u;
 	};
 
