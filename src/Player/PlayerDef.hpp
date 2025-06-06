@@ -20,20 +20,17 @@ struct PlayerObject
 	{
 		ObjectID objectID = ObjectID::Air;
 		std::uint8_t count = 0;
+		TextRenderer::ScreenText* slotText;
 	};
 
 	bool moved = true;
-	bool collisionEnabled = false;
+	bool doGravity = false;
 	bool inventoryOpened = false;
-	WorldDirection lookDirectionPitch = WorldDirection::None, lookDirectionYaw = WorldDirection::None;
+	WorldDirection lookDirectionPitch, lookDirectionYaw = WorldDirection::Front;
 
 	ObjectID targetBlock = ObjectID::Air;
 
-	glm::dvec3 position = { 
-		ChunkSettings::CHUNK_SIZE_DBL / 2.0, 
-		static_cast<double>(ChunkSettings::CHUNK_WATER_HEIGHT + 1),
-		ChunkSettings::CHUNK_SIZE_DBL / 2.0
-	};
+	glm::dvec3 position = {};
 
 	double posMagnitude = 0.0;
 	WorldPos offset{};
@@ -46,10 +43,15 @@ struct PlayerObject
 	double sensitivity = 0.1f;
 	double pitch = 0.0f, yaw = 0.0f;
 
+	static constexpr const char* directionText[7] = { "None", "East", "West", "Up", "Down", "North", "South" };
+
 	double currentSpeed = 2.0, defaultSpeed = 2.0;
 
 	static constexpr double gravity = -3.0;
 	static constexpr double maxGravity = -100.0;
+	static constexpr double jumpPower = 0.5;
+
+	static constexpr std::uint8_t maxSlotCount = 99u;
 
 	static constexpr double farPlaneDistance = 10000.0;
 	static constexpr double nearPlaneDistance = 0.1;

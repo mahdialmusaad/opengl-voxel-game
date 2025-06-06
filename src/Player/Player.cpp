@@ -5,10 +5,13 @@ Player::Player() noexcept
 	TextFormat::log("Player enter");
 
 	// Temporary inventory test
-	for (PlayerObject::InventorySlot& s : player.inventory) s.objectID = static_cast<ObjectID>((rand() % 8) + 1);
+	for (PlayerObject::InventorySlot& s : player.inventory) { 
+		s.objectID = static_cast<ObjectID>((rand() % 8) + 1);
+		s.count = static_cast<std::uint8_t>((rand() % (PlayerObject::maxSlotCount + 1)) + 1);
+	}
 
 	// Setup VAO and VBO for selection outline
-	m_outlineVAO = OGL::CreateVAO8();
+	m_outlineVAO = OGL::CreateVAO();
 	glEnableVertexAttribArray(0u);
 
 	// To ensure that the block selection outline is always visible, a slightly *smaller* square outline 
@@ -59,7 +62,7 @@ Player::Player() noexcept
 	glBufferStorage(GL_ARRAY_BUFFER, sizeof(cubeCoordinates), cubeCoordinates, 0u);
 
 	// Setup VAO for inventory
-	m_inventoryVAO = OGL::CreateVAO8();
+	m_inventoryVAO = OGL::CreateVAO();
 
 	// Enable attributes 0-2: 0 = vec4, 1 = int, 2 = base vec3
 	glEnableVertexAttribArray(0u);
@@ -71,14 +74,14 @@ Player::Player() noexcept
 	glVertexAttribDivisor(1u, 1u);
 
 	// VBO for the inventory texture data
-	m_inventoryIVBO = OGL::CreateBuffer8(GL_ARRAY_BUFFER);
+	m_inventoryIVBO = OGL::CreateBuffer(GL_ARRAY_BUFFER);
 
 	// Attribute layout (location 0 and 1)
 	// A0 (vec4): X, Y, W, H
 	// A1 (int): Texture type - text or block (1st bit), inner texture id (other bits)
 	constexpr GLsizei stride = sizeof(float[4]) + sizeof(std::int32_t);
 	glVertexAttribPointer(0u, 4, GL_FLOAT, GL_FALSE, stride, nullptr);
-	glVertexAttribIPointer(1u, 1, GL_INT, stride, reinterpret_cast<const void*>(sizeof(float[4])));
+	glVertexAttribIPointer(1u, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<const void*>(sizeof(float[4])));
 
 	// Inventory element quad vertex data
 	struct QuadVertex {
@@ -109,10 +112,29 @@ void Player::InitializeText() noexcept
 
 	// Selected block information text - created in player class instead of
 	// with other text objects so it can be updated only when the selected block changes
-	//m_blockText = world->textRenderer.CreateText(glm::vec2(0.0f, 0.0f), "");
+	m_blockText = world->textRenderer.CreateText(
+		glm::vec2(1.0f, 0.01f), "", 12u,
+		TextRenderer::TS_Background | TextRenderer::TS_Shadow | TextRenderer::TS_InventoryInvisible
+	);
+	RaycastBlock(); // Raycast to force update with selected block data
 
-	// Inventory item counters
-	//inventoryCountText = new TextRenderer::ScreenText*[36];
+	// Inventory item counters - rendered seperately from other text for display order
+	for (int slotIndex = 0; slotIndex < 9; ++slotIndex) {
+		PlayerObject::InventorySlot& slot = player.inventory[slotIndex];
+		slot.slotText = world->textRenderer.CreateText(
+			{ 0.281f + (slotIndex * 0.05f), 0.968f },
+			std::to_string(slot.count), 10u,
+			TextRenderer::TS_Shadow | TextRenderer::TS_InventoryInvisible
+		);
+	}
+}
+
+void Player::InventoryTextTest() noexcept
+{
+	for (int slotIndex = 0; slotIndex < 9; ++slotIndex) {
+		PlayerObject::InventorySlot& slot = player.inventory[slotIndex];
+		world->textRenderer.ChangePosition(slot.slotText, { game.testvals.x + (slotIndex * game.testvals.y), game.testvals.z });
+	}
 }
 
 void Player::CheckInput() noexcept 
@@ -134,7 +156,7 @@ void Player::CheckInput() noexcept
 
 		// Noclip/flying mode inputs
 		bool alreadyControl = false;
-		if (!player.collisionEnabled) {
+		if (!player.doGravity) {
 			if (CheckKey(GLFW_KEY_SPACE)) ProcessKeyboard(WorldDirection::Up);
 			if (CheckKey(GLFW_KEY_LEFT_CONTROL)) { ProcessKeyboard(WorldDirection::Down); alreadyControl = true; }
 		}
@@ -150,100 +172,97 @@ void Player::UpdateMovement() noexcept
 {
 	// Player should slowly come to a stop instead of immediately stopping when no movement is applied
 	// TODO: Framerate-independent lerp/smoothing
-	m_velocity.x = Math::lerp(m_velocity.x, 0.0, game.deltaTime * 5.0);
-	m_velocity.y = Math::lerp(m_velocity.y, 0.0, game.deltaTime * 5.0);
-	m_velocity.z = Math::lerp(m_velocity.z, 0.0, game.deltaTime * 5.0);
+	const double movementLerp = std::clamp(game.deltaTime * 5.0, 0.0, 1.0);
+	m_velocity.x = Math::lerp(m_velocity.x, 0.0, movementLerp);
+	m_velocity.y = Math::lerp(m_velocity.y, 0.0, movementLerp);
+	m_velocity.z = Math::lerp(m_velocity.z, 0.0, movementLerp);
 
-	// Check if the player velocity is close enough to zero to simply treat it as not moving
-	// (Smooth player movement means the player could move by a millionth of a block, which is basically 
-	// nothing/unnoticeable but would still require expensive collision checks and other calculations)
-	constexpr double movementMinimum = 0.001;
-	if (fabs(m_velocity.x) + fabs(m_velocity.y) + fabs(m_velocity.z) <= movementMinimum) return;
+	// Gravity should have a maximum instead of increasing indefinetly (terminal velocity)
+	m_velocity.y = fmax(m_velocity.y + (player.gravity * game.deltaTime * player.doGravity), player.maxGravity);
 
-	if (player.collisionEnabled) {
-		// Gravity should have a maximum instead of increasing indefinetly 
-		m_velocity.y = fmax(m_velocity.y + (player.gravity * game.deltaTime), player.maxGravity);
+	/*
+		For each direction (per axis):
 
-		/*
-			For each direction (per axis):
+		Get the block found at the new position added with the relative position,
+		(checking for 0.1 blocks in each direction for more accurate collisions)
 
-			Get the block found at the new position added with the relative position,
-			(checking for 0.1 blocks in each direction for more accurate collisions)
+		Check if the found block is solid,
 
-			Check if the found block is solid,
+		and remove velocity in that direction if their signs match
+		(e.g. don't remove positive X velocity if a block was found in negative X direction)
+	*/
 
-			and remove velocity in that direction if their signs match
-			(e.g. don't remove positive X velocity if a block was found in negative X direction)
-		*/
+	constexpr double plrWidth = 0.2;
+	constexpr double playerHeight = 1.7;
 
-		struct CollisionInfo {
-			constexpr CollisionInfo(glm::dvec3 p, int axis, bool pos) noexcept :
-				direction(p), axis(axis), positiveAxis(pos) {
-			}
-			const glm::dvec3 direction;
-			const int axis;
-			const bool positiveAxis;
-		};
-
-		// Lists of all relative block coordinates to check for collision, optimized to check 
-		// the most common scenarios first and seperated by axis to skip uneccessary checks
-		// e.g. if a player collided with a block on their right, there is no need to check
-		// for collisions on the left and vice versa
-
-		// X axis collision checks
-		constexpr const CollisionInfo XCollisionChecks[4] = {
-			{ {  0.1, -0.1,  0.0 }, 0, true  },	// On the right at feet height
-			{ { -0.1, -0.1,  0.0 }, 0, false },	// On the left at feet height
-			{ {  0.1,  0.0,  0.0 }, 0, true  },	// On the right at head height
-			{ { -0.1,  0.0,  0.0 }, 0, false },	// On the left at head height
-		};
-
-		// Y axis collision checks
-		constexpr const CollisionInfo YCollisionChecks[2] = {
-			{ { 0.0, -0.1,  0.0 }, 1, false },	// Below feet
-			{ { 0.0,  0.1,  0.0 }, 1, true  },	// Above head
-		};
-
-		// Z axis collision checks
-		constexpr const CollisionInfo ZCollisionChecks[4] = {
-			{ { 0.0, -0.1,  0.1 }, 2, false },	// In front at feet height
-			{ { 0.0, -0.1, -0.1 }, 2, false },	// Behind at feet height
-			{ { 0.0,  0.0,  0.1 }, 2, true  },	// In front at head height
-			{ { 0.0,  0.0, -0.1 }, 2, true  },	// Behind at head height
-		};
-
-		// The new position to check collisions for
-		const glm::dvec3 newPosition = player.position + m_velocity;
-
-		// Collision checks in each axis:
-		// X axis
-		for (const CollisionInfo& colInfo : XCollisionChecks) {
-			const WorldPos pos = newPosition + colInfo.direction;
-			if (ChunkSettings::GetBlockData(world->GetBlock(pos.x, pos.y, pos.z)).isSolid) {
-				double& axis = m_velocity[colInfo.axis];
-				if ((axis >= 0.0) == colInfo.positiveAxis) { axis = 0.0; break; }
-			}
+	struct CollisionInfo {
+		constexpr CollisionInfo(glm::dvec3 p, bool pos) noexcept :
+			direction(p), positiveAxis(pos) {
 		}
-		// Y axis
-		for (const CollisionInfo& colInfo : YCollisionChecks) {
-			const WorldPos pos = newPosition + colInfo.direction;
-			if (ChunkSettings::GetBlockData(world->GetBlock(pos.x, pos.y, pos.z)).isSolid) {
-				double& axis = m_velocity[colInfo.axis];
-				if ((axis >= 0.0) == colInfo.positiveAxis) { axis = 0.0; break; }
-			}
-		}
-		// Z axis
-		for (const CollisionInfo& colInfo : ZCollisionChecks) {
-			const WorldPos pos = newPosition + colInfo.direction;
-			if (ChunkSettings::GetBlockData(world->GetBlock(pos.x, pos.y, pos.z)).isSolid) {
-				double& axis = m_velocity[colInfo.axis];
-				if ((axis >= 0.0) == colInfo.positiveAxis) { axis = 0.0; break; }
+		const glm::dvec3 direction;
+		const bool positiveAxis;
+	}
+	// Lists of all relative block coordinates to check for collision, optimized to check 
+	// the most common scenarios first and seperated by axis to skip uneccessary checks
+	// e.g. if a player collided with a block on their right, there is no need to check
+	// for collisions on the left and vice versa
+	constexpr XCollisionChecks[4] = {
+		{ {  plrWidth, -1.0,  		0.0 }, true  },	// On the right at feet height
+		{ { -plrWidth, -1.0,  		0.0 }, false },	// On the left at feet height
+		{ {  plrWidth,  0.0,  		0.0 }, true  },	// On the right at head height
+		{ { -plrWidth,  0.0,  		0.0 }, false },	// On the left at head height
+	}, YCollisionChecks[2] = {
+		{ { 0.0, -playerHeight, 	0.0 }, false },	// Below feet
+		{ { 0.0,  plrWidth,  		0.0 }, true  },	// Above head
+	}, ZCollisionChecks[4] = {
+		{ { 0.0, -1.0,    	   plrWidth }, true  },	// In front at feet height
+		{ { 0.0, -1.0,	  	  -plrWidth }, false },	// Behind at feet height
+		{ { 0.0,  0.0,  	   plrWidth }, false },	// In front at head height
+		{ { 0.0,  0.0, 		  -plrWidth }, true  },	// Behind at head height
+	};
+
+	// The new position to check collisions for
+	const glm::dvec3 newPosition = player.position + m_velocity;
+
+	// Collision checks in each axis:
+	// X axis
+	for (const CollisionInfo& colInfo : XCollisionChecks) {
+		const glm::dvec3 checkPosition = newPosition + colInfo.direction;
+		const WorldPos pos = Math::toWorld(checkPosition);
+		if (ChunkSettings::GetBlockData(world->GetBlock(pos.x, pos.y, pos.z)).isSolid) {
+			if ((m_velocity.x >= 0.0) == colInfo.positiveAxis) {
+				m_velocity.x = 0.0;
+				break;
 			}
 		}
 	}
-	else player.position += m_velocity;
+	// Y axis
+	for (const CollisionInfo& colInfo : YCollisionChecks) {
+		const glm::dvec3 checkPosition = newPosition + colInfo.direction;
+		const WorldPos pos = Math::toWorld(checkPosition);
+		if (ChunkSettings::GetBlockData(world->GetBlock(pos.x, pos.y, pos.z)).isSolid) {
+			if ((m_velocity.y >= 0.0) == colInfo.positiveAxis) {
+				m_velocity.y = 0.0;
+				break;
+			}
+		}
+	}
+	// Z axis
+	for (const CollisionInfo& colInfo : ZCollisionChecks) {
+		const glm::dvec3 checkPosition = newPosition + colInfo.direction;
+		const WorldPos pos = Math::toWorld(checkPosition);
+		if (ChunkSettings::GetBlockData(world->GetBlock(pos.x, pos.y, pos.z)).isSolid) {
+			if ((m_velocity.z >= 0.0) == colInfo.positiveAxis) {
+				m_velocity.z = 0.0;
+				break;
+			}
+		}
+	}
+	
+	// Add current velocity to position
+	player.position += m_velocity;
 
-	// Update position-related variables
+	// Update variables and other data affected by position
 	UpdatePositionalVariables();
 }
 
@@ -252,6 +271,11 @@ void Player::SetPosition(glm::dvec3 newPos) noexcept
 	// Set the new position of the player
 	player.position = newPos;
 	UpdatePositionalVariables();
+}
+
+const glm::dvec3 &Player::GetVelocity() const noexcept
+{
+	return m_velocity;
 }
 
 void Player::UpdatePositionalVariables() noexcept
@@ -263,20 +287,44 @@ void Player::UpdatePositionalVariables() noexcept
 
 void Player::BreakBlock() noexcept
 {
+	// Check if the selected block is solid/valid
 	if (ChunkSettings::GetBlockData(player.targetBlock).isSolid) {
+		// Set broken block to air and redo raycast
 		world->SetBlock(player.targetBlockPosition.x, player.targetBlockPosition.y, player.targetBlockPosition.z, ObjectID::Air);
 		RaycastBlock();
+
+		// Update inventory with new item
+		const int presentIndex = SearchForItemNonFull(player.targetBlock);
+
+		if (presentIndex == -1) {
+			// Target block was not found in inventory or the found was/were full
+			const int airIndex = SearchForItem(ObjectID::Air);
+			if (airIndex == -1) return; // No empty or same-type slots were found
+			else {
+				// Replace empty slot with item
+				PlayerObject::InventorySlot& emptySlot = player.inventory[airIndex];
+				emptySlot.count = 1u;
+				emptySlot.objectID = player.targetBlock;
+				world->textRenderer.ChangeText(emptySlot.slotText, "1");
+			}
+		} else {
+			// A non-full slot with the same type was found
+			PlayerObject::InventorySlot& foundSlot = player.inventory[presentIndex];
+			world->textRenderer.ChangeText(foundSlot.slotText, std::to_string(++foundSlot.count));
+			UpdateInventory();
+		}
 	}
 }
 
 ModifyWorldResult Player::PlaceBlock() noexcept
 {
 	// Determine selected block in inventory
-	const ObjectID placeBlock = player.inventory[selected].objectID;
+	PlayerObject::InventorySlot& useSlot =  player.inventory[selected];
+	const ObjectID placeBlock = useSlot.objectID;
 
 	// Only place if the current selected block is valid
 	if (placeBlock != ObjectID::Air && ChunkSettings::GetBlockData(player.targetBlock).isSolid) {
-		const ModifyWorldResult result = world->SetBlock(
+		world->SetBlock(
 			player.targetBlockPosition.x, 
 			player.targetBlockPosition.y,
 			player.targetBlockPosition.z,
@@ -284,47 +332,75 @@ ModifyWorldResult Player::PlaceBlock() noexcept
 		);
 
 		RaycastBlock();
-		return result;
+
+		// Decrement item amount, changing to air if it was the last one
+		if (--useSlot.count == 0u) { 
+			useSlot.objectID = ObjectID::Air;
+			UpdateInventory();
+		}
+
+		// Update text if needed
+		useSlot.slotText->textType = useSlot.count > 0u ? TextRenderer::TextType::Default : TextRenderer::TextType::Hidden;
+		world->textRenderer.ChangeText(useSlot.slotText, std::to_string(useSlot.count));
 	}
 
-	return ModifyWorldResult::Invalid;
+	// Temporary
+	return ModifyWorldResult::Passed;
 }
 
 void Player::ProcessKeyboard(WorldDirection direction) noexcept
 {
 	const double directionMultiplier = player.currentSpeed * game.deltaTime;
+	const double previousYVelocity = m_velocity.y;
 
 	// Add to velocity based on frame time and input
 	switch (direction) {
 		// Player movement
 		case WorldDirection::Front:
-			m_velocity += m_camFront * directionMultiplier;
+			m_velocity += m_NPcamFront * directionMultiplier;
 			break;
 		case WorldDirection::Back:
-			m_velocity += -m_camFront * directionMultiplier;
+			m_velocity += m_NPcamFront * -directionMultiplier;
 			break;
 		case WorldDirection::Left:
-			m_velocity += -m_camRight * directionMultiplier;
+			m_velocity += m_NPcamRight * -directionMultiplier;
 			break;
 		case WorldDirection::Right:
-			m_velocity += m_camRight * directionMultiplier;
+			m_velocity += m_NPcamRight * directionMultiplier;
 			break;
 		// Flying movement
 		case WorldDirection::Up:
-			m_velocity += m_camUp * directionMultiplier;
+			m_velocity.y += directionMultiplier;
 			break;
 		case WorldDirection::Down:
-			m_velocity += -m_camUp * directionMultiplier;
+			m_velocity.y += -directionMultiplier;
 			break;
 		// Jumping logic
 		case WorldDirection::None:
 			// Lazy 'grounded' check
-			if (abs(m_velocity.y) < 0.1) break;
-			m_velocity += glm::dvec3(0.0, 5.0, 0.0);
+			if (abs(m_velocity.y) > 0.01) break;
+			m_velocity.y += player.jumpPower;
 			break;
 		default:
 			break;
 	}
+
+	// Remove any Y velocity change as a result of moving in camera direction if gravity is enabled
+	if (player.doGravity) m_velocity.y = previousYVelocity;
+}
+
+int Player::SearchForItem(ObjectID item) noexcept
+{
+	// Return index of item in inventory or -1 if none was found
+	for (int i = 0; i < 9; ++i) if (player.inventory[i].objectID == item) return i;
+	return -1;
+}
+
+int Player::SearchForItemNonFull(ObjectID item) noexcept
+{
+	// Same as above, but will only return if the slot is not full
+	for (int i = 0; i < 9; ++i) if (player.inventory[i].objectID == item && player.inventory[i].count < PlayerObject::maxSlotCount) return i;
+	return -1;
 }
 
 void Player::RenderBlockOutline() const noexcept
@@ -356,9 +432,15 @@ void Player::RenderPlayerGUI() const noexcept
 	game.shader.UseShader(Shader::ShaderID::Inventory);
 	glBindVertexArray(m_inventoryVAO);
 
-	// Only draw the inventory if it is opened
-	const int instances = static_cast<int>(player.inventoryOpened ? m_totalInventoryInstances : m_hotbarInstances);
-	glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, instances);
+	// Draw hotbar instances
+	glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, m_noInventoryInstances);
+	
+	if (player.inventoryOpened) {
+		for (int i = 0; i < 9; ++i) world->textRenderer.RenderText(player.inventory[i].slotText, false, !i); // Render hotbar slot text now so they appear under inventory background
+		game.shader.UseShader(Shader::ShaderID::Inventory); // Switch back to inventory shader
+		glBindVertexArray(m_inventoryVAO); // Use inventory VAO
+		glDrawArraysInstancedBaseInstance(GL_TRIANGLE_STRIP, 0, 4, m_totalInventoryInstances - m_noInventoryInstances, m_noInventoryInstances); // Draw rest of inventory
+	}
 }
 
 void Player::SetViewMatrix(glm::mat4& result) const noexcept
@@ -376,21 +458,21 @@ void Player::MouseMoved(double x, double y) noexcept
 	float fx = static_cast<float>(x), fy = static_cast<float>(y);
 
 	// Looking straight up causes camera to flip, so stop just before 90 degrees
-	constexpr double not90 = 89.9999;
+	const double not90 = 89.9999;
 
 	// Calculate camera angles
 	player.yaw = Math::loopAround(player.yaw + (fx * player.sensitivity), -180.0, 180.0);
-	player.pitch = Math::clamp(player.pitch + (fy * player.sensitivity), -not90, not90);
+	player.pitch = std::clamp(player.pitch + (fy * player.sensitivity), -not90, not90);
 	player.moved = true; // Update other camera variables
 
-	// Determine camera direction (unused for now)
+	// Determine camera direction
 	player.lookDirectionPitch =
 		player.pitch > 60.0f ? WorldDirection::Up :
 		player.pitch < -60.0f ? WorldDirection::Down : WorldDirection::None;
 	player.lookDirectionYaw =
-		player.yaw >= -45.0f && player.yaw < 45.0f ? WorldDirection::Front :
-		player.yaw >= 45.0f && player.yaw < 135.0f ? WorldDirection::Right :
-		player.yaw >= 135.0f || player.yaw < -135.0f ? WorldDirection::Back : WorldDirection::Left;
+		(player.yaw >= -45.0f && player.yaw <  45.00f) ? WorldDirection::Front :
+		(player.yaw >= 45.00f && player.yaw <  135.0f) ? WorldDirection::Right :
+		(player.yaw >= 135.0f || player.yaw < -135.0f) ? WorldDirection::Back  : WorldDirection::Left;
 
 	// Other camera related functions
 	UpdateCameraVectors();
@@ -401,10 +483,14 @@ void Player::RaycastBlock() noexcept
 {
 	// Determine steps in each axis
 	glm::dvec3 deltaRay = { 
-		fabs(1.0 / fmax(m_camFront.x, 0.01)), 
-		fabs(1.0 / fmax(m_camFront.y, 0.01)), 
-		fabs(1.0 / fmax(m_camFront.z, 0.01)) 
+		std::fabs(1.0 / std::fmax(m_camFront.x, 0.01)), 
+		std::fabs(1.0 / std::fmax(m_camFront.y, 0.01)), 
+		std::fabs(1.0 / std::fmax(m_camFront.z, 0.01)) 
 	};
+
+	// Store data about block player was previously looking at
+	const WorldPos initialSelectedPosition = player.targetBlockPosition;
+	const ObjectID initialSelectedBlock = player.targetBlock;
 
 	// Initial values for raycasting
 	player.targetBlockPosition = Math::toWorld(player.position);
@@ -414,23 +500,21 @@ void Player::RaycastBlock() noexcept
 	// Determine directions and magnitude in each axis
 	// X axis
 	double currentSign = m_camFront.x >= 0.0 ? 1.0 : -1.0;
-	step.x = currentSign;
+	step.x = static_cast<PosType>(currentSign);
 	sideDistance.x = (player.position.x - static_cast<double>(player.targetBlockPosition.x) + fmax(currentSign, 0.0)) * deltaRay.x * currentSign;
 	// Y axis
 	currentSign = m_camFront.y >= 0.0 ? 1.0 : -1.0;
-	step.y = currentSign;
+	step.y = static_cast<PosType>(currentSign);
 	sideDistance.y = (player.position.y - static_cast<double>(player.targetBlockPosition.y) + fmax(currentSign, 0.0)) * deltaRay.y * currentSign;
 	// Z axis
 	currentSign = m_camFront.z >= 0.0 ? 1.0 : -1.0;
-	step.z = currentSign;
+	step.z = static_cast<PosType>(currentSign);
 	sideDistance.z = (player.position.z - static_cast<double>(player.targetBlockPosition.z) + fmax(currentSign, 0.0)) * deltaRay.z * currentSign;
 
 	// Determines reach distance
 	constexpr double maxDistTravel = 5.5;
 	double distanceTravelled = 0.0;
 	int maxloops = 5;
-
-	//const ObjectID initialSelectedBlock = player.targetBlock;
 
 	while (distanceTravelled <= maxDistTravel && maxloops--) {
 		// Check shortest axis and move in that direction
@@ -475,14 +559,25 @@ void Player::RaycastBlock() noexcept
 	m_rayResult	= player.position + sideDistance;
 
 	// Update block text if needed
-	/*if (initialSelectedBlock != player.targetBlock) {
-		const WorldBlockData blockData = ChunkSettings::GetBlockData(player.targetBlock); // Get block properties
-		const std::string nameText = blockData.name;
-		// Update position to fit all text on screen
-		world->textRenderer.ChangePosition(m_blockText, { 1.0f - (0.01f * nameText.size()), 0.18f }, false);
-		// Update text with block information
-		world->textRenderer.ChangeText(m_blockText, fmt::format("{} ({})", 5, blockData.id));
-	}*/
+	if (player.targetBlock != initialSelectedBlock || player.targetBlockPosition != initialSelectedPosition) UpdateBlockInfoText();
+}
+
+void Player::UpdateBlockInfoText() noexcept
+{
+	const WorldBlockData blockData = ChunkSettings::GetBlockData(player.targetBlock); // Get block properties
+	const std::string informationText = fmt::format(
+		"Selected:\n({} {} {})\n\"{}\" (ID {})\nLight emission: {}\nReplaceable: {}\nSolid: {}\nTranslucent: {}\nTextures: {} {} {} {} {} {}", 
+		player.targetBlockPosition.x, player.targetBlockPosition.y, player.targetBlockPosition.z,
+		blockData.name, blockData.id,
+		blockData.lightEmission, blockData.natureReplaceable, blockData.isSolid, blockData.hasTransparency,
+		blockData.textures[0], blockData.textures[1], blockData.textures[2], blockData.textures[3], blockData.textures[4], blockData.textures[5]
+	); // Format block information text
+	const float textWidth = world->textRenderer.GetTextScreenWidth(
+		informationText, 
+		world->textRenderer.GetUnitSizeMultiplier(m_blockText->GetUnitSize())
+	); // Get maximum width of block information text
+	world->textRenderer.ChangePosition(m_blockText, { 0.99f - textWidth, 0.01f }, false); // Update position to fit all text on screen
+	world->textRenderer.ChangeText(m_blockText, informationText); // Update text with block information
 }
 
 void Player::UpdateFrustum() noexcept
@@ -518,25 +613,31 @@ void Player::UpdateOffset() noexcept
 
 void Player::UpdateCameraVectors() noexcept
 {
-	const double pitchRadians = glm::radians(player.pitch);
-	const double yawRadians = glm::radians(player.yaw);
-	const double cosPitchRadians = cosf(pitchRadians);
+	const double yawRad = glm::radians(player.yaw);
+	const double pitchRad = glm::radians(player.pitch);
+	const double cosPitchRad = glm::cos(pitchRad);
+	
+	const glm::vec3 front = glm::normalize(glm::vec3(cos(yawRad) * cosPitchRad, sin(pitchRad), sin(yawRad) * cosPitchRad));
+	const glm::vec3 right = glm::normalize(glm::cross(front, glm::vec3(0.0f, 1.0f, 0.0f)));
 
-	m_camFront = glm::normalize(glm::vec3(
-		cos(yawRadians) * cosPitchRadians,
-		sin(pitchRadians),
-		sin(yawRadians) * cosPitchRadians
-	));
+	m_camUp = glm::normalize(glm::cross(right, front));
+	m_camFront = static_cast<glm::dvec3>(front);
+	m_camRight = static_cast<glm::dvec3>(right);
 
-	constexpr glm::dvec3 vecUp = glm::dvec3(0.0, 1.0, 0.0);
-	m_camRight = glm::normalize(glm::cross(m_camFront, vecUp));
-	m_camUp = glm::normalize(glm::cross(m_camRight, m_camFront));
+	m_NPcamFront = glm::normalize(glm::vec3(m_camFront.x, 0.0f, m_camFront.z));
+	m_NPcamRight = glm::normalize(glm::vec3(m_camRight.x, 0.0f, m_camRight.z));
 }
 
 void Player::UpdateScroll(float yoffset) noexcept
 {
 	const int newSelection = static_cast<int>(selected) + (yoffset > 0.0f ? 1 : -1);
-	selected = static_cast<std::uint8_t>(Math::loopAroundInteger(newSelection, 0, 9));
+	selected = static_cast<std::uint8_t>(Math::loopAround(newSelection, 0, 9));
+	UpdateInventory();
+}
+
+void Player::UpdateScroll(int slotIndex) noexcept
+{
+	selected = static_cast<std::uint8_t>(slotIndex);
 	UpdateInventory();
 }
 
@@ -548,95 +649,89 @@ void Player::UpdateInventory() noexcept
 	
 	// Instance of inventory element (item slot, block texture, etc)
 	struct InventoryInstance {
-		constexpr InventoryInstance(
+		InventoryInstance(
 			float x, float y, float w, float h, 
-			std::int32_t texture, bool isBlockTexture = false
+			std::uint32_t texture, bool isBlockTexture = false
 		) noexcept : x(x), y(y), w(w), h(h), second(static_cast<int>(isBlockTexture) + (texture << 1)) {}
-		constexpr InventoryInstance() noexcept {}
+		InventoryInstance() noexcept {}
 
 		float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f;
-		std::int32_t second = 0;
+		std::uint32_t second = 0u;
 	};
 
-	// Array amount: 2 uints per instance (InventoryInstance struct)
-	// 5 different rows of 9 slots (2 hotbars (1 is a copy in inventory gui) and 3 inventory slots)
+	// Array amount:
+	// 5 different rows of 9 slots - 2 hotbars (there is a copy in the inventory gui) and 3 inventory rows
 	// Each slot requires 2 instances to also include possible block texture
 	// 3 more for crosshair, background and inventory box
-	// = 3 + (2 * 9 * 5)
-	constexpr int maxInstances = 3 + (9 * 5 * 2);
+	// = 3 + (9 * 5)
+	const int maxInstances = 3 + (9 * 5 * 2);
 	m_totalInventoryInstances = 0;
 
 	// Each texture index (when data is of an inventory texture rather than a block texture)
 	// is used to index into an array that determines the texture positions in the vertex shader.
 	enum TextureIndex : std::uint32_t { TI_Background, TI_Unequipped, TI_Equipped, TI_Inventory, TI_Crosshair };
 	
-	// Compressed buffer data
-	InventoryInstance* data = new InventoryInstance[maxInstances];
-	data[m_totalInventoryInstances++] = InventoryInstance(-0.025f, -0.025f, 0.025f, 0.025f * game.aspect, TI_Crosshair); // Crosshair at center of screen (always visible)
+	// Inventory slots shader data
+	InventoryInstance* inventoryData = new InventoryInstance[maxInstances];
 
-	// Positions and sizes
-	constexpr float 
-		inventorySlotsYPosition = -0.36f,
-		slotsXPosition = -0.4f,
-		slotsXSpacing = 0.094f,
-		inventorySlotSize = 0.1f,
-		inventoryHotbarRowYOffset = 0.06f,
-		blocksPositionOffset = 0.008f,
-		blocksSlotSize = 0.083f;
+	const float slotWidth = 0.1f, slotHeight = slotWidth * game.aspect;
+	const float slotBlockWidth = slotWidth * 0.75f, slotBlockHeight = slotHeight * 0.75f;
+	const float slotBlockXOffset = (slotWidth - slotBlockWidth) * 0.5f, slotBlockYOffset = (slotHeight - slotBlockHeight) * 0.5f;
+	const float slotsStartX = -0.45f;
 
-	for (int inventoryID = 0; inventoryID < 45; ++inventoryID) {
-		int iid = inventoryID;
-		if (inventoryID == 9) {
-			// Calculating inventory now rather than hotbar (first 9)
-			m_hotbarInstances = m_totalInventoryInstances;
-			// Add inventory GUI and background to data
-			const InventoryInstance inventoryData[2] = {
-				InventoryInstance(-1.0f, -1.0f, 2.0f, 2.0f, TI_Background),		// Translucent background for inventory GUI (full screen)
-				InventoryInstance(-0.475f, -0.43f, 1.0f, 0.8f, TI_Inventory)	// Inventory GUI background
-			};
-			std::memcpy(data + m_totalInventoryInstances, inventoryData, sizeof(inventoryData));
-			m_totalInventoryInstances += 2;
+	const auto AddHotbarSlot = [&](int hotbarID, TextureIndex texture) noexcept {
+		const float hotbarX = slotsStartX + (hotbarID * slotWidth);
+		inventoryData[m_totalInventoryInstances++] = InventoryInstance(hotbarX, -1.0f, slotWidth, slotHeight, texture);
+
+		// Also add block texture if there is a valid item in the slot - use top texture
+		const std::int32_t itemSlotObject = static_cast<std::uint32_t>(player.inventory[hotbarID].objectID);
+		if (itemSlotObject != static_cast<std::int32_t>(ObjectID::Air)) {
+			const std::uint32_t blockTexture = ChunkSettings::GetBlockData(itemSlotObject).textures[WorldDirectionInt::IWorldDir_Up];
+			inventoryData[m_totalInventoryInstances++] = InventoryInstance(hotbarX + slotBlockXOffset, -1.0f + slotBlockYOffset, slotBlockWidth, slotBlockHeight, blockTexture, true);
 		}
+	};
 
-		// The hotbar slots need to be displayed again in the inventory, so redo the first row
-		if (inventoryID >= 9) iid = inventoryID - 9;
+	// Hotbar slots calculation
+	for (int hotbarID = 0; hotbarID < 9; ++hotbarID) {
+		if (hotbarID == selected) continue;
+		AddHotbarSlot(hotbarID, TI_Unequipped);
+	}
 
-		/*
-			Calculate suitable X and Y position for each slot:
-			(There are 9 slots per 'row', hotbar = bottom 9 slots, inventory hotbar = hotbar but shown in inventory GUI)
+	AddHotbarSlot(selected, TI_Equipped); // Make selected slot render on top of other slots
+	const int hotbarSlotsInstances = m_totalInventoryInstances;
 
-			Hotbar row is located at the bottom of the screen
-			The hotbar row is also visible in the inventory at the bottom of the inventory GUI
-			The inner inventory slots have equal spacing each row, with slightly more after the hotbar row
-		*/
+	inventoryData[m_totalInventoryInstances++] = InventoryInstance(-0.025f, -0.025f, 0.025f / game.aspect, 0.025f, TI_Crosshair); // Crosshair at center of screen (always visible)
+	m_noInventoryInstances = m_totalInventoryInstances; // Determines what instances are rendered when inventory is not opened
+	
+	// Inventory slots
+	const float inventoryHotbarYPosition = -0.4f;
+	const float inventoryYPosition = inventoryHotbarYPosition + (slotHeight * 1.1f);
+	
+	inventoryData[m_totalInventoryInstances++] = InventoryInstance(-1.00f, -1.00f, 2.0f, 2.0f, TI_Background); // Translucent background for inventory GUI (full screen)
+	inventoryData[m_totalInventoryInstances++] = InventoryInstance(-0.475f, -0.43f, 0.0f, 0.0f, TI_Inventory); // Inventory GUI background
+	
+	// Copy hotbar into inventory, with a different Y position
+	for (int i = 0; i < hotbarSlotsInstances; ++i) {
+		InventoryInstance hotbarInstance = inventoryData[i];
+		hotbarInstance.y = hotbarInstance.second & 1u ? inventoryHotbarYPosition + slotBlockYOffset : inventoryHotbarYPosition; // 1st bit determines if this instance is a block texture
+		inventoryData[m_totalInventoryInstances++] = hotbarInstance;
+	}
 
-		const float GUIYPosition = inventoryID >= 9 ? inventorySlotsYPosition + // Y pos. spacing between rows in inventory
-			(inventoryID >= 18 ? inventoryHotbarRowYOffset : 0.0f) + // Inventory hotbar row extra spacing
-			((inventorySlotSize * game.aspect) * static_cast<float>(iid / 9)) // Equal spacing between inventory rows
-			: -1.0f; // Hotbar slots are at the bottom
-		const float GUIXPosition = slotsXPosition + (slotsXSpacing * static_cast<float>(iid % 9));
+	// Hotbar slots are stored in the first 9 indexes in player inventory
+	for (int inventoryID = 9; inventoryID < 36; ++inventoryID) {
+		const int inventoryColumnIndex = inventoryID % 9, inventoryRowIndex = (inventoryID - 9) / 9;
+		const float slotX = slotsStartX + (inventoryColumnIndex * slotWidth), slotY = inventoryYPosition + (inventoryRowIndex * slotHeight);
+		inventoryData[m_totalInventoryInstances++] = InventoryInstance(slotX, slotY, slotWidth, slotHeight, TI_Unequipped);
 
-		// Set compressed hotbar data with either unequipped or equipped slot texture
-		data[m_totalInventoryInstances++] = InventoryInstance(
-			GUIXPosition, GUIYPosition, inventorySlotSize, inventorySlotSize * game.aspect, 
-			(iid == selected ? TI_Equipped : TI_Unequipped)
-		);
-
-		// Add the corresponding texture if the current inventory slot is not empty
-		ObjectID block = player.inventory[iid].objectID;
-		if (block != ObjectID::Air) {
-			// Get the texture ID of the top texture of the current block in the inventory
-			const std::uint32_t texID = static_cast<std::uint32_t>(ChunkSettings::GetBlockTexture(block, WorldDirection::Up));
-			data[m_totalInventoryInstances++] = InventoryInstance(
-				GUIXPosition + blocksPositionOffset, GUIYPosition + (blocksPositionOffset * 2.0f), 
-				blocksSlotSize, blocksSlotSize * game.aspect, texID, true
-			);
+		// Same as hotbar, check for valid slot item
+		const std::uint32_t itemSlotObject = static_cast<std::uint32_t>(player.inventory[inventoryID].objectID);
+		if (itemSlotObject != static_cast<std::uint32_t>(ObjectID::Air)) {
+			inventoryData[m_totalInventoryInstances++] = InventoryInstance(slotX + slotBlockXOffset, slotY + slotBlockYOffset, slotBlockWidth, slotBlockHeight, itemSlotObject, true);
 		}
 	}
 
 	// Buffer inventory data for use in the shader - only include the filled data rather than the whole array
-	const GLsizeiptr totalInstances = static_cast<GLsizeiptr>(m_totalInventoryInstances);
-	glBufferData(GL_ARRAY_BUFFER, totalInstances * static_cast<GLsizeiptr>(sizeof(InventoryInstance)), data, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(InventoryInstance) * m_totalInventoryInstances, inventoryData, GL_STATIC_DRAW);
 }
 
 Player::~Player() noexcept

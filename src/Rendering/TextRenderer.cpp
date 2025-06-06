@@ -5,15 +5,15 @@ TextRenderer::TextRenderer() noexcept
 	TextFormat::log("Text renderer enter");
 
 	// Setup text buffers to store instanced vertices
-	m_textVAO = OGL::CreateVAO8();
-	m_textVBO = OGL::CreateBuffer8(GL_ARRAY_BUFFER);
+	m_textVAO = OGL::CreateVAO();
+	m_textVBO = OGL::CreateBuffer(GL_ARRAY_BUFFER);
 
 	// Default instanced data for a text quad
 	struct TextRendererVertex {
-		constexpr TextRendererVertex(float x, float y) : x(x), y(y), xInd(static_cast<std::uint32_t>(x)) {};
+		TextRendererVertex(float x, float y) noexcept : x(x), y(y), xInd(static_cast<std::uint32_t>(x)) {};
 		float x, y;
 		std::uint32_t xInd; 
-	} constexpr quadVerts[4] = {
+	} const quadVerts[4] = {
 		{ 0.0f, 0.0f },
 		{ 0.0f, 1.0f },
 		{ 1.0f, 0.0f },
@@ -37,6 +37,14 @@ TextRenderer::TextRenderer() noexcept
 	glVertexAttribPointer(0u, 2, GL_FLOAT, GL_FALSE, stride, nullptr);
 	glVertexAttribIPointer(1u, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<const void*>(sizeof(float[2])));
 
+	// Update text shader uniform values with texture positions for each character
+	UpdateShaderUniform();
+
+	TextFormat::log("Text renderer exit");
+}
+
+void TextRenderer::UpdateShaderUniform() noexcept
+{
 	// Calculate size of a pixel on the font texture
 	const float pixelSize = 1.0f / static_cast<float>(game.textTextureInfo.width);
 
@@ -56,40 +64,42 @@ TextRenderer::TextRenderer() noexcept
 	game.shader.UseShader(Shader::ShaderID::Text);
 	texturePositionsLocation = game.shader.GetLocation(game.shader.ShaderFromID(Shader::ShaderID::Text), "texturePositions");
 	glUniform1fv(texturePositionsLocation, sizeof(textUniformPositions) / sizeof(float), textUniformPositions);
-
-	TextFormat::log("Text renderer exit");
 }
 
-void TextRenderer::RenderText() const noexcept
+void TextRenderer::RenderText(bool inventoryIsOpen) const noexcept
 {
-	// Use correct buffers and the text shader
-	game.shader.UseShader(Shader::ShaderID::Text);
-	glBindVertexArray(m_textVAO);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // No wireframe for text
+	int index = 0;
+	for (const auto& [id, text] : m_screenTexts) RenderText(text, inventoryIsOpen, index++ == 0); // Render text if it should be visible and has any text or background
+	if (game.wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // Set wireframe mode to original
+}
 
-	// No wireframe for text
-	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
-	// Render text if it is not marked as hidden and has (visible) text
-	for (const auto& [id, text] : m_screenTexts) {
-		// Determine if the text is visible and has any text or background
-		const int displayLength = text->GetDisplayLength();
-		const int hasBackground = text->HasSettingEnabled(TS_Background);
-		if (text->textType == TextType::Hidden || (displayLength == 0 && !hasBackground)) continue;
-
-		// Bind current text object's VBO
-		glBindBuffer(GL_ARRAY_BUFFER, text->GetVBO());
-
-		// Set attribute layouts
-		constexpr GLsizei stride = sizeof(float[4]) + sizeof(std::uint32_t[2]);
-		glVertexAttribPointer(2u, 4, GL_FLOAT, GL_FALSE, stride, nullptr);
-		glVertexAttribIPointer(3u, 2, GL_UNSIGNED_INT, stride, reinterpret_cast<const void*>(sizeof(float[4])));
-
-		// Render text object (1 extra instance for background if enabled)
-		glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (text->HasSettingEnabled(TS_Shadow) ? displayLength * 2 : displayLength) + hasBackground);
+void TextRenderer::RenderText(ScreenText *screenText, bool inventoryIsOpen, bool shader) const noexcept
+{
+	// Setup shader if needed
+	if (shader) {
+		game.shader.UseShader(Shader::ShaderID::Text);
+		glBindVertexArray(m_textVAO);
 	}
 
-	// Set wireframe mode to original
-	if (game.wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	// Hide if the inventory is open and it is marked as not inventory-visible
+	if (inventoryIsOpen && screenText->HasSettingEnabled(TS_InventoryInvisible)) return;
+	
+	// Determine if the text is visible and has any text or background
+	const int displayLength = screenText->GetDisplayLength();
+	const int hasBackground = screenText->HasSettingEnabled(TS_Background);
+	if (screenText->textType == TextType::Hidden || (displayLength == 0 && !hasBackground)) return;
+
+	// Bind current text object's VBO
+	glBindBuffer(GL_ARRAY_BUFFER, screenText->GetVBO());
+
+	// Set attribute layouts
+	constexpr GLsizei stride = sizeof(float[4]) + sizeof(std::uint32_t[2]);
+	glVertexAttribPointer(2u, 4, GL_FLOAT, GL_FALSE, stride, nullptr);
+	glVertexAttribIPointer(3u, 2, GL_UNSIGNED_INT, stride, reinterpret_cast<const void*>(sizeof(float[4])));
+
+	// Render text object (1 extra instance for background if enabled)
+	glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (screenText->HasSettingEnabled(TS_Shadow) ? displayLength * 2 : displayLength) + hasBackground);
 }
 
 void TextRenderer::RecalculateAllText() noexcept
@@ -142,9 +152,9 @@ std::uint16_t TextRenderer::GetIDFromText(ScreenText* screenText) const noexcept
 TextRenderer::ScreenText* TextRenderer::CreateText(
 	glm::vec2 pos, 
 	std::string text, 
+	std::uint8_t unitSize,
 	std::uint8_t settings,
-	TextType textType, 
-	std::uint8_t unitSize
+	TextType textType 
 ) noexcept {
 	// Create unique identifier for this text object
 	std::uint16_t id = GetNewID();
@@ -228,10 +238,37 @@ void TextRenderer::CheckTextStatus() noexcept
 	for (const std::uint16_t id : toRemove) RemoveText(id);
 }
 
+float TextRenderer::GetUnitSizeMultiplier(std::uint8_t unitSize) const noexcept
+{
+	return static_cast<float>(unitSize) / defaultUnitSize;
+}
+
 float TextRenderer::GetCharScreenWidth(int charIndex, float unitMultiplier) const noexcept
 {
 	// Character width calculator excluding letter spacing
-	return fmaxf(static_cast<float>(m_charSizes[charIndex]), 2.0f) * textWidth * unitMultiplier;
+	return static_cast<float>(m_charSizes[charIndex]) * textWidth * unitMultiplier;
+}
+
+float TextRenderer::GetTextScreenWidth(std::string text, float unitMultiplier) const noexcept
+{
+	const float spaceWidth = spaceCharacterUnits * unitMultiplier, characterSpacing = characterSpacingUnits * unitMultiplier;
+	float widthSum = 0.0f;
+	float largestWidth = 0.0f;
+
+	for (const char& c : text) {
+		switch (c) {
+			case ' ':
+				widthSum += spaceWidth;
+				break;
+			case '\n':
+				largestWidth = fmaxf(largestWidth, widthSum);
+				widthSum = 0.0f;
+				break;
+			default:
+				widthSum += GetCharScreenWidth(c - 33, unitMultiplier) + characterSpacing;
+		}
+	}
+	return widthSum * 0.5f;
 }
 
 void TextRenderer::UpdateText(ScreenText *screenText) const noexcept
@@ -267,9 +304,10 @@ void TextRenderer::UpdateText(ScreenText *screenText) const noexcept
 	
 	// Size multipliers
 	const std::uint8_t unitSize = screenText->GetUnitSize();
-	const float unitSizeMultiplier = static_cast<float>(unitSize) / defaultUnitSize;
-	const float spaceOffset = spaceCharacterSize * unitSizeMultiplier;
+	const float unitSizeMultiplier = GetUnitSizeMultiplier(unitSize);
+	const float spaceOffset = spaceCharacterUnits * unitSizeMultiplier;
 	const float characterHeight = unitSizeMultiplier * textHeight;
+	const float characterSpacing = characterSpacingUnits * unitSizeMultiplier;
 
 	// Update maximum X and/or Y position when changing
 	const auto& UpdateMaxPosX = [&]() { if (pos.x > maxPos.x) maxPos.x = pos.x; };
@@ -326,7 +364,7 @@ void TextRenderer::UpdateText(ScreenText *screenText) const noexcept
 		std::memcpy(textData + (dataIndex++), &letterData, sizeof(letterData));
 
 		// Advance in X axis by the character width and letter spacing
-		pos.x += charWidth + characterSpacingUnits;
+		pos.x += charWidth + characterSpacing;
 		UpdateMaxPosX();
 	}
 

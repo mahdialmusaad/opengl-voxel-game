@@ -20,9 +20,7 @@ See the [Build](https://github.com/mahdialmusaad/badcraft/tree/main?tab=readme-o
 ### Possible additions
 There are still many things that could be improved about the game, but implementing them could prove to be difficult or possibly involve major changes of existing parts of the source code:
 - Greedy meshing ([currently in development](https://github.com/mahdialmusaad/badcraft/blob/main/src/World/Chunk.cpp))
-- A sun and moon in the sky during their respective times and clouds that aren't spawn-bound (planned)
 - Biomes/more varied terrain
-- Chatting feature combined with existing commands feature
 - Structures
 - Controller support
 
@@ -89,3 +87,5 @@ This game makes use of a few libraries to work. They can be seen in the 'librari
 [GLFW](https://github.com/glfw/glfw) - Window and input library
 
 [glad](https://github.com/Dav1dde/glad) - OpenGL loader/generator
+
+[fmt](https://github.com/fmtlib/fmt) - Formatting library

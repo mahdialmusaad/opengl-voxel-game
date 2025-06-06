@@ -15,7 +15,7 @@ layout (std140, binding = 4) uniform GameSizes {
 };
 
 layout (location = 0) in vec4 d1; // X, Y, W, H
-layout (location = 1) in int d2; // Texture + type
+layout (location = 1) in uint d2; // Texture + type
 layout (location = 2) in vec3 baseGUI;
 
 out vec2 TexCoord;

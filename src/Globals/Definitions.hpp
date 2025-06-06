@@ -57,13 +57,10 @@ typedef glm::vec<2, PosType> ChunkOffset;
 struct OGL 
 {
 	static GLuint CreateBuffer(GLenum type) noexcept;
-	static std::uint8_t CreateBuffer8(GLenum type) noexcept;
-
 	static GLuint CreateVAO() noexcept;
-	static std::uint8_t CreateVAO8() noexcept;
 
-	static void SetupUBO(std::uint8_t& ubo, GLuint index, std::size_t uboSize) noexcept;
-	static void UpdateUBO(std::uint8_t& ubo, GLintptr offset, GLsizeiptr bytes, const void* data) noexcept;
+	static void SetupUBO(GLuint& ubo, GLuint index, std::size_t uboSize) noexcept;
+	static void UpdateUBO(GLuint& ubo, GLintptr offset, GLsizeiptr bytes, const void* data) noexcept;
 };
 // Image information
 struct OGLImageInfo
@@ -82,44 +79,9 @@ struct Math
 {
 	static float loopAround(float x, float min, float max) noexcept;
 	static double loopAround(double x, double min, double max) noexcept;
-	static constexpr int loopAroundInteger(int x, int minInc, int maxExcl) noexcept 
-	{
-		return minInc + ((maxExcl + x) % maxExcl);
-	}
+	static int loopAround(int x, int minInc, int maxExcl) noexcept;
 
-	static constexpr PosType qabs(PosType val) noexcept 
-	{
-		constexpr PosType mult = sizeof(PosType) * (CHAR_BIT - 1);
-		const PosType mask = val >> mult;
-		return (val + mask) ^ mask;
-	}
-
-	template<typename T>
-	static constexpr T clamp(T val, T min, T max) noexcept
-	{
-		return val < min ? min : val > max ? max : val;
-	}
-
-	static constexpr double _sqrtInner(double val, double current, double previous) noexcept
-	{
-		return current == previous ? current : _sqrtInner(val, 0.5 * (current + val / current), current);
-	}
-	static constexpr double sqrt(double val) noexcept
-	{
-		return _sqrtInner(val, val, 0.0);
-	}
-
-	static constexpr int _ilogxInner(int i, int x, int c) noexcept
-	{
-		if (i == 1) return c;
-		else return _ilogxInner(i / x, x, ++c);
-	}
-	static constexpr int ilogx(int i, int x) noexcept
-	{
-		return Math::_ilogxInner(i, x, 0);
-	}
-
-	static double lerpIndependent(double a, double b, double max) noexcept;
+	static PosType absInt(PosType val) noexcept;
 
 	static float lerp(float a, float b, float t) noexcept;
 	static double lerp(double a, double b, double t) noexcept;
@@ -143,7 +105,7 @@ class Shader
 {
 public:
 	void InitShader();
-	enum class ShaderID { Blocks, Clouds, Inventory, Outline, Sky, Stars, Text, MAX };
+	enum class ShaderID { Blocks, Clouds, Inventory, Outline, Sky, Stars, Text, SunMoon, MAX };
 
 	static GLint GetLocation(GLuint shader, const char* name) noexcept;
 	GLuint ShaderFromID(ShaderID id) const noexcept;

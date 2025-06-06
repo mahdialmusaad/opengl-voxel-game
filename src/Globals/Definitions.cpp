@@ -15,15 +15,18 @@ double Math::loopAround(double x, double min, double max) noexcept
 {
 	return (x < min) ? (max - (min - x)) : ((x > max) ? (min + (x - max)) : x);
 }
+int Math::loopAround(int x, int minInc, int maxExcl) noexcept
+{
+	return minInc + ((maxExcl + x) % maxExcl);
+}
+PosType Math::absInt(PosType val) noexcept
+{
+	const PosType mask = val >> (sizeof(PosType) * (CHAR_BIT - 1));
+	return (val + mask) ^ mask;
+}
 float Math::loopAround(float x, float min, float max) noexcept
 {
 	return (x < min) ? (max - (min - x)) : ((x > max) ? (min + (x - max)) : x);
-}
-double Math::lerpIndependent(double a, double b, double max) noexcept
-{
-	double res = b - a;
-	if (fabs(res) <= max) return b;
-	return a + (res >= 0.0 ? 1.0 : -1.0) * max;
 }
 float Math::lerp(float a, float b, float t) noexcept
 {
@@ -79,10 +82,6 @@ GLuint OGL::CreateVAO() noexcept
 	glBindVertexArray(VAO);
 	return VAO;
 }
-std::uint8_t OGL::CreateVAO8() noexcept
-{
-	return static_cast<std::uint8_t>(CreateVAO());
-}
 GLuint OGL::CreateBuffer(GLenum type) noexcept
 {
 	GLuint buf;
@@ -90,17 +89,13 @@ GLuint OGL::CreateBuffer(GLenum type) noexcept
 	glBindBuffer(type, buf);
 	return buf;
 }
-std::uint8_t OGL::CreateBuffer8(GLenum type) noexcept
+void OGL::SetupUBO(GLuint& ubo, GLuint index, std::size_t uboSize) noexcept
 {
-	return static_cast<std::uint8_t>(CreateBuffer(type));
-}
-void OGL::SetupUBO(std::uint8_t& ubo, GLuint index, std::size_t uboSize) noexcept
-{
-	ubo = OGL::CreateBuffer8(GL_UNIFORM_BUFFER);
+	ubo = OGL::CreateBuffer(GL_UNIFORM_BUFFER);
 	glBufferStorage(GL_UNIFORM_BUFFER, uboSize, nullptr, GL_DYNAMIC_STORAGE_BIT);
 	glBindBufferBase(GL_UNIFORM_BUFFER, index, ubo);
 }
-void OGL::UpdateUBO(std::uint8_t& ubo, GLintptr offset, GLsizeiptr bytes, const void* data) noexcept
+void OGL::UpdateUBO(GLuint& ubo, GLintptr offset, GLsizeiptr bytes, const void* data) noexcept
 {
 	glBindBuffer(GL_UNIFORM_BUFFER, ubo);
 	glBufferSubData(GL_UNIFORM_BUFFER, offset, bytes, data);
@@ -172,22 +167,11 @@ void Shader::InitShader()
 		return err ? static_cast<GLuint>(0u) : shaderID;
 	};
 
-	// Clear any existing shaders when reloading
-	if (m_programs[0] != 0) {
-		// Set program to none
-		glUseProgram(0u);
-		// Delete program using ID and set array value 0 (can easily be identified as deleted since 0 is not a valid ID)
-		for (std::uint8_t& program : m_programs) { 
-			glDeleteProgram(static_cast<GLuint>(program));
-			program = 0;
-		}
-	}
-
 	// Load all of the vertex and fragment shaders and then create a shader program with them
-	constexpr int numPrograms = static_cast<int>(ShaderID::MAX);
+	const int numPrograms = static_cast<int>(ShaderID::MAX);
 	
 	// Load order should match the ShaderID enum
-	const std::pair<std::string, std::string> shaderPairs[numPrograms] = {
+	static const std::pair<std::string, std::string> shaderPairs[numPrograms] = {
 		{"Blocks.vert", "Blocks.frag"},
 		{"Clouds.vert", "Clouds.frag"},
 		{"Inventory.vert", "Inventory.frag"},
@@ -195,6 +179,7 @@ void Shader::InitShader()
 		{"Sky.vert", "Sky.frag"},
 		{"Stars.vert", "Stars.frag"},
 		{"Text.vert", "Text.frag"},
+		{"Planets.vert", "Planets.frag"}
 	};
 
 	const std::string shadersFile = "Shaders\\";
@@ -213,26 +198,23 @@ void Shader::InitShader()
 			return; 
 		}
 
-		// Create new shader using the vertex and fragment shaders
-		const GLuint programID = glCreateProgram();
-		glAttachShader(programID, vertexID);
-		glAttachShader(programID, fragmentID);
-		glLinkProgram(programID);
+		// Create new shader using the vertex and fragment shaders (delete original if exists)
+		std::uint8_t& currentProgram = m_programs[programIndex];
+		if (currentProgram) glDeleteProgram(static_cast<GLuint>(currentProgram));
+		currentProgram = static_cast<std::uint8_t>(glCreateProgram()); 
 
-		// Detach and delete shaders after link success to free up memory as they are no longer needed
-		glDetachShader(vertexID, programID);
+		glAttachShader(currentProgram, vertexID);
+		glAttachShader(currentProgram, fragmentID);
+		glLinkProgram(currentProgram);
+
+		// Delete shaders after link success to free up memory as they are no longer needed
 		glDeleteShader(vertexID);
-		
-		glDetachShader(fragmentID, programID);
 		glDeleteShader(fragmentID);
 
 		// Check for any shader program errors
-		CheckProgramError(programID, vertexFileName, fragmentFileName);
-
-		// Add to shader program array
-		m_programs[programIndex] = static_cast<std::uint8_t>(programID);
+		CheckProgramError(currentProgram, vertexFileName, fragmentFileName);
 		
-		TextFormat::log(fmt::format("Shader program {} created using {} and {}", programID, vertexFileName, fragmentFileName));
+		TextFormat::log(fmt::format("Shader program {} created using {} and {}", currentProgram, vertexFileName, fragmentFileName));
 	}
 }
 

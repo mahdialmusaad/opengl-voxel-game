@@ -13,7 +13,8 @@ public:
 		TS_Background = 1u,
 		TS_BackgroundFullX = 2u,
 		TS_BackgroundFullY = 4u,
-		TS_Shadow = 8u
+		TS_Shadow = 8u,
+		TS_InventoryInvisible = 16u
 	};
 
 	enum class TextType : std::uint8_t {
@@ -70,7 +71,7 @@ public:
 
 	static constexpr float hideTimer = 5.0f;
 	static constexpr float defaultUnitSize = 12.0f;
-	static constexpr float spaceCharacterSize = 0.015f;
+	static constexpr float spaceCharacterUnits = 0.015f;
 	static constexpr int maxChatCharacterWidth = 40;
 	static constexpr int maxChatLines = 12;
 	
@@ -79,14 +80,17 @@ public:
 	float textHeight = 0.0f;
 
 	TextRenderer() noexcept;
-	void RenderText() const noexcept;
+	void UpdateShaderUniform() noexcept;
+
+	void RenderText(bool inventoryIsOpen) const noexcept;
+	void RenderText(ScreenText* screenText, bool inventoryIsOpen, bool shader) const noexcept;
 
 	ScreenText* CreateText(
 		glm::vec2 pos, 
 		std::string text, 
+		std::uint8_t unitSize = static_cast<std::uint8_t>(defaultUnitSize),
 		std::uint8_t settings = 0u,
-		TextType textType = TextType::Default,
-		std::uint8_t unitSize = static_cast<std::uint8_t>(defaultUnitSize)
+		TextType textType = TextType::Default
 	) noexcept;
 	void RecalculateAllText() noexcept;
 
@@ -97,9 +101,11 @@ public:
 	void ChangePosition(ScreenText* screenText, glm::vec2 newPos, bool update = true) noexcept;
 	void ChangeUnitSize(ScreenText* screenText, std::uint8_t newUnitSize, bool update = true) noexcept;
 	void ChangeColour(ScreenText* screenText, ColourData newColour, bool update = true) noexcept;
-	void ChangeSettings(ScreenText* screenText, std::uint8_t settigns, bool update = true) noexcept;
+	void ChangeSettings(ScreenText* screenText, std::uint8_t settings, bool update = true) noexcept;
 
+	float GetUnitSizeMultiplier(std::uint8_t unitSize) const noexcept;
 	float GetCharScreenWidth(int charIndex, float unitMultiplier) const noexcept;
+	float GetTextScreenWidth(std::string text, float unitMultiplier) const noexcept;
 
 	void CheckTextStatus() noexcept;
 	void RemoveText(std::uint16_t id) noexcept;
@@ -132,7 +138,7 @@ private:
 
 	std::unordered_map<std::uint16_t, ScreenText*> m_screenTexts;
 	std::uint8_t texturePositionsLocation;
-	std::uint8_t m_textVAO, m_textVBO;
+	GLuint m_textVAO, m_textVBO;
 
 	void UpdateText(ScreenText* screenText) const noexcept;
 	std::uint16_t GetNewID() noexcept;

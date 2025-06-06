@@ -54,12 +54,12 @@ private:
 	glm::mat4 m_matrices[4];
 
 	Skybox m_skybox;
-	std::uint8_t m_matricesUBO, m_timesUBO, m_coloursUBO, m_positionsUBO, m_sizesUBO;
+	GLuint m_matricesUBO, m_timesUBO, m_coloursUBO, m_positionsUBO, m_sizesUBO;
 
 	double m_lastTime = 0.0, m_updateTime = 0.0;
 	int m_nowFPS, m_avgFPS, m_lowFPS;
 
-	TextRenderer::ScreenText *m_infoText, *m_debugText, *m_chatText, *m_commandText, *m_blockText;
+	TextRenderer::ScreenText *m_infoText, *m_chatText, *m_commandText;
 };
 
 #endif // _SOURCE_UTILITY_APPLICATION_HDR_

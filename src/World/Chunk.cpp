@@ -1,23 +1,27 @@
 #include "Chunk.hpp"
 
-Chunk::Chunk(
-	WorldPos offset,
-	WorldPerlin::NoiseResult* perlinResults
-) noexcept :
-	offsetX(offset.x),
-	offsetY(static_cast<std::int8_t>(offset.y)),
-	offsetZ(offset.z),
-	positionMagnitude(sqrt(static_cast<double>((offset.x * offset.x) + (offset.y * offset.y) + (offset.z * offset.z))))
+Chunk::Chunk(WorldPos offset) noexcept : 
+	positionMagnitude(sqrt(static_cast<double>((offset.x * offset.x) + (offset.y * offset.y) + (offset.z * offset.z)))) 
+{}
+
+Chunk::BlockQueueMap Chunk::ConstructChunk(WorldPerlin::NoiseResult *perlinResults) noexcept 
 {
-	//const WorldPos worldPosition = ChunkSettings::GetChunkCorner(offset);
-	//const glm::vec3 center = static_cast<glm::vec3>(ChunkSettings::GetChunkCenter(offset));
-	const int worldYCorner = static_cast<int>(offsetY) * ChunkSettings::CHUNK_SIZE;
+	// Stone block test
+	// ChunkSettings::ChunkBlockValueFull* blocks = new ChunkSettings::ChunkBlockValueFull;
+	// for(int x = 0; x < 32; ++x)for(int y= 0; y < 32; ++y)for(int z = 0; z < 32; ++z)blocks->chunkBlocks[x][y][z]=ObjectID::Stone;
+	// chunkBlocks = blocks;
+
+	// Y position in the world of the chunk (corner)
+	const int worldYCorner = static_cast<int>((*offset).y) * ChunkSettings::CHUNK_SIZE;
+
+	// Map for any blocks attempting to be placed outside of this chunk
+	BlockQueueMap outerChunksQueue;
 
 	// The chunk has not been created yet so initially use a full array
 	// and convert to appropriate storage type from generation result
-	ChunkSettings::ChunkBlockValueFull* fullBlockArray = new ChunkSettings::ChunkBlockValueFull;
-	// Reference to actual block array to avoid having to call .SetBlock*() --> function overhead
-	ChunkSettings::blockArray& blockDataArray = fullBlockArray->chunkBlocks;
+	chunkBlocks = new ChunkSettings::ChunkBlockValueFull;
+	// Reference to actual block array
+	ChunkSettings::blockArray& blockArray = dynamic_cast<ChunkSettings::ChunkBlockValueFull*>(chunkBlocks)->chunkBlocks;
 
 	// Counter of how many total blocks are air
 	std::uint32_t airCounter = 0u;
@@ -29,10 +33,9 @@ Chunk::Chunk(
 
 			// Chunks with the same XZ offset (different Y) will use the same XZ values for the perlin noise calculation
 			// and so will get the same result each time, so it's much better to precalculate the full chunk values
-			const WorldPerlin::NoiseResult& heightNoise = perlinResults[perlin++];
-
+			const WorldPerlin::NoiseResult& positionNoise = perlinResults[perlin++];
 			// Calculated height at this XZ position using the precalculated noise value
-			const int terrainHeight = static_cast<int>(heightNoise.continentalnessHeight);
+			const int terrainHeight = static_cast<int>(positionNoise.continentalnessHeight);
 
 			// Loop through Y axis
 			for (int y = 0; y < ChunkSettings::CHUNK_SIZE; ++y) {
@@ -45,7 +48,7 @@ Chunk::Chunk(
 					if (worldY <= ChunkSettings::CHUNK_WATER_HEIGHT) {
 						bool closeToWater = terrainHeight - worldY < 2;
 						finalBlock = closeToWater ? ObjectID::Sand : ObjectID::Dirt;
-					}
+					} else AttemptGenerateTree(outerChunksQueue, x, y, z, positionNoise, ObjectID::Log, ObjectID::Leaves);
 				}
 				else if (worldY < terrainHeight) { // Block is under surface
 					// Blocks slightly under surface are dirt
@@ -60,61 +63,119 @@ Chunk::Chunk(
 					else { airCounter += ChunkSettings::CHUNK_SIZE - y; break; }
 				}
 
-				// Finally, set the block at the corresponding array index 
+				// Finally, set the block at the corresponding array index(es)
 				//blockDataArray[y + xIndex + zIndex] = finalBlock;
-				blockDataArray[z][x][y] = finalBlock;
+				blockArray[x][y][z] = finalBlock;
 			}
 		}
 	}
 
 	// If the chunk is just air, there is no need to store every single block
 	if (airCounter == ChunkSettings::UCHUNK_BLOCKS_AMOUNT) {
-		delete fullBlockArray;
+		delete chunkBlocks;
 		chunkBlocks = new ChunkSettings::ChunkBlockAir;
 	}
-	else chunkBlocks = fullBlockArray;
+
+	return outerChunksQueue;
 }
 
-WorldPos Chunk::GetOffset() const noexcept
+void Chunk::AttemptGenerateTree(BlockQueueMap& treeBlocksQueue, int x, int y, int z, const WorldPerlin::NoiseResult& noise, ObjectID logID, ObjectID leavesID) noexcept
 {
-	// Avoid having to cast Y offset all the time due to it being an 8 bit integer compared to X and Z offsets
-	return { offsetX, static_cast<PosType>(offsetY), offsetZ };
+	if (NoiseValueRand(noise.flatness * (noise.humidity / noise.temperature - 1.0f), 1000)) return;
+
+	const int treeHeight = static_cast<int>(noise.flatness * 3.0f) + 5;
+	const WorldPos above = *offset + ChunkSettings::worldDirections[WorldDirectionInt::IWorldDir_Up];
+
+	// Add logs - for now they will tear through anything in their path
+	for (int logY = y + 1, logTop = logY + treeHeight; logY < logTop; ++logY) {
+		if (logY >= ChunkSettings::CHUNK_SIZE) treeBlocksQueue[above].emplace_back(BlockQueue(x, Math::loopAround(logY, 0, 32), z, logID));
+		else chunkBlocks->SetBlock(x, logY, z, logID);
+	}
+
+	// Use bitwise check to quickly determine if leaf position is inside chunk
+	const int allBitsExceptMax = ~ChunkSettings::CHUNK_SIZE_M1;
+
+	// Leaf placing lambda (place in queue if the leaf is outside local chunk)
+	const auto PossibleSpawnLeaf = [&](int leavesX, int leavesY, int leavesZ) {
+		if ((leavesX | leavesY | leavesZ) & allBitsExceptMax) {
+			const WorldPos newChunkOffset = *offset + ChunkSettings::WorldPositionToOffset(leavesX, leavesY, leavesZ);
+			treeBlocksQueue[newChunkOffset].emplace_back(BlockQueue(Math::loopAround(leavesX, 0, 32), Math::loopAround(leavesY, 0, 32), Math::loopAround(leavesZ, 0, 32), leavesID));
+		} else if (ChunkSettings::GetBlockData(chunkBlocks->GetBlock(leavesX, leavesY, leavesZ)).natureReplaceable) chunkBlocks->SetBlock(leavesX, leavesY, leavesZ, leavesID);
+	};
+	
+	// Place main leaves around log
+	bool isTopLeaf = true;
+	for (int endY = y + treeHeight - 3, leavesY = endY + 2; leavesY >= endY; --leavesY) {
+		for (int leavesZ = z - 2, endZ = leavesZ + 4; leavesZ <= endZ; ++leavesZ) {
+			const bool midZ = leavesZ == z;
+			const bool edgeZ = leavesZ == z - 2 || leavesZ == endZ;
+			for (int leavesX = x - 2, endX = leavesX + 4; leavesX <= endX; ++leavesX) {
+				const bool midX = leavesX == x;
+				const bool bothEdges = edgeZ && (leavesX == x - 2 || leavesX == endX);
+
+				if (midX && midZ) continue; // Don't attempt to place where logs are guaranteed
+				if (isTopLeaf && bothEdges && NoiseValueRand(noise.flatness * static_cast<float>(leavesX + leavesZ * y), 4)) continue; // Top corner leaves are not guaranteed
+
+				PossibleSpawnLeaf(leavesX, leavesY, leavesZ);
+			}
+		}
+
+		isTopLeaf = false;
+	}
+
+	// Arrangement of top leaves
+	const int leavesSquares[17][3] = { 
+		{-1, 0, -1}, {-1, 0, 0}, {-1, 0, 1}, {0, 0, -1}, {0, 0, 1}, {1, 0, -1}, {1, 0, 0}, {1, 0, 1},
+		{-1, 1, 0}, {0, 1, -1}, {0, 1, 1}, {1, 1, 0}, {0, 1, 0}
+	};
+
+	for (const int (&leafPosition)[3] : leavesSquares) PossibleSpawnLeaf(x + leafPosition[0], y + treeHeight + leafPosition[1], z + leafPosition[2]);
 }
 
+bool Chunk::NoiseValueRand(float noiseVal, int oneInX) noexcept
+{
+	// I don't know if this works or how it works, but Wikipedia said so.
+	// https://en.wikipedia.org/wiki/Xorshift
+
+	// Big number multiplier as this only works with proper integer values (noise values will always cast to 0 otherwise)
+	unsigned mult = static_cast<unsigned>(noiseVal * 8278555403.357f);
+
+	mult ^= mult << 13u;
+	mult ^= mult >> 17u;
+	mult ^= mult << 5;
+	return mult % oneInX;
+}
 
 void Chunk::CalculateChunk(const ChunkGetter& findFunction) noexcept
 {
-	if (ChunkSettings::IsAirChunk(chunkBlocks)) return;
 	if (chunkBlocks == nullptr) { 
 		TextFormat::warn("\nAttempted to calculate chunk with null blocks\n", "Null calculation"); 
 		return;
-	}
+	} else if (ChunkSettings::IsAirChunk(chunkBlocks)) return;
 
 	// Get reference to block data, avoiding doing 'GetBlock' calls (function call overhead)
 	const ChunkSettings::blockArray& blockArray = ChunkSettings::GetFullBlockArray(chunkBlocks)->chunkBlocks;
-	// Empty chunk array in case of no chunk existing in a certain direction
-	constexpr const ChunkSettings::blockArray* emptyChunk = &ChunkSettings::emptyChunk;
 
 	// Store nearby chunks in an array for easier access (last index is current chunk)
 	const ChunkSettings::blockArray* localNearby[7]{};
 	localNearby[6] = &blockArray;
 
-	const WorldPos chunkOffset = GetOffset();
-	int localNearbyIndex = 0;
-
-	for (const WorldPos& direction : ChunkSettings::worldDirections) {
+	for (int localNearbyIndex = 0; localNearbyIndex < 6; ++localNearbyIndex) {
 		// Look for a chunk in each direction
-		const Chunk* nearbyChunk = findFunction(chunkOffset + direction);
+		const WorldPos& direction = ChunkSettings::worldDirections[localNearbyIndex];
+		const Chunk* nearbyChunk = findFunction(*offset + direction);
+
 		// If the chunk exists and uses a 'full block array', add it to the nearby chunk blocks array
 		if (nearbyChunk != nullptr) {
 			const ChunkSettings::ChunkBlockValueFull* blocks = ChunkSettings::GetFullBlockArray(nearbyChunk->chunkBlocks);
 			if (blocks != nullptr) {
-				localNearby[localNearbyIndex++] = &blocks->chunkBlocks;
+				localNearby[localNearbyIndex] = &blocks->chunkBlocks;
 				continue;
 			}
 		}
+
 		// If not, use the default empty chunk
-		localNearby[localNearbyIndex++] = emptyChunk;
+		localNearby[localNearbyIndex] = &ChunkSettings::emptyChunk;
 	}
 
 	// Create an array with the maximum size on the outside to be used per chunk face calculation
@@ -130,29 +191,30 @@ void Chunk::CalculateChunk(const ChunkGetter& findFunction) noexcept
 		faceData.faceCount = 0u;
 
 		// Loop through all the chunk's blocks for each face direction
-		for (int z = 0; z < ChunkSettings::CHUNK_SIZE; ++z) {
-			const std::uint32_t zIndex = z << ChunkSettings::CHUNK_SIZE_POW2;
-			const ObjectID (&outerBlockArray)[ChunkSettings::CHUNK_SIZE][ChunkSettings::CHUNK_SIZE] = blockArray[z];
+		for (int x = 0; x < ChunkSettings::CHUNK_SIZE; ++x) {
+			const ObjectID (&outerBlockArray)[ChunkSettings::CHUNK_SIZE][ChunkSettings::CHUNK_SIZE] = blockArray[x];
 
-			for (int x = 0; x < ChunkSettings::CHUNK_SIZE; ++x) {
-				const std::uint32_t zxIndex = zIndex + (x << ChunkSettings::CHUNK_SIZE_POW);
-				const ObjectID (&innerBlockArray)[ChunkSettings::CHUNK_SIZE] = outerBlockArray[x];
+			for (int y = 0; y < ChunkSettings::CHUNK_SIZE; ++y) {
+				const std::uint32_t yIndex = y << ChunkSettings::CHUNK_SIZE_POW;
+				const ObjectID (&innerBlockArray)[ChunkSettings::CHUNK_SIZE] = outerBlockArray[y];
 
-				for (int y = 0; y < ChunkSettings::CHUNK_SIZE; ++y) {
+				for (int z = 0; z < ChunkSettings::CHUNK_SIZE; ++z) {
 					// Get properties of the current block
-					const WorldBlockData& currentBlockData = ChunkSettings::GetBlockData(innerBlockArray[y]);
+					const WorldBlockData& currentBlockData = ChunkSettings::GetBlockData(innerBlockArray[z]);
 					// Get precalculated results for this position index and face
 					const ChunkLookupTable::ChunkLookupData& nearbyData = chunkLookupData.lookupData[lookupIndex++];
 					// Get the data of the block next to the current face, which could be in this or a surrounding chunk
-					const WorldBlockData& targetBlockData = ChunkSettings::GetBlockData((*localNearby[nearbyData.nearbyIndex])[nearbyData.blockPos.z][nearbyData.blockPos.x][nearbyData.blockPos.y]);
+					const WorldBlockData& nextBlock = ChunkSettings::GetBlockData((*localNearby[nearbyData.nearbyIndex])[nearbyData.nextPos.x][nearbyData.nextPos.y][nearbyData.nextPos.z]);
 
 					// Check if the face is not obscured by the block found to be next to it
-					if (currentBlockData.notObscuredBy(currentBlockData, targetBlockData)) {
+					if (currentBlockData.notObscuredBy(currentBlockData, nextBlock)) {
+						const std::uint32_t zyIndex = yIndex + (z << ChunkSettings::CHUNK_SIZE_POW2);
 						// Compress the position and texture data into one integer
-						// Layout: TTTT TTTH HHHH WWWW WZZZ ZZXX XXXY YYYY
-						const std::uint32_t positionIndex = zxIndex + static_cast<std::uint32_t>(y);
+						// Layout: TTTT TTTH HHHH WWWW WZZZ ZZYY YYYX XXXX
+						const std::uint32_t positionIndex = zyIndex + static_cast<std::uint32_t>(x);
 						const std::uint32_t textureData = static_cast<std::uint32_t>(currentBlockData.textures[faceIndex]) << 25u;
-						const std::uint32_t newData = positionIndex + textureData;
+						const std::uint32_t sizeData = (1u << 15u) + (1u << 20u);
+						const std::uint32_t newData = positionIndex + sizeData + textureData;
 
 						// Blocks with transparency need to be rendered last for them to be rendered
 						// correctly on top of existing terrain, so they can be placed starting from
@@ -202,7 +264,7 @@ void Chunk::CalculateChunk(const ChunkGetter& findFunction) noexcept
 }
 
 
-void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
+void Chunk::ChunkBinaryGreedMeshing(const ChunkGetter&) noexcept
 {
 	// TODO: Simple algorithm that will most likely be optimized to the ground later (**if** it works)
 	// Note 28/5/2025: 'Simple'???
@@ -223,9 +285,9 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 	faceData.translucentFaceCount = 0u;
 	
 	typedef std::uint32_t StateType;
-	constexpr int nextZIndex = 1 << ChunkSettings::CHUNK_SIZE_POW2;
+	//constexpr int nextZIndex = 1 << ChunkSettings::CHUNK_SIZE_POW2;
 	constexpr int chunkSizeIndex = ChunkSettings::CHUNK_SIZE - 1;
-	constexpr int stateBitsCount = sizeof(StateType[CHAR_BIT]);
+	constexpr int stateBitsCount = sizeof(StateType[8]);
 
 	// Binary greedy meshing: Combine surrounding faces with same texture to decrease triangle count, using
 	// bits to determine visible faces and to advance through the bitmaps and extend faces.
@@ -250,26 +312,27 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 
 	// If you have any questions on how this works, feel free to ask me on GitHub!
 	// Or you could just... read the comments?
-	
-	for (int z = 0; z < ChunkSettings::CHUNK_SIZE; ++z) {
-		StateType (&innerChunkState)[ChunkSettings::CHUNK_SIZE] = chunkFaceStates[z]; // Reference to 1D array
-		const int zIndex = z << ChunkSettings::CHUNK_SIZE_POW2;
-		for (int x = 0; x < ChunkSettings::CHUNK_SIZE; ++x) {
-			int zxIndex = zIndex + (x << ChunkSettings::CHUNK_SIZE_POW);
-			StateType& bitmap = innerChunkState[x]; // Bitmap of final axis
-			for (int y = 0; y < ChunkSettings::CHUNK_SIZE; ++y) {
+
+	for (int outer = 0; outer < ChunkSettings::CHUNK_SIZE; ++outer) {
+		//const bool outerOut = outer == chunkSizeIndex;
+		StateType (&innerChunkState)[ChunkSettings::CHUNK_SIZE] = chunkFaceStates[outer]; // Reference to 1D array
+		for (int inner = 0; inner < ChunkSettings::CHUNK_SIZE; ++inner) {
+			const bool innerOut = inner == chunkSizeIndex;
+			StateType& bitmap = innerChunkState[inner]; // Bitmap of final axis
+			for (int inc = 0; inc < ChunkSettings::CHUNK_SIZE; ++inc) {
+				//const bool incOut = inc == chunkSizeIndex;
+				int shift = static_cast<int>(innerOut);
 				// Visibility checks
-				int shift = z == chunkSizeIndex; // TODO: include other chunks - assume visible if outside
-				if (shift == 0) {
+				if (!shift) {
 					// Check if face is obscured by another block in this chunk
-					const int blockIndex = zxIndex + y; 
-					const WorldBlockData& currentProperties = ChunkSettings::GetBlockData(blockArray[z][x][y]);
-					const WorldBlockData& otherProperties = ChunkSettings::GetBlockData(blockArray[z + 1][x][y]);
+					//const int blockIndex = zxIndex + y; 
+					const WorldBlockData& currentProperties = ChunkSettings::GetBlockData(blockArray[outer][inc][inner]);
+					const WorldBlockData& otherProperties = ChunkSettings::GetBlockData(blockArray[outer][inc][inner]);
 					shift = currentProperties.notObscuredBy(currentProperties, otherProperties);
 				}
 				
 				// Only set bit if the current face is not obscured by any other face (shift = 1)
-				bitmap |= (shift << z);
+				bitmap |= (shift << inc);
 			}
 		}
 	}
@@ -306,14 +369,14 @@ void Chunk::CalculateChunkGreedy(const ChunkGetter&) noexcept
 				// Get the current block from the state and bit indexes
 				const ObjectID (&blocksAxisLine)[ChunkSettings::CHUNK_SIZE] = blockArray[outerAxisIndex][innerAxisIndex]; 
 				ObjectID blockType = blocksAxisLine[incrementAxisIndex];
-				const int incrementAxisStartIndex = incrementAxisIndex; // Save Z axis for later
+				const int incrementAxisStartIndex = incrementAxisIndex; // Save initial axis index for later
 				int width = 1, height = 1; // Width and height of the resulting face, will increase if space is found
 				
 				// The logic here is quite similar to what is done in the below loops, but since
 				// it is the first one, it determines what face is going to be extended and the block type.
 				// The below loops also clear the bits, but they are checking if they refer to the above type.
 
-				state &= ~(1u << incrementAxisIndex++); // Clear the current bit as it has been searched
+				state &= ~(1u << incrementAxisIndex++); // Clear the current bit
 				
 				// Loop through Z axis seperately from the above while loop to check for current block type
 				// instead of just checking for any set bits (extending face 'width' now)

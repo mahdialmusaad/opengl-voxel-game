@@ -3,8 +3,8 @@
 
 struct ChunkOffset {
 	double x;
-	double y;
 	double z;
+	float y;
 	int f;
 };
 
@@ -48,7 +48,7 @@ layout (std140, binding = 4) uniform GameSizes {
 };
 
 layout (location = 0) in uint data;
-// TTTT TTTH HHHH WWWW WZZZ ZZXX XXXY YYYY
+// TTTT TTTH HHHH WWWW WZZZ ZZYY YYYX XXXX
 layout (location = 1) in vec4 baseXZ;
 layout (location = 2) in vec4 baseYZ;
 layout (location = 3) in vec4 baseYW;
@@ -62,17 +62,17 @@ void main()
 	const ChunkOffset cd = chunkData[gl_DrawIDARB];
 
 	dvec3 blockPos = dvec3(
-		(data >> 5) & 31,
 		data & 31,
+		(data >> 5) & 31,
 		(data >> 10) & 31
 	) + dvec3(cd.x, cd.y, cd.z);
 
-	const vec3 sizeMult = vec3(((data >> 15) & 31) + 1.0, ((data >> 20) & 31) + 1.0, 1.0);
+	const vec3 sizeMult = vec3((data >> 15) & 31, (data >> 20) & 31, 1.0);
 
-	     if (cd.f == 0) blockPos += baseYZ.ywx * sizeMult;	// Y+
-	else if (cd.f == 1) blockPos += baseYW.yzx * sizeMult;	// Y-
-	else if (cd.f == 2) blockPos += baseXZ.wyx * sizeMult;	// X+
-	else if (cd.f == 3) blockPos += baseYZ.zyx * sizeMult;	// X-
+		 if (cd.f == 0) blockPos += baseXZ.wyx * sizeMult;	// X+
+	else if (cd.f == 1) blockPos += baseYZ.zyx * sizeMult;	// X-
+	else if (cd.f == 2) blockPos += baseYZ.ywx * sizeMult;	// Y+
+	else if (cd.f == 3) blockPos += baseYW.yzx * sizeMult;	// Y-
 	else if (cd.f == 4) blockPos += baseYZ.xyw * sizeMult;	// Z+
 	               else blockPos += baseXZ.xyz * sizeMult;	// Z-
 	

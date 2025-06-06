@@ -25,21 +25,33 @@ struct Chunk
 		}
 	};
 
+	struct BlockQueue {
+		BlockQueue(int x, int y, int z, ObjectID id) noexcept : x(x), y(y), z(z), blockID(id) {}
+		int x, y, z;
+		ObjectID blockID;
+	};
+
+	typedef std::vector<BlockQueue> BlockQueueVector;
+	typedef std::unordered_map<WorldPos, BlockQueueVector, WorldPosHash> BlockQueueMap;
+
 	ChunkSettings::ChunkBlockValue* chunkBlocks;
 	FaceAxisData chunkFaceData[6] {};
 
 	const double positionMagnitude;
-	const PosType offsetX, offsetZ;
-	const std::int8_t offsetY;
+	const WorldPos* offset;
 
 	ChunkState gameState = ChunkState::Normal;
 	
-	Chunk(WorldPos offset, WorldPerlin::NoiseResult *perlinResults) noexcept;
-	WorldPos GetOffset() const noexcept;
+	Chunk(WorldPos offset) noexcept;
+
+	BlockQueueMap ConstructChunk(WorldPerlin::NoiseResult *perlinResults) noexcept;
+	void AttemptGenerateTree(BlockQueueMap& treeBlocksQueue, int x, int y, int z, const WorldPerlin::NoiseResult& noise, ObjectID log, ObjectID leaves) noexcept;
+
+	static bool NoiseValueRand(float noiseVal, int oneInX) noexcept;
 
 	typedef std::function<Chunk*(const WorldPos&)> ChunkGetter;
 	void CalculateChunk(const ChunkGetter& findFunction) noexcept;
-	void CalculateChunkGreedy(const ChunkGetter& findFunction) noexcept;
+	void ChunkBinaryGreedMeshing(const ChunkGetter& findFunction) noexcept;
 
 	~Chunk();
 };

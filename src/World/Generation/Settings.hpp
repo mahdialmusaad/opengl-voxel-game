@@ -7,34 +7,24 @@
 
 enum class WorldDirection : std::int8_t
 {
-	None = -1, // none
-	Up = 0, // positive Y
-	Down = 1, // negative Y
-	Right = 2, // positive X
-	Left = 3, // negative X
-	Front = 4, // positive Z
-	Back = 5, // negative Z
+	None	= -1, // none
+	Right	= 0, // positive X
+	Left	= 1, // negative X
+	Up		= 2, // positive Y
+	Down	= 3, // negative Y
+	Front	= 4, // positive Z
+	Back	= 5, // negative Z
 };
 
 enum WorldDirectionInt
 {
-	IWorldDir_None = -1, // none
-	IWorldDir_Up = 0, // positive Y
-	IWorldDir_Down = 1, // negative Y
-	IWorldDir_Right = 2, // positive X
-	IWorldDir_Left = 3, // negative X
+	IWorldDir_None 	= -1, // none
+	IWorldDir_Right = 0, // positive X
+	IWorldDir_Left 	= 1, // negative X
+	IWorldDir_Up 	= 2, // positive Y
+	IWorldDir_Down 	= 3, // negative Y
 	IWorldDir_Front = 4, // positive Z
-	IWorldDir_Back = 5, // negative Z
-};
-
-// Upcoming, for reference now
-enum class BiomeID 
-{
-	Plains,
-	Forest,
-	Desert,
-	River,
-	NumUnique
+	IWorldDir_Back 	= 5, // negative Z
 };
 
 typedef std::uint8_t ObjectIDTypeof; // Change when there are enough unique IDs
@@ -143,7 +133,7 @@ namespace WorldBlockData_DEF
 		},
 		{ 
 			ObjectID::Grass, "Grass",
-			GrassTop, Dirt, GrassSide, GrassSide, GrassSide, GrassSide, 
+			GrassSide, GrassSide, GrassTop, Dirt, GrassSide, GrassSide, 
 			Opaque, Solid, Irreplaceable, LightN, R_Default
 		},
 		{
@@ -168,13 +158,13 @@ namespace WorldBlockData_DEF
 		},
 		{
 			ObjectID::Log, "Log",
-			LogInner, LogInner, LogSide, LogSide, LogSide, LogSide,
+			LogSide, LogSide, LogInner, LogInner, LogSide, LogSide,
 			Opaque, Solid, Irreplaceable, LightN, R_Default
 		},
 		{
 			ObjectID::Leaves, "Leaves",
 			Leaves, Leaves, Leaves, Leaves, Leaves, Leaves,
-			Opaque, Solid, Replaceable, LightN, R_Default
+			Transparency, Solid, Replaceable, LightN, R_Default
 		},
 		{
 			ObjectID::Planks, "Planks",
@@ -222,7 +212,7 @@ namespace ChunkSettings
 	constexpr int CHUNK_SIZE_M1 = CHUNK_SIZE - 1;
 	constexpr float CHUNK_SIZE_FLT = static_cast<float>(CHUNK_SIZE);
 	constexpr double CHUNK_SIZE_DBL = static_cast<double>(CHUNK_SIZE);
-	constexpr int CHUNK_SIZE_POW = Math::ilogx(CHUNK_SIZE, 2);
+	constexpr int CHUNK_SIZE_POW = ([](int x){ return x; })(5);
 	constexpr int CHUNK_SIZE_POW2 = CHUNK_SIZE_POW * 2;
 
 	constexpr float CHUNK_SIZE_RECIP = 1.0f / CHUNK_SIZE_FLT;
@@ -243,19 +233,19 @@ namespace ChunkSettings
 	}
 
 	constexpr WorldPos worldDirections[6] = {
-		{  0,  1,  0  },	// Y+
-		{  0, -1,  0  },	// Y-
 		{  1,  0,  0  },	// X+
 		{ -1,  0,  0  },	// X-
+		{  0,  1,  0  },	// Y+
+		{  0, -1,  0  },	// Y-
 		{  0,  0,  1  },	// Z+
 		{  0,  0, -1  } 	// Z-
 	};
 
 	constexpr glm::ivec3 worldDirectionsInt[6] = {
-		{  0,  1,  0  },	// Y+
-		{  0, -1,  0  },	// Y-
 		{  1,  0,  0  },	// X+
 		{ -1,  0,  0  },	// X-
+		{  0,  1,  0  },	// Y+
+		{  0, -1,  0  },	// Y-
 		{  0,  0,  1  },	// Z+
 		{  0,  0, -1  } 	// Z-
 	};
@@ -281,6 +271,7 @@ namespace ChunkSettings
 
 	typedef ObjectID(blockArray[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE]);
 	constexpr blockArray emptyChunk{};
+	constexpr ObjectID lonelyAirBlock = ObjectID::Air;
 
 	struct ChunkBlockValue
 	{
@@ -295,8 +286,8 @@ namespace ChunkSettings
 	{
 		blockArray chunkBlocks{};
 
-		ObjectID GetBlock(int x, int y, int z) const noexcept override { return chunkBlocks[z][x][y]; }
-		void SetBlock(int x, int y, int z, ObjectID block) noexcept override { chunkBlocks[z][x][y] = block; }
+		ObjectID GetBlock(int x, int y, int z) const noexcept override { return chunkBlocks[x][y][z]; }
+		void SetBlock(int x, int y, int z, ObjectID block) noexcept override { chunkBlocks[x][y][z] = block; }
 
 		ChunkBlockValueType GetChunkBlockType() const noexcept override { return ChunkBlockValueType::Full; }
 		~ChunkBlockValueFull() noexcept = default;
@@ -317,35 +308,34 @@ namespace ChunkSettings
 
 struct ChunkLookupTable
 {
-	constexpr ChunkLookupTable() noexcept
+	ChunkLookupTable() noexcept
 	{
 		// Precalculated results for chunk calculation - use to check which block is 
 		// next to another and in which 'nearby chunk' (if it happens to be outside)
-		constexpr int cs = ChunkSettings::CHUNK_SIZE;
 		std::int32_t lookupIndex = 0;
 
 		for (std::uint8_t face = 0; face < 6u; ++face) {
 			const glm::ivec3 nextDirection = ChunkSettings::worldDirectionsInt[face];
-			for (int z = 0; z < cs; ++z) {
-				const int nextZ = z + nextDirection.z;
-				const bool zOverflowing = nextZ < 0 || nextZ >= cs;
+			for (int x = 0; x < ChunkSettings::CHUNK_SIZE; ++x) {
+				const int nextX = x + nextDirection.x;
+				const bool xOverflowing = nextX < 0 || nextX >= ChunkSettings::CHUNK_SIZE;
 
-				for (int x = 0; x < cs; ++x) {
-					const int nextX = x + nextDirection.x;
-					const bool xOverflowing = nextX < 0 || nextX >= cs;
-					const bool xzOverflowing = zOverflowing || xOverflowing;
+				for (int y = 0; y < ChunkSettings::CHUNK_SIZE; ++y) {
+					const int nextY = y + nextDirection.y;
+					const bool yOverflowing = nextY < 0 || nextY >= ChunkSettings::CHUNK_SIZE;
+					const bool xyOverflowing = xOverflowing || yOverflowing;
 
-					for (int y = 0; y < cs; ++y) {
-						const int nextY = y + nextDirection.y;
-						const bool yOverflowing = nextY < 0 || nextY >= cs;
+					for (int z = 0; z < ChunkSettings::CHUNK_SIZE; ++z) {
+						const int nextZ = z + nextDirection.z;
+						const bool zOverflowing = nextZ < 0 || nextZ >= ChunkSettings::CHUNK_SIZE;
 						ChunkLookupData& data = lookupData[lookupIndex++];
 
-						data.blockPos = glm::i8vec3(
-							Math::loopAroundInteger(nextX, 0, cs),
-							Math::loopAroundInteger(nextY, 0, cs),
-							Math::loopAroundInteger(nextZ, 0, cs)
+						data.nextPos = glm::i8vec3(
+							Math::loopAround(nextX, 0, ChunkSettings::CHUNK_SIZE),
+							Math::loopAround(nextY, 0, ChunkSettings::CHUNK_SIZE),
+							Math::loopAround(nextZ, 0, ChunkSettings::CHUNK_SIZE)
 						);
-						data.nearbyIndex = (xzOverflowing || yOverflowing) ? face : static_cast<std::uint8_t>(6u);
+						data.nearbyIndex = (xyOverflowing || zOverflowing) ? face : static_cast<std::uint8_t>(6u);
 					}
 				}
 			}
@@ -353,8 +343,8 @@ struct ChunkLookupTable
 	}
 
 	struct ChunkLookupData {
-		glm::i8vec3 blockPos{};
-		std::uint8_t nearbyIndex = 0u;
+		glm::i8vec3 nextPos;
+		std::uint8_t nearbyIndex;
 	};
 
 	ChunkLookupData lookupData[ChunkSettings::CHUNK_UNIQUE_FACES]{}; 

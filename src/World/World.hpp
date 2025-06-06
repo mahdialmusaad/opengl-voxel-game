@@ -20,14 +20,11 @@ public:
 	void DebugReset() noexcept;
 
 	Chunk* WorldPositionToChunk(PosType x, PosType y, PosType z) const noexcept;
-	ObjectID *EditBlock(PosType x, PosType y, PosType z) const noexcept;
 	ObjectID GetBlock(PosType x, PosType y, PosType z) const noexcept;
-	ModifyWorldResult SetBlock(PosType x, PosType y, PosType z, ObjectID objectID) noexcept;
-
-	void ConvertChunkStorageType(ChunkSettings::ChunkBlockValue *blockArray) const noexcept;
+	void SetBlock(PosType x, PosType y, PosType z, ObjectID block, bool update = true) noexcept;
 
 	Chunk* GetChunk(WorldPos offset) const noexcept;
-	bool ChunkExists(WorldPos offset) const noexcept;
+	PosType HighestBlockPosition(PosType x, PosType z);
 
 	bool InRenderDistance(WorldPos& playerOffset, const WorldPos& chunkOffset) noexcept;
 	void UpdateRenderDistance(std::int32_t newRenderDistance) noexcept;
@@ -50,39 +47,23 @@ private:
 	void CreateFullChunk(ChunkOffset offsetXZ) noexcept;
 	void CalculateChunk(Chunk* chunk) const noexcept;
 	void SetPerlinValues(WorldPerlin::NoiseResult *results, ChunkOffset offset) noexcept;
+	
+	ObjectID* EditBlock(PosType x, PosType y, PosType z, bool convert = false) const noexcept;
+	ObjectID* EditBlock(Chunk* chunk, PosType x, PosType y, PosType z, bool convert = false) const noexcept;
 
-	struct TreeGenerateVars {
-		constexpr TreeGenerateVars(PosType tx, PosType ty, PosType tz, const WorldPerlin::NoiseResult &result) noexcept :
-			x(tx), y(ty), z(tz), noiseResult(result) {};
-		const PosType x, y, z;
-		const WorldPerlin::NoiseResult &noiseResult;
-		const ObjectID log = ObjectID::Log;
-		const ObjectID leaves = ObjectID::Leaves;
-	};
-
-	struct BlockQueue {
-		constexpr BlockQueue(WorldPos pos, ObjectID id) noexcept : position(pos), blockID(id) {}
-		const WorldPos position;
-		const ObjectID blockID;
-	};
-
-	void GenerateTree(TreeGenerateVars vars) noexcept;
-	Chunk* SetBlockSimple(PosType x, PosType y, PosType z, ObjectID objectID) const noexcept;
-
-	std::uint8_t m_worldVAO; 
-	std::uint8_t m_worldInstancedVBO, m_worldPlaneVBO;
+	GLuint m_worldVAO, m_worldInstancedVBO, m_worldPlaneVBO;
 	GLsizei m_indirectCalls = 0;
 	bool canMap = false;
 
 	std::vector<Chunk*> m_transferChunks;
-	std::unordered_map<WorldPos, std::vector<BlockQueue>, WorldPosHash> m_blockQueue;
+	std::unordered_map<WorldPos, std::vector<Chunk::BlockQueue>, WorldPosHash> m_blockQueue;
 
 	Chunk::ChunkGetter m_defaultGetter;
 
-	struct ShaderChunkOffset {
+	struct ShaderChunkFace {
 		double worldPositionX;
-		double worldPositionY;
 		double worldPositionZ;
+		float worldPositionY;
 		std::int32_t faceIndex;
 	};
 
@@ -94,14 +75,15 @@ private:
 	};
 
 	struct ChunkTranslucentData {
-		ShaderChunkOffset offsetData;
+		ShaderChunkFace offsetData;
 		Chunk* chunk;
 	};
 
 	Chunk::FaceAxisData** faceDataPointers;
 	ChunkTranslucentData* translucentChunks;
 	IndirectDrawCommand* worldIndirectData;
-	ShaderChunkOffset* worldOffsetData;
+	ShaderChunkFace* worldOffsetData;
+	WorldPerlin::NoiseResult* noiseResults = new WorldPerlin::NoiseResult[ChunkSettings::CHUNK_SIZE_SQUARED];
 };
 
 #endif

@@ -34,7 +34,7 @@ WorldPos ChunkSettings::GetChunkCenter(const WorldPos& offset) noexcept
 
 bool ChunkSettings::ChunkOnFrustum(CameraFrustum& frustum, glm::vec3 center) noexcept
 {
-	constexpr float chunkRadius = -static_cast<float>(Math::sqrt(CHUNK_SIZE_FLT * CHUNK_SIZE_FLT));
+	const float chunkRadius = -181.01933f;
 	return frustum.top.DistToPlane(center) > chunkRadius && frustum.bottom.DistToPlane(center) > chunkRadius &&
 		   frustum.right.DistToPlane(center) > chunkRadius && frustum.left.DistToPlane(center) > chunkRadius;
 }

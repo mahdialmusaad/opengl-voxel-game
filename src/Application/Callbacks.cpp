@@ -25,9 +25,11 @@ void GameObject::Callbacks::KeyPressCallback(int key, int, int action, int)
 			app->world.textRenderer.ChangeText(app->m_commandText, "");
 			app->m_commandText->textType = TextRenderer::TextType::Hidden;
 			game.chatting = false; // Exit chat mode
-			// Chat log temporarily stays visible
-			app->m_chatText->ResetTextTime();
-			app->m_chatText->textType = TextRenderer::TextType::TemporaryShow;
+			// Chat log temporarily stays visible (if text is present)
+			if (app->m_chatText->GetText().size()) {
+				app->m_chatText->ResetTextTime();
+				app->m_chatText->textType = TextRenderer::TextType::TemporaryShow;
+			}
 		};
 
 		// See if they want to confirm chat message/command rather than adding more text to it
@@ -218,22 +220,30 @@ void GameObject::Callbacks::TakeScreenshot() noexcept
 
 void GameObject::Callbacks::ToggleInventory() noexcept
 {
-	// Open or close the inventory
-	b_not(app->player.inventoryOpened);
-	glfwSetInputMode(game.window, GLFW_CURSOR, app->player.inventoryOpened ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
-	// Reset mouse position
-	glfwSetCursorPos(game.window, static_cast<double>(game.width) / 2.0, static_cast<double>(game.height) / 2.0);
+	b_not(app->player.inventoryOpened); // Determine if inventory elements should be rendered
+	glfwSetInputMode(game.window, GLFW_CURSOR, app->player.inventoryOpened ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED); // Free cursor if inventory is shown
+	glfwSetCursorPos(game.window, static_cast<double>(game.width) / 2.0, static_cast<double>(game.height) / 2.0); // Reset mouse position
+
 	game.focusChanged = true;
+	game.showGUI = true;
 }
 
 void GameObject::Callbacks::ApplyInput(int key, int action) noexcept
 {
+	// Pressing numbers correlate with slot
+	if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
+		app->playerFunctions.UpdateScroll(key - GLFW_KEY_1);
+		return;
+	} else if (key == GLFW_KEY_0) {
+		app->playerFunctions.UpdateScroll(9);
+		return;
+	}
+
 	static const int repeatableInput = GLFW_PRESS | GLFW_REPEAT;
 	static const int pressInput = GLFW_PRESS;
 
 	typedef std::pair<int, std::function<void()>> pair;
 	static const std::unordered_map<int, pair> keyFunctionMap = {
-
 		// Single-press inputs
 
 		{ GLFW_KEY_ESCAPE, { pressInput, [&]() {
@@ -249,13 +259,14 @@ void GameObject::Callbacks::ApplyInput(int key, int action) noexcept
 			glfwSwapInterval(!b_not(game.maxFPS));
 		}}},
 		{ GLFW_KEY_C, { pressInput, [&]() {
-			b_not(app->player.collisionEnabled);
+			b_not(app->player.doGravity);
 		}}},
 		{ GLFW_KEY_V, { pressInput, [&]() {
 			b_not(game.noGeneration);
 		}}},
 		{ GLFW_KEY_R, { pressInput, [&]() {
 			game.shader.InitShader();
+			app->world.textRenderer.UpdateShaderUniform();
 			app->UpdateAspect();
 		}}},
 		{ GLFW_KEY_T, { pressInput, [&]() {
@@ -273,7 +284,6 @@ void GameObject::Callbacks::ApplyInput(int key, int action) noexcept
 			game.focusChanged = true;
 		}}},
 		{ GLFW_KEY_SLASH, { pressInput, [&]() {
-			game.showGUI = true;
 			BeginChat();
 		}}},
 		{ GLFW_KEY_LEFT_BRACKET, { pressInput, [&]() {
@@ -348,18 +358,17 @@ void GameObject::Callbacks::AddChatMessage(std::string message) noexcept
 
 	// Update text with new message
 	app->world.textRenderer.ChangeText(app->m_chatText, newText);
-
-	// Make chat visible for some time
-	app->m_chatText->ResetTextTime();
-	app->m_chatText->textType = TextRenderer::TextType::TemporaryShow;
 }
 
 void GameObject::Callbacks::BeginChat() noexcept
 {
-	// Make command and chat log text visible
+	game.chatting = true;
+	game.showGUI = true;
+	app->player.inventoryOpened = false;
+
+	// Make command and chat log text visible (if chat log has text)
 	app->m_commandText->textType = TextRenderer::TextType::Default;
-	app->m_chatText->textType = TextRenderer::TextType::Default;
-	game.chatting = true; // Enter chat mode
+	app->m_chatText->textType = app->m_chatText->GetText().size() ? TextRenderer::TextType::Default : TextRenderer::TextType::Hidden;
 }
 
 void GameObject::Callbacks::ApplyCommand()
@@ -413,15 +422,14 @@ void GameObject::Callbacks::ApplyCommand()
 	Player &fplayer = app->playerFunctions;
 	glm::dvec3 &pos = plr.position;
 
-	// For debug purposes
-	int currentArgumentIndex = 0;
-	std::string currentArgument;
+	int errArgumentIndex = 0;
+	std::string errArgument;
 	bool isConverting = false;
 
 	const auto getArg = [&](int ind) -> std::string& {
 		std::string& arg = a[ind];
-		currentArgumentIndex = ind;
-		currentArgument = arg;
+		errArgumentIndex = ind + 1;
+		errArgument = arg;
 		return arg;
 	};
 
@@ -499,7 +507,8 @@ void GameObject::Callbacks::ApplyCommand()
 			if (hasArg(1)) game.testvals.y = getFlt(1);
 			if (hasArg(2)) game.testvals.z = getFlt(2);
 			if (hasArg(3)) game.testvals.w = getFlt(3);
-			app->UpdateAspect();
+			app->playerFunctions.UpdateInventory();
+			//app->playerFunctions.testwtewtewt();
 		}},
 		{ "tick", [&]() {
 			argmax(1);
@@ -522,7 +531,7 @@ void GameObject::Callbacks::ApplyCommand()
 		}},
 		{ "dcmp", [&]() {
 			argnum(1);
-			std::vector<char> binary(static_cast<std::size_t>(48 * 1024));
+			std::vector<char> binary(20480);
 			GLenum format = 0; GLint length = 0;
 			glGetProgramBinary(getInt(0), 20480, &length, &format, binary.data());
 			std::ofstream("bin.txt").write(binary.data(), length);
@@ -535,9 +544,8 @@ void GameObject::Callbacks::ApplyCommand()
 	if (commandKeyFind != commandsMap.end()) { // Check if command exists
 		args.erase(args.begin()); // Erase default command so args[0] is the first command argument
 		try { commandKeyFind->second(); } // Execute linked function
-		catch (const std::invalid_argument& err) {
-			// Warn about invalid argument
-			AddChatMessage(fmt::format("Unexpected '{}' at command argument {}", currentArgument, currentArgumentIndex + 1));
-		}
-	}
+		// Warn about invalid argument
+		catch (const std::invalid_argument&) { AddChatMessage(fmt::format("Unexpected '{}' at command argument {}", errArgument, errArgumentIndex)); }
+		catch (const std::out_of_range&) { AddChatMessage(fmt::format("Argument {} ({:.5}...) is too large", errArgumentIndex, errArgument)); }
+	} else AddChatMessage(fmt::format("'/{}' is not a valid command. Type /help for help.", args[0]));
 }

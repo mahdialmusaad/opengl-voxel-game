@@ -25,7 +25,7 @@ GameObject::GameObject() :
 	glCullFace(GL_BACK); // The inside of objects are not seen normally so they can be ignored
 
 	// Setup buffers for shared program data (update size to reflect shader ubo size)
-	OGL::SetupUBO(m_matricesUBO, 0, sizeof(glm::mat4[3]));
+	OGL::SetupUBO(m_matricesUBO, 0, sizeof(glm::mat4[4]));
 	OGL::SetupUBO(m_timesUBO, 1, sizeof(float[5]));
 	OGL::SetupUBO(m_coloursUBO, 2, sizeof(glm::vec4[3]));
 	OGL::SetupUBO(m_positionsUBO, 3, sizeof(glm::dvec4[2]));
@@ -45,8 +45,7 @@ GameObject::GameObject() :
 
 	// Text objects creation
 	TextRenderer &tr = world.textRenderer;
-	const std::uint8_t bgAndShadow = TextRenderer::TS_Background | TextRenderer::TS_Shadow;
-	const std::string emptyChatMessage = std::string(' ', TextRenderer::maxChatCharacterWidth) + std::string('\n', 5);
+	const std::uint8_t bgShadowInvis = TextRenderer::TS_Background | TextRenderer::TS_Shadow | TextRenderer::TS_InventoryInvisible;
 
 	// Combine static text for less draw calls and memory
 	const std::string infofmt = fmt::format(
@@ -55,18 +54,22 @@ GameObject::GameObject() :
 		reinterpret_cast<const char*>(glGetString(GL_RENDERER)), 
 		game.noiseGenerators.continentalness.seed
 	);
-	tr.CreateText(glm::vec2(0.01f, 0.01f), infofmt, bgAndShadow);
+	tr.CreateText(glm::vec2(0.01f, 0.01f), infofmt, 12u, bgShadowInvis);
 
-	m_chatText = 	tr.CreateText(glm::vec2(0.01f, 0.49f), "", bgAndShadow, TextRenderer::TextType::Hidden, 10u); // Chat log
-	m_commandText = tr.CreateText(glm::vec2(0.01f, 0.85f), "", bgAndShadow | TextRenderer::TS_BackgroundFullX, TextRenderer::TextType::Hidden); // Command text
-	m_infoText = 	tr.CreateText(glm::vec2(0.01f, 0.18f), "", bgAndShadow); // Reserve text object for dynamic info text
-	//m_debugText = 	tr.CreateText(glm::vec2(0.01f, 0.30f), "", bgAndShadow); // Debugging purposes
+	m_chatText = 	tr.CreateText(glm::vec2(0.01f, 0.49f), "", 10u, bgShadowInvis, TextRenderer::TextType::Hidden); // Chat log
+	m_commandText = tr.CreateText(glm::vec2(0.01f, 0.85f), "", 12u, bgShadowInvis | TextRenderer::TS_BackgroundFullX, TextRenderer::TextType::Hidden); // Command text
+	m_infoText = 	tr.CreateText(glm::vec2(0.01f, 0.18f), "", 12u, bgShadowInvis); // Reserve text object for dynamic info text
 
 	// Initialize player text
 	playerFunctions.InitializeText();
 
 	#ifndef GAME_SINGLE_THREAD
 	world.StartThreadChunkUpdate(); // Update chunks when needed on a seperate thread
+	#else
+	// Move player to highest block on starting position
+	const PosType startingAxis = static_cast<PosType>(ChunkSettings::CHUNK_SIZE_HALF);
+	const PosType highestYPosition = world.HighestBlockPosition(startingAxis, startingAxis);
+	playerFunctions.SetPosition({16.5, static_cast<double>(highestYPosition) + 2.0, 16.5});
 	#endif
 
 	// Clear all image data in game struct as they are no longer needed
@@ -114,12 +117,13 @@ void GameObject::Main()
 
 		//m_skybox.RenderSky();
 		m_skybox.RenderStars();
+		m_skybox.RenderSunAndMoon();
 		m_skybox.RenderClouds();
 
 		if (game.showGUI) {
 			glClear(GL_DEPTH_BUFFER_BIT); // Clear depth again to guarantee GUI draws on top
-			world.textRenderer.RenderText();
 			playerFunctions.RenderPlayerGUI();
+			world.textRenderer.RenderText(player.inventoryOpened);
 		}
 
 		// Window title update
@@ -159,7 +163,7 @@ void GameObject::MovementUpdate()
 	// Sort the world buffers to use new frustum values
 	world.SortWorldBuffers();
 
-	// Remove translation from skybox matrix so it always appears around the player
+	// Remove translation from origin matrix so certain objects always appear around the player
 	m_matrices[Matrix_Origin] = m_matrices[Matrix_Perspective] * glm::mat4(glm::mat3(m_matrices[Matrix_View]));
 
 	// Update world matrix values in GPU shaders
@@ -182,14 +186,15 @@ void GameObject::TextUpdate()
 	glfwSetWindowTitle(game.window, FPStext.c_str());
 
 	// Update dynamic information text (shortcut variables to make it less painful)
-	glm::dvec3& pos = player.position;
-	WorldPos& off = player.offset;
+	const glm::dvec3& pos = player.position;
+	const glm::dvec3& vel = playerFunctions.GetVelocity();
+	const WorldPos& off = player.offset;
 
 	std::string infofmt = fmt::format(
-		"\n{:.3f} {:.3f} {:.3f} ({} {} {})\nYaw:{:.1f} Ptc:{:.1f} FOV:{:.1f}\nSpd:{:.1f} Time:{:.2f}\nTris:{}",
-		pos.x, pos.y, pos.z, off.x, off.y, off.z, 
-		player.yaw, player.pitch, glm::degrees(player.fov),
-		player.currentSpeed, game.gameTime, 
+		"\n{:.3f} {:.3f} {:.3f} ({} {} {})\nVel: {:.2f} {:.2f} {:.2f}\nYaw:{:.1f} Ptc:{:.1f} ({})\nFOV:{:.1f} Spd:{:.1f} Time:{:.2f}\nTris:{}",
+		pos.x, pos.y, pos.z, off.x, off.y, off.z, vel.x, vel.y, vel.z,
+		player.yaw, player.pitch, PlayerObject::directionText[static_cast<int>(player.lookDirectionYaw) + 1], 
+		glm::degrees(player.fov), player.currentSpeed, game.gameTime,
 		fmt::group_digits(world.squaresCount * 2u)
 	);
 
@@ -288,10 +293,12 @@ void GameObject::UpdateFrameValues()
 	const float starAlpha = (m_gameDayTime - 0.8f) * 0.5f;
 
 	// Partial matrix UBO update (perspective and other matrices are done on player movement)
-	glm::mat4 starmatrix = m_matrices[Matrix_Origin];
-	starmatrix = glm::rotate(starmatrix, crntFrame * Skybox::starRotationalSpeed, glm::vec3(0.96f, 0.54f, 0.2f));
-
-	OGL::UpdateUBO(m_matricesUBO, sizeof(glm::mat4[2]), sizeof(starmatrix), &starmatrix);
+	const glm::mat4& originMatrix = m_matrices[Matrix_Origin];
+	glm::mat4 newMatrices[2] = { 
+		glm::rotate(originMatrix, crntFrame * Skybox::starRotationalSpeed, glm::vec3(1.0f, 0.54f, 0.2f)),
+		glm::rotate(originMatrix, crntFrame * glm::radians(1.0f) * (180.0f / Skybox::dayNightTimeSeconds), glm::vec3(-1.0f, 0.0f, 0.0f))
+	};
+	OGL::UpdateUBO(m_matricesUBO, sizeof(glm::mat4[2]), sizeof(newMatrices), &newMatrices);
 
 	// Update time variables UBO
 	const float gameTimes[] = {

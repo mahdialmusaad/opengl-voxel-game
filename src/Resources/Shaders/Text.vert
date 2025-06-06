@@ -8,16 +8,6 @@ layout (location = 3) in uvec2 d2; // Character, colour
 
 uniform float texturePositions[96];
 
-layout (std140, binding = 4) uniform GameSizes {
-	float blockTextureSize;
-	float inventoryTextureSize;
-	float screenAspect;
-	float textWidth;
-	float textHeight;
-	float inventoryWidth;
-	float inventoryHeight;
-};
-
 out vec2 t;
 out vec4 c;
 
