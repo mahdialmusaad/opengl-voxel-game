@@ -276,9 +276,9 @@ void Player::ApplyMovement() noexcept
 		}
 	};
 
-	const double groundPos = -2.0;
-	const double legsPos = -1.9;
-	const double abovePos = 0.3;
+	const double groundPos = -1.8;
+	const double legsPos = -1.6;
+	const double abovePos = 0.2;
 
 	player.grounded = false;
 
@@ -348,6 +348,11 @@ void Player::PlaceBlock() noexcept
 	if (placeBlock != ObjectID::Air && ChunkSettings::GetBlockData(player.targetBlock).isSolid) {
 		const WorldPos placePosition = player.targetBlockPosition + static_cast<WorldPos>(placeBlockRelPosition);
 		if (ChunkSettings::GetBlockData(world->GetBlock(placePosition)).isSolid) return; // Don't replace already existing blocks
+
+		const WorldPos playerBlockPos = ChunkSettings::ToWorld(player.position);
+		const WorldPos playerLegsBlockPos = { playerBlockPos.x, playerBlockPos.y - static_cast<PosType>(1), playerBlockPos.z };
+		if (placePosition == playerBlockPos || placePosition == playerLegsBlockPos) return; // Don't place blocks inside the player
+
 		world->SetBlock(placePosition, placeBlock, true); // Place block on side of selected block
 		UpdateSlot(selected, placeBlock, useSlot.count - 1); // Update inventory slot with new count
 		RaycastBlock(); // Raycast again to update selection

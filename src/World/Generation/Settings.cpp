@@ -4,8 +4,8 @@ PosType ChunkSettings::ToWorld(double a) noexcept { return static_cast<PosType>(
 
 bool ChunkSettings::IsOnCorner(const glm::ivec3 &pos, WorldDirection dir) noexcept
 {
-	const int val = dir < 2 ? pos.x : dir < 4 ? pos.y : pos.z;
-	return val == ((dir & 1) * ChunkSettings::CHUNK_SIZE_M1);
+	const int val = dir < 2 ? pos.x : dir < 4 ? pos.y : pos.z; // Determine if the direction is the X, Y or Z axis
+	return val == (!(dir & 1) * ChunkSettings::CHUNK_SIZE_M1); // Odd directions (left, down, back) are always in the negative directions and vice versa
 }
 
 bool ChunkSettings::ChunkOnFrustum(const CameraFrustum &frustum, glm::vec3 center) noexcept

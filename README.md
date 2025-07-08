@@ -1,8 +1,7 @@
 ## Overview
 A voxel game built for performance and efficiency.
 
-<img width=49% src="markdown/main_day.png"/>
-<img width=49% src="markdown/main_night.png">
+<img width=48% src="markdown/main_day.png"/> <img width=48% src="markdown/main_night.png">
 <br>
 <sup>In-game screenshots during the day and night</sup>
 
@@ -45,13 +44,13 @@ Using a **tilde (~)** as an argument will be treated as the current value. Any n
 >Example: `/tp ~ ~10 ~` will move the player +10 blocks in the Y axis and `/tp ~ ~-10 ~` will move them downwards by 10 blocks.
 
 #### Notable examples include:
-- /tp x y z *p *y - Teleport to the specified coordinates with optional arguments to set camera pitch and yaw. Scientific notation and other keywords are allowed.
+- /tp x y z *pitch *yaw - Teleport to the specified coordinates with optional arguments to set camera pitch and yaw. Scientific notation and other keywords are allowed.
+- /fill x<sub>1</sub> y<sub>1</sub> z<sub>1</sub> x<sub>2</sub> y<sub>2</sub> z<sub>2</sub> id - Fills from the first position to the second (all inclusive) with the specified block ID<sup>^</sup>
 - /speed *n - Change the player's current speed to the specified value.
 - /rd *n - Changes the render distance to the specified value \[0, 50\]
 - /tick *n - Change the tick speed to the specified value, which affects the speed at which in-game time passes. \[-100, 100\]
 - /time *n - Change the current in-game time to the specified value.
 - /fov *n - Change the camera's field of view to the specified value.
-- /fill x<sub>1</sub> y<sub>1</sub> z<sub>1</sub> x<sub>2</sub> y<sub>2</sub> z<sub>2</sub> id - Fills from the first position to the second (all inclusive) with the specified block ID<sup>^</sup>
 - /clear - Clears the chat
 
 Writing any command with the only argument as `?` (or an invalid number of arguments) will display help for that command if available.

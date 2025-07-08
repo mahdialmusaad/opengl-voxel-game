@@ -151,6 +151,7 @@ void World::SetBlock(const WorldPos &pos, ObjectID block, bool updateChunk) noex
 		}
 
 		const glm::ivec3 localPos = ChunkSettings::WorldToLocal(pos);
+		chunk->chunkBlocks->atref(localPos) = block; // Change block at local position
 
 		// Update bordering chunks if changed block was on a corner
 		NearbyChunkData nearbyData[6];
@@ -161,9 +162,7 @@ void World::SetBlock(const WorldPos &pos, ObjectID block, bool updateChunk) noex
 			if (updateChunk) nearby.nearbyChunk->CalculateTerrainData(allchunks);
 			else nearby.nearbyChunk->gameState = Chunk::ChunkState::UpdateRequest;
 		}
-
-		chunk->chunkBlocks->atref(localPos) = block; // Change block at local position
-
+		
 		if (updateChunk) { chunk->CalculateTerrainData(allchunks); UpdateWorldBuffers(); }
 		else chunk->gameState = Chunk::ChunkState::UpdateRequest;
 	}
