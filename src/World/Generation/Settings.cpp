@@ -1,50 +1,53 @@
 #include "Settings.hpp"
 
-PosType ChunkSettings::WorldPositionToOffset(PosType x) noexcept
+PosType ChunkSettings::ToWorld(double a) noexcept { return static_cast<PosType>(std::floor(a)); }
+
+bool ChunkSettings::IsOnCorner(const glm::ivec3 &pos, WorldDirection dir) noexcept
 {
-	return Math::toWorld(static_cast<double>(x) * CHUNK_SIZE_RECIP_DBL);
+	const int val = dir < 2 ? pos.x : dir < 4 ? pos.y : pos.z;
+	return val == ((dir & 1) * ChunkSettings::CHUNK_SIZE_M1);
 }
 
-WorldPos ChunkSettings::WorldPositionToOffset(PosType x, PosType y, PosType z) noexcept
+bool ChunkSettings::ChunkOnFrustum(const CameraFrustum &frustum, glm::vec3 center) noexcept
 {
-	return { WorldPositionToOffset(x), WorldPositionToOffset(y), WorldPositionToOffset(z) };
+	const double chunkRadius = -ChunkSettings::CHUNK_SIZE_DBL * 6.0;
+	return frustum.top.DistToPlane(center) > chunkRadius && 
+		frustum.bottom.DistToPlane(center) > chunkRadius && 
+		frustum.right.DistToPlane(center) > chunkRadius && 
+		frustum.left.DistToPlane(center) > chunkRadius;
 }
 
-int ChunkSettings::WorldToLocalPosition(PosType x) noexcept
+void ChunkLookupData::CalculateLookupData(ChunkLookupData (&lookupData)[ChunkSettings::CHUNK_UNIQUE_FACES]) noexcept
 {
-	return static_cast<int>(x - (ChunkSettings::PCHUNK_SIZE * WorldPositionToOffset(x)));
-}
+	// Results for chunk calculation - use to check which block is next to
+	// another and in which 'nearby chunk' (if it happens to be outside the current chunk)
+	std::int32_t lookupIndex = 0;
+	const std::uint8_t maxFace = static_cast<std::uint8_t>(6u);
+	
+	for (std::uint8_t face = 0; face < maxFace; ++face) {
+		const glm::ivec3 nextDirection = game.constants.worldDirectionsInt[face];
+		for (int x = 0; x < ChunkSettings::CHUNK_SIZE; ++x) {
+			const int nextX = x + nextDirection.x;
+			const bool xOverflowing = nextX < 0 || nextX >= ChunkSettings::CHUNK_SIZE;
 
-glm::ivec3 ChunkSettings::WorldToLocalPosition(PosType x, PosType y, PosType z) noexcept
-{
-	return { WorldToLocalPosition(x), WorldToLocalPosition(y), WorldToLocalPosition(z) };
-}
+			for (int y = 0; y < ChunkSettings::CHUNK_SIZE; ++y) {
+				const int nextY = y + nextDirection.y;
+				const bool yOverflowing = nextY < 0 || nextY >= ChunkSettings::CHUNK_SIZE;
+				const bool xyOverflowing = xOverflowing || yOverflowing;
 
-WorldPos ChunkSettings::GetChunkCorner(const WorldPos& offset) noexcept
-{
-	return offset * ChunkSettings::PCHUNK_SIZE;
-}
+				for (int z = 0; z < ChunkSettings::CHUNK_SIZE; ++z) {
+					const int nextZ = z + nextDirection.z;
+					const bool zOverflowing = nextZ < 0 || nextZ >= ChunkSettings::CHUNK_SIZE;
+					ChunkLookupData &data = lookupData[lookupIndex++];
 
-WorldPos ChunkSettings::GetChunkCenter(const WorldPos& offset) noexcept
-{
-	constexpr PosType half = static_cast<PosType>(ChunkSettings::CHUNK_SIZE_HALF);
-	const WorldPos corner = offset * ChunkSettings::PCHUNK_SIZE;
-	return { corner.x + half, corner.y + half, corner.z + half };
-}
-
-bool ChunkSettings::ChunkOnFrustum(CameraFrustum& frustum, glm::vec3 center) noexcept
-{
-	const float chunkRadius = -181.01933f;
-	return frustum.top.DistToPlane(center) > chunkRadius && frustum.bottom.DistToPlane(center) > chunkRadius &&
-		   frustum.right.DistToPlane(center) > chunkRadius && frustum.left.DistToPlane(center) > chunkRadius;
-}
-
-bool ChunkSettings::IsAirChunk(ChunkBlockValue* chunkBlocks) noexcept
-{
-	return chunkBlocks->GetChunkBlockType() == ChunkBlockValueType::Air;
-}
-
-ChunkSettings::ChunkBlockValueFull* ChunkSettings::GetFullBlockArray(ChunkBlockValue* chunkBlocks) noexcept
-{
-	return dynamic_cast<ChunkBlockValueFull*>(chunkBlocks);
+					data.pos = glm::i8vec3(
+						Math::loopAround(nextX, 0, ChunkSettings::CHUNK_SIZE),
+						Math::loopAround(nextY, 0, ChunkSettings::CHUNK_SIZE),
+						Math::loopAround(nextZ, 0, ChunkSettings::CHUNK_SIZE)
+					);
+					data.index = (xyOverflowing || zOverflowing) ? face : maxFace;
+				}
+			}
+		}
+	}
 }

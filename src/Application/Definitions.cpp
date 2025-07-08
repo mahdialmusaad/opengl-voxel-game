@@ -2,84 +2,54 @@
 
 // -------------------- Math struct -------------------- 
 
-std::size_t WorldPosHash::operator()(const WorldPos& vec) const noexcept
+std::size_t Math::WPHash::operator()(const WorldPos &vec) const noexcept
 {
 	return 
 		static_cast<std::size_t>(vec.x) ^ 
 		(
-			((static_cast<std::size_t>(vec.y) << static_cast<std::size_t>(1)) ^ 
-			(static_cast<std::size_t>(vec.z) << static_cast<std::size_t>(1))
-		) >> static_cast<std::size_t>(1));
+			((static_cast<std::size_t>(vec.y) << static_cast<std::size_t>(1u)) ^ 
+			(static_cast<std::size_t>(vec.z) << static_cast<std::size_t>(1u))
+		) >> static_cast<std::size_t>(1u));
 }
-double Math::loopAround(double x, double min, double max) noexcept
-{
-	return (x < min) ? (max - (min - x)) : ((x > max) ? (min + (x - max)) : x);
-}
-int Math::loopAround(int x, int minInc, int maxExcl) noexcept
-{
-	return minInc + ((maxExcl + x) % maxExcl);
-}
-PosType Math::absInt(PosType val) noexcept
-{
-	const PosType mask = val >> (sizeof(PosType) * (CHAR_BIT - 1));
-	return (val + mask) ^ mask;
-}
-float Math::loopAround(float x, float min, float max) noexcept
-{
-	return (x < min) ? (max - (min - x)) : ((x > max) ? (min + (x - max)) : x);
-}
-float Math::lerp(float a, float b, float t) noexcept
-{
-	return a + (b - a) * t;
-}
-double Math::lerp(double a, double b, double t) noexcept
-{
-	return a + (b - a) * t;
-}
-WorldPos Math::toWorld(const glm::dvec3& v) noexcept
-{
-	return { toWorld(v.x), toWorld(v.y), toWorld(v.z) };
-}
-PosType Math::toWorld(double a) noexcept
-{
-	const PosType pos = static_cast<PosType>(a);
-	return a < 0.0 ? pos - 1 : pos;
-}
+int Math::loopAround(int x, int minInc, int maxExcl) noexcept { return minInc + ((maxExcl + x) % maxExcl); }
+bool Math::isLargeOffset(const WorldPos &pos, PosType threshold) noexcept { return glm::max(glm::max(glm::abs(pos.x), glm::abs(pos.y)), glm::abs(pos.z)) >= threshold; }
 
 // -------------------- TextFormat struct -------------------- 
 
-void TextFormat::log(std::string t, bool nl) noexcept
-{
-	// Print out string with current time for logging purposes
-	fmt::print("[ {:.3f}ms ] {}{}",  glfwGetTime() * 1000.0, t, (nl ? "\n" : ""));
-}
+void TextFormat::log(std::string t, bool nl) noexcept { fmt::print("[ {:.3f}ms ] {}{}",  glfwGetTime() * 1000.0, t, (nl ? "\n" : "")); }
 void TextFormat::warn(std::string t, std::string ttl) noexcept
 {
-	// Warning log for any issues
 	std::cout << "\n";
-	log("************************ " + ttl, false);
-	std::cout << " ************************\n" << t << "\n"; 
+	static std::string stars = std::string(25, '*');
+	log(fmt::format("{} {}", stars, ttl), false);
+	fmt::print(" {}\n{}\n", stars, t);
 }
 
 bool TextFormat::stringEndsWith(const std::string &str, const std::string &ending) noexcept
 {
-	// std::string::ends_with only available in c++20, trying not to rely on new versions especially since 
-	// there is no guarantee that very new functions may not be supported on all compilers/platforms.
 	return str.compare(str.length() - ending.length(), ending.length(), ending) == 0;
 }
-std::string TextFormat::getParentDirectory(const std::string& dir) noexcept
+std::string TextFormat::getParentDirectory(const std::string &dir) noexcept
 {
 	const std::size_t pos = dir.find_last_of("\\/");
 	return pos == std::string::npos ? "" : dir.substr(0u, pos);
 }
 
+std::int64_t TextFormat::strtoi64(const std::string &numText) noexcept
+{
+	int64_t val;
+	std::istringstream valStr(numText);
+	valStr >> val;
+	return val;
+}
+
 // -------------------- OGL struct -------------------- 
 
-GLuint OGL::CreateVAO() noexcept
+GLuint OGL::CreateVAO(bool bind) noexcept
 {
 	GLuint VAO;
 	glGenVertexArrays(1, &VAO);
-	glBindVertexArray(VAO);
+	if (bind) glBindVertexArray(VAO);
 	return VAO;
 }
 GLuint OGL::CreateBuffer(GLenum type) noexcept
@@ -89,23 +59,28 @@ GLuint OGL::CreateBuffer(GLenum type) noexcept
 	glBindBuffer(type, buf);
 	return buf;
 }
-void OGL::SetupUBO(GLuint& ubo, GLuint index, std::size_t uboSize) noexcept
+void OGL::SetupUBO(GLuint &ubo, GLuint index, std::size_t uboSize) noexcept
 {
 	ubo = OGL::CreateBuffer(GL_UNIFORM_BUFFER);
 	glBufferStorage(GL_UNIFORM_BUFFER, uboSize, nullptr, GL_DYNAMIC_STORAGE_BIT);
 	glBindBufferBase(GL_UNIFORM_BUFFER, index, ubo);
 }
-void OGL::UpdateUBO(GLuint& ubo, GLintptr offset, GLsizeiptr bytes, const void* data) noexcept
+void OGL::UpdateUBO(GLuint &ubo, GLintptr offset, GLsizeiptr bytes, const void *data) noexcept
 {
 	glBindBuffer(GL_UNIFORM_BUFFER, ubo);
 	glBufferSubData(GL_UNIFORM_BUFFER, offset, bytes, data);
+}
+
+std::string OGL::GetString(GLenum stringID) noexcept
+{
+	return std::string(reinterpret_cast<const char*>(glGetString(stringID)));
 }
 
 // -------------------- Shader struct -------------------- 
 
 void Shader::InitShader()
 {
-	static const auto CheckProgramError = [&](GLuint program, const std::string& vertex, const std::string& fragment)
+	static const auto CheckProgramError = [&](GLuint program, const std::string &vertex, const std::string &fragment)
 	{
 		// Check for any errors in the given program ID
 		int success;
@@ -114,18 +89,18 @@ void Shader::InitShader()
 		if (!success) {
 			int length = 0;
 			glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length);
-			char* infolog = new char[length] {};
+			char *infolog = new char[length] {};
 			glGetProgramInfoLog(program, length, nullptr, infolog);
 
 			TextFormat::warn(
 				fmt::format("Linked vertex shader: {}\nLinked fragment shader: {}\nError message:\n{}", vertex, fragment, infolog), 
-				"Shader Program Error - ID: " + std::to_string(program)
+				"Shader Program Error - ID: " + fmt::to_string(program)
 			);
 
 			delete[] infolog;
 		}
 	};
-	static const auto CheckShaderError = [&](const std::string& filename, GLuint shader)
+	static const auto CheckShaderError = [&](const std::string &filename, GLuint shader)
 	{
 		// Check for any errors in the given vertex or fragment shader ID
 		int success;
@@ -134,12 +109,12 @@ void Shader::InitShader()
 		if (!success) {
 			int length = 0;
 			glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
-			char* infolog = new char[length] {};
+			char *infolog = new char[length] {};
 			glGetShaderInfoLog(shader, length, nullptr, infolog);
 
 			TextFormat::warn(
 				fmt::format("Filename: {}\nError message:\n{}", filename, infolog), 
-				"Shader Error - ID: " + std::to_string(shader)
+				"Shader Error - ID: " + fmt::to_string(shader)
 			);
 
 			delete[] infolog;
@@ -156,7 +131,7 @@ void Shader::InitShader()
 
 		// Read file contents into std::string and convert to C-style string for OGL shader creation
 		const std::string contents = ReadFileFromDisk(filename);
-		const char* c_contents = contents.c_str();
+		const char *c_contents = contents.c_str();
 
 		// Create shader with string and compile and check for any errors in the GLSL contents
 		glShaderSource(shaderID, 1, &c_contents, nullptr);
@@ -171,7 +146,8 @@ void Shader::InitShader()
 	const int numPrograms = static_cast<int>(ShaderID::MAX);
 	
 	// Load order should match the ShaderID enum
-	static const std::pair<std::string, std::string> shaderPairs[numPrograms] = {
+	typedef std::pair<std::string, std::string> FilePair;
+	static const FilePair shaderPairs[numPrograms] = {
 		{"Blocks.vert", "Blocks.frag"},
 		{"Clouds.vert", "Clouds.frag"},
 		{"Inventory.vert", "Inventory.frag"},
@@ -179,14 +155,17 @@ void Shader::InitShader()
 		{"Sky.vert", "Sky.frag"},
 		{"Stars.vert", "Stars.frag"},
 		{"Text.vert", "Text.frag"},
-		{"Planets.vert", "Planets.frag"}
+		{"Planets.vert", "Planets.frag"},
+		{"Vec3.vert", "Vec3.frag"},
+		{"Border.vert", "Border.frag"}
 	};
 
 	const std::string shadersFile = "Shaders\\";
 
 	// Load each vertex and fragment pair from disk and create a shader program from them
 	for (int programIndex = 0; programIndex < numPrograms; ++programIndex) {
-		const auto& [vertexFileName, fragmentFileName] = shaderPairs[programIndex];
+		const FilePair &pair = shaderPairs[programIndex];
+		const std::string vertexFileName = pair.first, fragmentFileName = pair.second;
 
 		// Create shaders from the associated files
 		const GLuint vertexID = CreateShaderFromFilename(game.resourcesFolder + shadersFile + vertexFileName),
@@ -199,9 +178,9 @@ void Shader::InitShader()
 		}
 
 		// Create new shader using the vertex and fragment shaders (delete original if exists)
-		std::uint8_t& currentProgram = m_programs[programIndex];
-		if (currentProgram) glDeleteProgram(static_cast<GLuint>(currentProgram));
-		currentProgram = static_cast<std::uint8_t>(glCreateProgram()); 
+		GLuint &currentProgram = m_programs[programIndex];
+		if (currentProgram) glDeleteProgram(currentProgram);
+		currentProgram = glCreateProgram(); 
 
 		glAttachShader(currentProgram, vertexID);
 		glAttachShader(currentProgram, fragmentID);
@@ -214,42 +193,55 @@ void Shader::InitShader()
 		// Check for any shader program errors
 		CheckProgramError(currentProgram, vertexFileName, fragmentFileName);
 		
-		TextFormat::log(fmt::format("Shader program {} created using {} and {}", currentProgram, vertexFileName, fragmentFileName));
+		TextFormat::log(
+			fmt::format("Shader program {} '{}' created using {} ({}) and {} ({})", 
+			currentProgram, vertexFileName.substr(0, vertexFileName.size()-5), vertexFileName, vertexID, fragmentFileName, fragmentID
+		));
 	}
 }
 
-GLuint Shader::ShaderFromID(ShaderID id) const noexcept
+GLuint Shader::IDFromShaderName(ShaderID id) const noexcept
 {
-	return static_cast<GLuint>(m_programs[static_cast<int>(id)]);
+	return m_programs[static_cast<int>(id)];
 }
 void Shader::UseShader(ShaderID id) const noexcept
 {
-	glUseProgram(ShaderFromID(id));
+	glUseProgram(IDFromShaderName(id));
 }
 
-GLint Shader::GetLocation(GLuint shader, const char* name) noexcept
-{
-	return glGetUniformLocation(shader, name);
+GLint Shader::GetLocation(ShaderID id, const char *name) noexcept
+{ 
+	return glGetUniformLocation(IDFromShaderName(id), name);
 }
 
-std::string Shader::ReadFileFromDisk(const std::string& filename)
+std::string Shader::ReadFileFromDisk(const std::string &filename)
 {
-	typedef const std::istreambuf_iterator<char> charFileStream;
-	constexpr const charFileStream cfs;
-
-	if (!std::filesystem::exists(filename)) {
-		TextFormat::log("WARNING: File " + filename + " does not exist!");
-		return std::string();
+	// Check if file exists
+	if (!FileManager::FileExists(filename)) {
+		TextFormat::warn(fmt::format("File {} does not exist!", filename), "Invalid filename");
+		return "";
 	}
 
-	std::fstream fileStream = std::fstream(filename);
-	const std::string contents = std::string(charFileStream(fileStream), cfs);
+	// Setup file stream
+	std::ifstream fileStream(filename, std::ios::binary | std::ios::ate);
 
-	if (game.mainLoopActive) TextFormat::log("\'" + filename + "\' read from disk");
-	return contents;
+	// Check if stream is valid
+	if (fileStream.good()) {
+		const std::streampos fileSize = fileStream.tellg(); // Get file size
+		fileStream.seekg(std::ios::beg); // Move reader to beginning
+		std::string fileContents(fileSize, 0); // Create string with allocated size
+		fileStream.read(&fileContents[0], fileSize); // Read file, placing data in created string
+
+		// Return string with file contents
+		if (game.mainLoopActive) TextFormat::log(fmt::format("File '{}' read from disk.", filename));
+		return fileContents;
+	}
+
+	TextFormat::warn(fmt::format("File stream failed to initialize on '{}'", filename), "File read error");
+	return "";
 }
 
-void Shader::LoadTexture(OGLImageInfo& info, const char* filename, bool border, int filterParam, bool mipmap)
+void Shader::LoadImage(OGLImageInfo &info, const char *filename, bool border, int filterParam, bool mipmap)
 {
 	// Create a new texture object
 	GLuint tex;
@@ -264,13 +256,16 @@ void Shader::LoadTexture(OGLImageInfo& info, const char* filename, bool border, 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filterParam);
 
 	// Texture coordinate overflow handling - show a specific colour, repeat the texture, etc
-	constexpr float borderColours[4] {};
+	
 	const GLint texWrapParam = border ? GL_CLAMP_TO_BORDER : GL_REPEAT;
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, texWrapParam);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, texWrapParam);
 
-	if (border) glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColours);
+	if (border) {
+		const float borderColours[4] {}; // RGBA 0 - transparent colour outside texture bounds
+		glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColours);
+	}
 
 	// Load in found image whilst setting data
 	if (lodepng::decode(info.data, info.width, info.height, (game.resourcesFolder + filename).c_str())) throw std::runtime_error("Image load fail");
@@ -281,14 +276,14 @@ void Shader::LoadTexture(OGLImageInfo& info, const char* filename, bool border, 
 	// Create mipmaps for the texture
 	if (mipmap) glGenerateMipmap(GL_TEXTURE_2D);
 
-	TextFormat::log("Loaded texture: " + std::string(filename));
+	TextFormat::log("Loaded image: " + std::string(filename));
 }
 
 Shader::~Shader() noexcept
 {
 	// Delete all valid shader programs
-	for (const std::uint8_t& program : m_programs) {
-		if (program == 0) continue;
+	for (const GLuint &program : m_programs) {
+		if (program == 0u) continue;
 		glDeleteProgram(program);
 	}
 }
@@ -297,8 +292,8 @@ Shader::~Shader() noexcept
 
 WorldNoise::WorldNoise(WorldPerlin::NoiseSpline *splines, std::int64_t *seeds)
 {
-	WorldPerlin* perlins[] = { &continentalness, &flatness, &depth, &temperature, &humidity };
-	for (int i = 0; i < numNoises; ++i) {
+	WorldPerlin *perlins[] = { &continentalness, &flatness, &depth, &temperature, &humidity };
+	for (int i = 0; i < NoiseEnums::MAX; ++i) {
 		WorldPerlin *perlin = perlins[i];
 		perlin->noiseSplines = splines[i];
 		perlin->ChangeSeed(seeds[i]);
@@ -306,12 +301,36 @@ WorldNoise::WorldNoise(WorldPerlin::NoiseSpline *splines, std::int64_t *seeds)
 }
 WorldNoise::WorldNoise(WorldPerlin::NoiseSpline *splines)
 {
-	WorldPerlin* perlins[] = { &continentalness, &flatness, &depth, &temperature, &humidity };
-	bool DEBUGNOSPLINES = splines == nullptr;
+	WorldPerlin *perlins[] = { &continentalness, &flatness, &depth, &temperature, &humidity };
+	bool hasSplines = splines != nullptr;
 
-	for (int i = 0; i < numNoises; ++i) {
+	for (int i = 0; i < NoiseEnums::MAX; ++i) {
 		WorldPerlin *perlin = perlins[i];
-		if (!DEBUGNOSPLINES) perlin->noiseSplines = splines[i];
+		if (hasSplines) perlin->noiseSplines = splines[i];
 		perlin->ChangeSeed(); 
 	}
+}
+
+// -------------------- FileManager struct -------------------- 
+
+bool FileManager::DirectoryExists(std::string path)
+{
+	struct stat info;
+	return stat(path.c_str(), &info) == 0 && info.st_mode & S_IFDIR;
+}
+bool FileManager::FileExists(std::string path) 
+{
+	return std::ifstream(path).good();
+}
+bool FileManager::Exists(std::string path)
+{
+	return DirectoryExists(path) || FileExists(path);
+}
+void FileManager::DeletePath(std::string path)
+{
+	if (std::remove(path.c_str()) != 0) throw FileError(fmt::format("Failed to delete path '{}'", path));
+}
+void FileManager::CreatePath(std::string path)
+{
+	if (mkdir(path.c_str()) != 0) throw FileError(fmt::format("Failed to create path '{}'", path));
 }

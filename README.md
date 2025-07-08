@@ -1,62 +1,100 @@
-# Badcraft
-A voxel game built to be performant, memory-efficient and cross compatible.
+## Overview
+A voxel game built for performance and efficiency.
 
-<img src="markdown/main.png"/>
-<sup>In-game screenshot during night</sup>
+<img width=49% src="markdown/main_day.png"/>
+<img width=49% src="markdown/main_night.png">
+<br>
+<sup>In-game screenshots during the day and night</sup>
 
 ## Features
-- 64-bit rendering and generation system
-- Custom text rendering system that supports different sizes and colours
-- Dynamic skybox with clouds and night stars
-- Screenshotting (see [Controls](https://github.com/mahdialmusaad/badcraft/tree/main?tab=readme-ov-file#controls))
-- Commands (see [Commands](https://github.com/mahdialmusaad/badcraft/tree/main?tab=readme-ov-file#commands))
+This game offers a wide variety of features to create a vast gameplay experience while allowing for new features to be trivially added.
 
-<sup>Due to precision limitations, terrain rendering begins to break down at 2<sup>53</sup> (9 quadrillion) blocks away from the origin.</sup>
+Examples include:
+- **64-bit** generation to allow worlds to span _trillions_ of blocks
+- [Dynamic skybox](src/World/Sky.cpp) with clouds, stars and the sun and moon
+- Custom [text rendering system](src/Rendering/TextRenderer.cpp) that supports different colours, sizes and other features
+- Chatting and [commands](tab=readme-ov-file#commands)
 
 ## Goal
-This game was developed with performance and cross-compatibility in mind to ensure that anyone can use it, no matter their hardware or operating system.
-See the [Build](https://github.com/mahdialmusaad/badcraft/tree/main?tab=readme-ov-file#build) section for more details.
+The purpose of this game is to achieve extreme performance using OpenGL in C++ while still offering many features and possibly serving as inspiration for others attempting to create 3D software using graphics libraries.
 
 ### Possible additions
-There are still many things that could be improved about the game, but implementing them could prove to be difficult or possibly involve major changes of existing parts of the source code:
-- Greedy meshing ([currently in development](https://github.com/mahdialmusaad/badcraft/blob/main/src/World/Chunk.cpp))
-- Biomes/more varied terrain
-- Structures
+There are still many things that could be improved about the game. The most likely additions include:
+- Main menu with world select and saving
+- Biomes and more varied terrain (caves, structures, etc)
 - Controller support
+- Player model
+- Lighting
 
 ## Commands
-Commands are also available to make exploring and editing the world easier! The implementations can be seen in the [callbacks file](https://github.com/mahdialmusaad/badcraft/blob/main/src/Application/Callbacks.cpp).
-- /tp x y z - Teleport to specified x, y and z coordinates. Scientific notation and other keywords are allowed.
-- /speed n - Change the player's current speed to the specified value.
-- /tick n - Change the tick speed to the specified value, which affects the speed at which in-game time passes.
-- /time n - Change the current in-game time to the specified value.
-- /fov n - Change the camera's field of view to the specified value.
-- /exit - Exits the game.
-- /fill x<sub>1</sub> y<sub>1</sub> z<sub>1</sub>  x<sub>2</sub> y<sub>2</sub> z<sub>2</sub> id - Fills from the first position to the second with the specified block ID*
+Commands have been [implemented](src/Application/Application.hpp) in a way that makes creating new ones extremely trivial. The defaults allow for easy exploration and manipulation of the game and the world.
 
-\*A full list of all the blocks and their associated IDs and properties can be found in the [settings header file](https://github.com/mahdialmusaad/badcraft/blob/main/src/World/Generation/Settings.hpp).
+### Syntax
+To write a command, use the chat with a forward slash as the first character, immediately followed by the command name and then any (or no) arguments seperated with spaces: 
+
+`/name arg1 arg2...`
+
+A message written with the first character as anything else will be treated as a chat message otherwise.
+
+Any command argument marked with an **asterik (*)** is optional. If the command has only one argument and it is optional, entering the command _without_ any arguments acts as a query for the value it changes. 
+
+>Example: `/time 256` will change the current game time to 256 seconds whereas `/time` will display the current time in the chat.
+
+Using a **tilde (~)** as an argument will be treated as the current value. Any number after the tilde will be **added** to the value.
+
+>Example: `/tp ~ ~10 ~` will move the player +10 blocks in the Y axis and `/tp ~ ~-10 ~` will move them downwards by 10 blocks.
+
+#### Notable examples include:
+- /tp x y z *p *y - Teleport to the specified coordinates with optional arguments to set camera pitch and yaw. Scientific notation and other keywords are allowed.
+- /speed *n - Change the player's current speed to the specified value.
+- /rd *n - Changes the render distance to the specified value \[0, 50\]
+- /tick *n - Change the tick speed to the specified value, which affects the speed at which in-game time passes. \[-100, 100\]
+- /time *n - Change the current in-game time to the specified value.
+- /fov *n - Change the camera's field of view to the specified value.
+- /fill x<sub>1</sub> y<sub>1</sub> z<sub>1</sub> x<sub>2</sub> y<sub>2</sub> z<sub>2</sub> id - Fills from the first position to the second (all inclusive) with the specified block ID<sup>^</sup>
+- /clear - Clears the chat
+
+Writing any command with the only argument as `?` (or an invalid number of arguments) will display help for that command if available.
+
+<sub><sup>^</sup>A full list of all the blocks and their associated IDs and properties can be found in the [following file](src/World/Generation/Settings.hpp).</sub>
 
 <img src="markdown/cmd.png"></img>
-<sup>Commands feature (see bottom-left of image)</sup>
+<sup>In-game screenshot with GUI enabled</sup>
 
 ## Controls
-The implementations of controls can also be viewed and easily edited in the [callbacks file](https://github.com/mahdialmusaad/badcraft/blob/main/src/Application/Callbacks.cpp). Currently, they are:
+The implementations of controls can also be viewed and easily edited in [this file](src/Application/Callbacks.cpp). 
+
+Default controls are as follows:
 - Movement: **WASD**
-- Toggle VSYNC: **X**
-- Wireframe: **Z**
 - Write command: **/** (forward slash)
-- Exit game or cancel command (if currently typing one): **ESCAPE**
-- Reload shaders: **R**
+- Exit game/close chat: **ESC**
+
+### Toggle inputs:
+- Toggle fullscreen: **F**
+- Toggle vertical sync: **X**
 - Toggle inventory: **E**
-- Change speed (increase and decrease respectively): **COMMA** and **PERIOD**
-- Change FOV (increase and decrease respectively): **I** and **O**
-- Change render distance (increase and decrease respectively): **[** and **]** (square brackets)
-- Toggle GUI: **F1**
+- Toggle gravity: **C**
+- Toggle noclip: **N**
+- Toggle chunk generation: **V**
+
+### Value inputs*
+- Change speed: **COMMA** and **PERIOD**
+- Change FOV: **I** and **O**
+- Change render distance: **[** and **]** (square brackets)
+
+### Function inputs
+- Toggle all GUI: **F1**
 - Take screenshot: **F2**
 - Free cursor: **F3**
+- Toggle debug text: **F4**
 
-<sub>(Debug controls not included)<br>Only keyboard and mouse input is supported as of now.</sub>
+### Debug inputs
+- Wireframe: **Z**
+- Reload shaders: **R**
+- Toggle chunk borders: **J**
+- Rebuild chunks: **U**
 
+<sub>* The first input increases the value whilst the other decreases it.</sub>
 ## Build
 To compile and run the game, you can simply use [CMake](https://cmake.org/).
 
@@ -73,9 +111,9 @@ If you are using CMake in a **terminal**, you can run the following (with your o
 $ cmake -S [source-dir] -B [build-dir]
 ```
 
-If you encounter any problems, please create a new issue so it can be resolved.
+If you encounter any problems, feel free to create a new issue so it can be resolved.
 
-<sup>Tip: If you are using MSVC, you can compile using the /MP flag to do so in parallel.</sup>
+<sup>If you are using MSVC, you can compile using the /MP flag to do so in parallel.</sup>
 
 ## Libraries
 This game makes use of a few libraries to work. They can be seen in the 'libraries' folder or below. Make sure to support them, this would not be possible without them!

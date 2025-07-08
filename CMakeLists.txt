@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
 project(Game)
 
+# Optionally set C++ version
+# set(CMAKE_CXX_STANDARD 11)
+
 # GLFW build options
 option(GLFW_BUILD_DOCS OFF)
 option(GLFW_BUILD_EXAMPLES OFF)
@@ -46,7 +49,6 @@ set(BCS_WG ${BC_SRC}/World/Generation)
 set(BCS_P ${BC_SRC}/Player)
 set(BCS_R ${BC_SRC}/Rendering)
 set(BCS_A ${BC_SRC}/Application)
-set(BCS_G ${BC_SRC}/Globals)
 
 # Source files
 add_executable(
@@ -58,15 +60,14 @@ add_executable(
 	# glad
 	${BCL}/glad/gl.c
 
-	# src/Globals
-    ${BCS_G}/Definitions.cpp
 	# src/Player
     ${BCS_P}/Player.cpp
 	# src/Rendering
     ${BCS_R}/TextRenderer.cpp
 	# src/Application
-    ${BCS_A}/Application.cpp
+    ${BCS_A}/Definitions.cpp
 	${BCS_A}/Callbacks.cpp
+    ${BCS_A}/Game.cpp
 	# src/World
     ${BCS_W}/Chunk.cpp
     ${BCS_W}/Sky.cpp

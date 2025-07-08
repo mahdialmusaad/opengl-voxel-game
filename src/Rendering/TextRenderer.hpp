@@ -2,19 +2,20 @@
 #ifndef _SOURCE_RENDERING_TEXTRENDERER_HDR_
 #define _SOURCE_RENDERING_TEXTRENDERER_HDR_
 
-#include "Globals/Definitions.hpp"
+#include "Application/Definitions.hpp"
 
 class TextRenderer
 {
 public:
 	typedef glm::vec<4, std::uint8_t> ColourData;
 
-	enum TextSettings: std::uint8_t {
+	enum TextSettings : std::uint8_t {
 		TS_Background = 1u,
 		TS_BackgroundFullX = 2u,
 		TS_BackgroundFullY = 4u,
 		TS_Shadow = 8u,
-		TS_InventoryInvisible = 16u
+		TS_InventoryVisible = 16u,
+		TS_DebugText = 32u
 	};
 
 	enum class TextType : std::uint8_t {
@@ -36,7 +37,7 @@ public:
 		void _ChangeInternalSettings(std::uint8_t settings) noexcept;
 		void _ChangeInternalUnitSize(std::uint8_t unitSize) noexcept;
 		
-		std::string& GetText() noexcept;
+		const std::string &GetText() const noexcept;
 		ColourData GetColour() const noexcept;
 		glm::vec2 GetPosition() const noexcept;
 		std::uint8_t GetUnitSize() const noexcept;
@@ -52,15 +53,7 @@ public:
 
 		std::uint16_t m_displayLength = 0u;
 		std::uint8_t m_unitSize = 16u;
-
-		std::uint8_t m_settings; 
-
-		/* 	Settings: 
-			Bit 0: Background
-			Bit 1: Background full X
-			Bit 2: Background full Y
-			Bit 3: Shadow
-		*/
+		std::uint8_t m_settings;
 
 		ColourData m_RGBColour = { 255u, 255u, 255u, 255u };
 		GLuint m_vbo;
@@ -69,78 +62,55 @@ public:
 		~ScreenText() noexcept;
 	};
 
-	static constexpr float hideTimer = 5.0f;
-	static constexpr float defaultUnitSize = 12.0f;
-	static constexpr float spaceCharacterUnits = 0.015f;
-	static constexpr int maxChatCharacterWidth = 40;
-	static constexpr int maxChatLines = 12;
-	
-	float characterSpacingUnits = 0.0f;
-	float textWidth = 0.0f;
-	float textHeight = 0.0f;
+	static const std::uint8_t defaultUnitSize;
+
+	float spaceCharacterSize = 0.04f, characterSpacingSize = 0.009f, textWidth = 0.009f, textHeight = 0.07f;
+	int maxChatCharacters = 60, maxChatLines = 11;
 
 	TextRenderer() noexcept;
 	void UpdateShaderUniform() noexcept;
 
-	void RenderText(bool inventoryIsOpen) const noexcept;
-	void RenderText(ScreenText* screenText, bool inventoryIsOpen, bool shader) const noexcept;
+	void RenderText(bool inventoryStatus) const noexcept;
+	void RenderText(ScreenText *screenText, bool shader, bool inventoryStatus) const noexcept;
 
-	ScreenText* CreateText(
+	ScreenText *CreateText(
 		glm::vec2 pos, 
 		std::string text, 
-		std::uint8_t unitSize = static_cast<std::uint8_t>(defaultUnitSize),
+		std::uint8_t unitSize = defaultUnitSize,
 		std::uint8_t settings = 0u,
-		TextType textType = TextType::Default
+		TextType textType = TextType::Default,
+		bool update = true
 	) noexcept;
+	ScreenText *CreateText(ScreenText *original, bool update = true);
+
 	void RecalculateAllText() noexcept;
 
-	ScreenText* GetTextFromID(std::uint16_t id) noexcept;
-	std::uint16_t GetIDFromText(ScreenText* screenText) const noexcept;
+	ScreenText *GetTextFromID(std::uint16_t id) noexcept;
+	std::uint16_t GetIDFromText(ScreenText *screenText) const noexcept;
 
-	void ChangeText(ScreenText* screenText, std::string newText, bool update = true) noexcept;
-	void ChangePosition(ScreenText* screenText, glm::vec2 newPos, bool update = true) noexcept;
-	void ChangeUnitSize(ScreenText* screenText, std::uint8_t newUnitSize, bool update = true) noexcept;
-	void ChangeColour(ScreenText* screenText, ColourData newColour, bool update = true) noexcept;
-	void ChangeSettings(ScreenText* screenText, std::uint8_t settings, bool update = true) noexcept;
+	void ChangeText(ScreenText *screenText, std::string newText, bool update = true) noexcept;
+	void ChangePosition(ScreenText *screenText, glm::vec2 newPos, bool update = true) noexcept;
+	void ChangeUnitSize(ScreenText *screenText, std::uint8_t newUnitSize, bool update = true) noexcept;
+	void ChangeColour(ScreenText *screenText, ColourData newColour, bool update = true) noexcept;
+	void ChangeSettings(ScreenText *screenText, std::uint8_t settings, bool update = true) noexcept;
 
 	float GetUnitSizeMultiplier(std::uint8_t unitSize) const noexcept;
 	float GetCharScreenWidth(int charIndex, float unitMultiplier) const noexcept;
-	float GetTextScreenWidth(std::string text, float unitMultiplier) const noexcept;
+	float GetTextScreenWidth(const std::string &text, float unitMultiplier) const noexcept;
+
+	float GetTextHeight(ScreenText *screenText) const noexcept;
+	float GetTextHeight(std::uint8_t fontSize, int lines) const noexcept;
 
 	void CheckTextStatus() noexcept;
 	void RemoveText(std::uint16_t id) noexcept;
 
 	~TextRenderer() noexcept;
 private:
-	// Characters sizes as seen in text texture (follows ASCII, starting after the 'space' character)
-	static constexpr std::uint8_t m_charSizes[95] = {
-	//  !  "  #  $  %  &  '  (  )  *  +  ,  -  .  /
-		1, 3, 6, 5, 9, 6, 1, 2, 2, 5, 5, 2, 5, 1, 3,
-	//  0  1  2  3  4  5  6  7  8  9
-		5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-	//  :  ;  <  =  >  ?  @ 
-		1, 2, 4, 5, 4, 5, 6,
-	//  A  B  C  D  E  F  G  H  I  J  K  L  M
-		5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-	//  N  O  P  Q  R  S  T  U  V  W  X  Y  Z
-		5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-	//  [  \  ]  ^  _  `
-		2, 3, 2, 5, 5, 2,
-	//  a  b  c  d  e  f  g  h  i  j  k  l  m
-		4, 4, 4, 4, 4, 4, 4, 4, 1, 3, 4, 3, 5,
-	//  n  o  p  q  r  s  t  u  v  w  x  y  z
-		4, 4, 4, 4, 4, 4, 3, 4, 5, 5, 5, 4, 4,
-	//  {  |  }  ~
-		3, 1, 3, 6,
-	// 	Background character
-		1
-	};
-
 	std::unordered_map<std::uint16_t, ScreenText*> m_screenTexts;
-	std::uint8_t texturePositionsLocation;
-	GLuint m_textVAO, m_textVBO;
+	GLint texturePositionsLocation;
+	std::uint16_t m_textVAO, m_textVBO;
 
-	void UpdateText(ScreenText* screenText) const noexcept;
+	void UpdateText(ScreenText *screenText) const noexcept;
 	std::uint16_t GetNewID() noexcept;
 };
 

@@ -5,30 +5,27 @@
 #include "World/Chunk.hpp"
 #include "Rendering/TextRenderer.hpp"
 
-// definition visible to world
-enum class ModifyWorldResult {
-	Passed,
-	AboveWorld,
-	BelowWorld,
-	NotFound,
-	Invalid
-};
-
+// Player variables that are able to be accessed by the world
 struct PlayerObject
 {
 	struct InventorySlot 
 	{
 		ObjectID objectID = ObjectID::Air;
 		std::uint8_t count = 0;
-		TextRenderer::ScreenText* slotText;
+		TextRenderer::ScreenText *slotText;
 	};
 
 	bool moved = true;
+	bool noclip = false;
+	bool grounded = true;
 	bool doGravity = false;
 	bool inventoryOpened = false;
-	WorldDirection lookDirectionPitch, lookDirectionYaw = WorldDirection::Front;
+
+	WorldDirection lookDirectionPitch = WldDir_None, lookDirectionYaw = WldDir_None;
 
 	ObjectID targetBlock = ObjectID::Air;
+	ObjectID headBlock = ObjectID::Air;
+	ObjectID feetBlock = ObjectID::Air;
 
 	glm::dvec3 position = {};
 
@@ -40,21 +37,21 @@ struct PlayerObject
 	WorldPos targetBlockPosition {};
 
 	double fov = glm::radians(90.0);
-	double sensitivity = 0.1f;
 	double pitch = 0.0f, yaw = 0.0f;
-
-	static constexpr const char* directionText[7] = { "None", "East", "West", "Up", "Down", "North", "South" };
 
 	double currentSpeed = 2.0, defaultSpeed = 2.0;
 
-	static constexpr double gravity = -3.0;
-	static constexpr double maxGravity = -100.0;
-	static constexpr double jumpPower = 0.5;
+	static const double gravity;
+	static const double waterGravityMultiplier;
 
-	static constexpr std::uint8_t maxSlotCount = 99u;
+	static const double maxGravity;
+	static const double jumpPower;
 
-	static constexpr double farPlaneDistance = 10000.0;
-	static constexpr double nearPlaneDistance = 0.1;
+	static const double reachDistance;
+	static const std::uint8_t maxSlotCount;
+
+	static const double farPlaneDistance;
+	static const double nearPlaneDistance;
 };
 
 #endif // _SOURCE_PLAYER_PLRDEF_HDR_

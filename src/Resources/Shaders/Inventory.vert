@@ -1,12 +1,16 @@
 #version 430 core
 
-uniform vec4 texturePositions[5] = { 
+uniform vec4 texturePositions[4] = { 
     // vec4( X1, X2 - X1, Y1, Y2 - Y1 )
-    vec4( 0.04, 0.01, 0.05, 0.01 ), // Grey background
-    vec4( 0.00, 0.50, 0.00, 0.30 ), // Unequipped slot
-    vec4( 0.50, 0.50, 0.00, 0.30 ), // Equipped slot
-    vec4( 0.00, 1.00, 0.30, 0.60 ), // Inventory box
-    vec4( 0.00, 0.20, 0.90, 0.10 ), // Center crosshair
+
+	// Grey background (random dark pixel)
+    vec4( 0.50, 0.0, 0.2, 0.0 ),
+	// Unequipped slot
+    vec4( 0.0, 1.0, 0.0, 0.42857142857142857142857142857143),
+	// Equipped slot
+    vec4( 0.0, 1.0, 0.42857142857142857142857142857143, 0.42857142857142857142857142857143),
+	// Center crosshair
+    vec4( 0.0, 0.1666666666666666666666666666666, 0.92857142857142857142857142857143, 0.07142857142857142857142857142857)
 };
 
 layout (std140, binding = 4) uniform GameSizes {

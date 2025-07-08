@@ -1,4 +1,4 @@
-#version 420 core
+#version 430 core
 layout (location = 0) in vec4 data; // X, Y, Z, C
 
 layout (std140, binding = 0) uniform GameMatrices {

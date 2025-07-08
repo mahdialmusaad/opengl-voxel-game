@@ -1,4 +1,4 @@
-#version 420 core
+#version 430 core
 
 uniform float colour = 0.0;
 out vec4 FragColor;

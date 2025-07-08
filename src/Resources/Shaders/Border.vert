@@ -1,5 +1,6 @@
 #version 430 core
-layout (location = 0) in vec3 basePos;
+layout (location = 0) in vec3 pos;
+uniform dvec3 chunkPos;
 
 layout (std140, binding = 0) uniform GameMatrices {
 	mat4 matrix;
@@ -12,7 +13,4 @@ layout (std140, binding = 3) uniform GamePositions {
 	dvec4 playerPosition;
 };
 
-void main()
-{
-	gl_Position = originMatrix * vec4(basePos + raycastBlockPosition.xyz, 1.0);
-}
+void main() { gl_Position = originMatrix * vec4(pos + chunkPos - playerPosition.xyz, 1.0); gl_PointSize = 100.0; }

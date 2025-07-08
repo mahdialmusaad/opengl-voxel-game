@@ -33,9 +33,8 @@ TextRenderer::TextRenderer() noexcept
 	glVertexAttribDivisor(3u, 1u);
 
 	// Non-instanced attribute (attrib 0+1) data stride and offset
-	constexpr GLsizei stride = sizeof(float[2]) + sizeof(std::uint32_t);
-	glVertexAttribPointer(0u, 2, GL_FLOAT, GL_FALSE, stride, nullptr);
-	glVertexAttribIPointer(1u, 1, GL_UNSIGNED_INT, stride, reinterpret_cast<const void*>(sizeof(float[2])));
+	glVertexAttribPointer(0u, 2, GL_FLOAT, GL_FALSE, sizeof(float[2]) + sizeof(std::uint32_t), nullptr);
+	glVertexAttribIPointer(1u, 1, GL_UNSIGNED_INT, sizeof(float[2]) + sizeof(std::uint32_t), reinterpret_cast<const void*>(sizeof(float[2])));
 
 	// Update text shader uniform values with texture positions for each character
 	UpdateShaderUniform();
@@ -46,35 +45,39 @@ TextRenderer::TextRenderer() noexcept
 void TextRenderer::UpdateShaderUniform() noexcept
 {
 	// Calculate size of a pixel on the font texture
-	const float pixelSize = 1.0f / static_cast<float>(game.textTextureInfo.width);
+	const double pixelSize = 1.0 / static_cast<double>(game.textTextureInfo.width);
 
-	float textUniformPositions[96]; // 94 unique characters + background texture + end of image
-	textUniformPositions[95] = 1.0f; // Image end coordinate
+	// 95 unique characters (2 each for start and end coordinate) + end of image value
+	// ** Shader uniform size should match --> Text.vert **
+	const int numCharsTexture = static_cast<int>(sizeof(game.constants.charSizes));
+	const int positionDataAmnt = (numCharsTexture * 2) + 1;
 
-	// Each character is seperated by a pixel on either side to ensure that parts 
-	// don't get cut off due to precision errors in the texture coordinates.
-	float currentImageOffset = pixelSize; // Current coordinate of character
-	for (std::size_t i = 0u; i < sizeof(m_charSizes); ++i) {
-		const float charSize = static_cast<float>(m_charSizes[i]); // Get character size as float
-		textUniformPositions[i] = currentImageOffset; // Current position
-		currentImageOffset += pixelSize * (charSize + 2.0f); // Advance to next character (each seperated by 2 pixels)
+	float textUniformPositions[positionDataAmnt]; // Start and end positions of characters in the image
+	
+	// Each character is seperated by a pixel on either side in the image texture (= 2 pixels between characters)
+	float currentImageOffset = pixelSize; // Current coordinate of character (1 pixel gap to first character)
+	for (int i = 0, n = 0; i < numCharsTexture; ++i) {
+		const float charSize = static_cast<float>(game.constants.charSizes[i]); // Get character size as decimal value
+		textUniformPositions[n++] = currentImageOffset; // Set start position of character texture
+		textUniformPositions[n++] = currentImageOffset + (pixelSize * charSize); // Set end position of character texture
+		currentImageOffset += pixelSize * (charSize + 2.0f); // Advance to next character (each separated by 2 pixels)
 	}
+	
+	textUniformPositions[positionDataAmnt - 1] = 1.0f; // Texture end coordinate
 
 	// Get location of positions array in shader and set uniform value (need to activate shader first)
 	game.shader.UseShader(Shader::ShaderID::Text);
-	texturePositionsLocation = game.shader.GetLocation(game.shader.ShaderFromID(Shader::ShaderID::Text), "texturePositions");
-	glUniform1fv(texturePositionsLocation, sizeof(textUniformPositions) / sizeof(float), textUniformPositions);
+	texturePositionsLocation = game.shader.GetLocation(Shader::ShaderID::Text, "texturePositions");
+	glUniform1fv(texturePositionsLocation, static_cast<GLsizei>(positionDataAmnt), textUniformPositions);
 }
 
-void TextRenderer::RenderText(bool inventoryIsOpen) const noexcept
+void TextRenderer::RenderText(bool inventoryStatus) const noexcept
 {
-	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // No wireframe for text
-	int index = 0;
-	for (const auto& [id, text] : m_screenTexts) RenderText(text, inventoryIsOpen, index++ == 0); // Render text if it should be visible and has any text or background
-	if (game.wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // Set wireframe mode to original
+	// Render text if the conditions (determined by text settings, background, text size, etc) are valid
+	for (auto it = m_screenTexts.begin(); it != m_screenTexts.end(); ++it) RenderText(it->second, it == m_screenTexts.begin(), inventoryStatus);
 }
 
-void TextRenderer::RenderText(ScreenText *screenText, bool inventoryIsOpen, bool shader) const noexcept
+void TextRenderer::RenderText(ScreenText *screenText, bool shader, bool inventoryOpen) const noexcept
 {
 	// Setup shader if needed
 	if (shader) {
@@ -82,8 +85,12 @@ void TextRenderer::RenderText(ScreenText *screenText, bool inventoryIsOpen, bool
 		glBindVertexArray(m_textVAO);
 	}
 
-	// Hide if the inventory is open and it is marked as not inventory-visible
-	if (inventoryIsOpen && screenText->HasSettingEnabled(TS_InventoryInvisible)) return;
+	// Check for visibility settings when inventory is open
+	bool showWhenInventory = screenText->HasSettingEnabled(TS_InventoryVisible);
+	if ((!inventoryOpen && showWhenInventory) || (inventoryOpen && !showWhenInventory)) return;
+
+	// Hide if the text is marked as debug and debug mode is not active
+	if (!game.debugText && screenText->HasSettingEnabled(TS_DebugText)) return;
 	
 	// Determine if the text is visible and has any text or background
 	const int displayLength = screenText->GetDisplayLength();
@@ -94,26 +101,27 @@ void TextRenderer::RenderText(ScreenText *screenText, bool inventoryIsOpen, bool
 	glBindBuffer(GL_ARRAY_BUFFER, screenText->GetVBO());
 
 	// Set attribute layouts
-	constexpr GLsizei stride = sizeof(float[4]) + sizeof(std::uint32_t[2]);
-	glVertexAttribPointer(2u, 4, GL_FLOAT, GL_FALSE, stride, nullptr);
-	glVertexAttribIPointer(3u, 2, GL_UNSIGNED_INT, stride, reinterpret_cast<const void*>(sizeof(float[4])));
+	glVertexAttribPointer(2u, 4, GL_FLOAT, GL_FALSE, sizeof(float[4]) + sizeof(std::uint32_t[2]), nullptr);
+	glVertexAttribIPointer(3u, 2, GL_UNSIGNED_INT, sizeof(float[4]) + sizeof(std::uint32_t[2]), reinterpret_cast<const void*>(sizeof(float[4])));
 
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // No wireframe for text
+	
 	// Render text object (1 extra instance for background if enabled)
 	glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (screenText->HasSettingEnabled(TS_Shadow) ? displayLength * 2 : displayLength) + hasBackground);
+
+	if (game.wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // Set the wireframe mode to original
 }
 
 void TextRenderer::RecalculateAllText() noexcept
 {
-	// If global text variables (such as the line spacing) are changed,
-	// all of the text objects need to be updated to use the new value.
-	if (!m_screenTexts.size()) return;
+	// If global text variables (such as text width) are changed,
+	// all of the text objects need to be updated to use the new value(s).
+
+	if (!m_screenTexts.size()) return; // Check if there is any text in the first place
 	TextFormat::log("Calculate text");
 
-	// Bind the text VAO so the correct buffers are updated
-	glBindVertexArray(m_textVAO);
-
-	// Update each text object
-	for (const auto& [id, text] : m_screenTexts) UpdateText(text);
+	glBindVertexArray(m_textVAO); // Bind the text VAO so the correct buffers are updated
+	for (auto it = m_screenTexts.begin(); it != m_screenTexts.end(); ++it) UpdateText(it->second); // Update each text object
 }
 
 std::uint16_t TextRenderer::GetNewID() noexcept
@@ -128,65 +136,72 @@ std::uint16_t TextRenderer::GetNewID() noexcept
 	// Repeatedly generates new random id until an unused one is found
 	do {
 		id = dist(gen);
-		found = GetTextFromID(id) != nullptr;
+		found = GetTextFromID(id);
 	} while (found);
 
 	return id;
 }
-TextRenderer::ScreenText* TextRenderer::GetTextFromID(std::uint16_t id) noexcept
+TextRenderer::ScreenText *TextRenderer::GetTextFromID(std::uint16_t id) noexcept
 {
 	// Returns a text object if one is found with the given id
-	const auto& textIterator = m_screenTexts.find(id);
+	const auto &textIterator = m_screenTexts.find(id);
 	return textIterator != m_screenTexts.end() ? textIterator->second : nullptr;
 }
 
-std::uint16_t TextRenderer::GetIDFromText(ScreenText* screenText) const noexcept
+std::uint16_t TextRenderer::GetIDFromText(ScreenText *screenText) const noexcept
 {
 	// Returns the ID of the given text object by
 	// checking which VBO matches (unique per text object)
 	const GLuint targetVBO = screenText->GetVBO();
-	for (const auto& [id, scrText] : m_screenTexts) if (scrText->GetVBO() == targetVBO) return id;
+	for (auto it = m_screenTexts.begin(); it != m_screenTexts.end(); ++it) if (it->second->GetVBO() == targetVBO) return it->first;
 	return 0u;
 }
 
-TextRenderer::ScreenText* TextRenderer::CreateText(
+TextRenderer::ScreenText *TextRenderer::CreateText(
 	glm::vec2 pos, 
 	std::string text, 
 	std::uint8_t unitSize,
 	std::uint8_t settings,
-	TextType textType 
+	TextType textType,
+	bool update
 ) noexcept {
 	// Create unique identifier for this text object
 	std::uint16_t id = GetNewID();
-	TextFormat::log("Text creation, ID: " + std::to_string(id));
+	TextFormat::log("Text creation, ID: " + fmt::to_string(id));
 
 	// Create new text object and add to unordered map
 	ScreenText *newScreenText = new ScreenText(pos, text, textType, settings, unitSize);
 	m_screenTexts.insert({ id, newScreenText });
 
 	// Update the text buffers
-	UpdateText(newScreenText);
+	if (update) UpdateText(newScreenText);
 
 	return newScreenText;
 }
 
+TextRenderer::ScreenText *TextRenderer::CreateText(ScreenText *original, bool update)
+{
+	// Create a text object using another for values - copy of text
+	return CreateText(original->GetPosition(), original->GetText(), original->GetUnitSize(), original->GetSettings(), original->textType, update);
+}
+
 // Change a certain property of a text object and update the vertex data
-void TextRenderer::ChangePosition(ScreenText* screenText, glm::vec2 newPos, bool update) noexcept
+void TextRenderer::ChangePosition(ScreenText *screenText, glm::vec2 newPos, bool update) noexcept
 {
 	screenText->_ChangeInternalPosition(newPos);
 	if (update) UpdateText(screenText);
 }
-void TextRenderer::ChangeText(ScreenText* screenText, std::string newText, bool update) noexcept
+void TextRenderer::ChangeText(ScreenText *screenText, std::string newText, bool update) noexcept
 {
 	screenText->_ChangeInternalText(newText);
 	if (update) UpdateText(screenText);
 }
-void TextRenderer::ChangeUnitSize(ScreenText* screenText, std::uint8_t newUnitSize, bool update) noexcept
+void TextRenderer::ChangeUnitSize(ScreenText *screenText, std::uint8_t newUnitSize, bool update) noexcept
 {
 	screenText->_ChangeInternalUnitSize(newUnitSize);
 	if (update) UpdateText(screenText);
 }
-void TextRenderer::ChangeColour(ScreenText* screenText, ColourData newColour, bool update) noexcept
+void TextRenderer::ChangeColour(ScreenText *screenText, ColourData newColour, bool update) noexcept
 {
 	screenText->_ChangeInternalColour(newColour);
 	if (update) UpdateText(screenText);
@@ -200,12 +215,12 @@ void TextRenderer::ChangeSettings(ScreenText *screenText, std::uint8_t settings,
 void TextRenderer::RemoveText(std::uint16_t id) noexcept
 {
 	// Clear up any memory used by the given text object
-	const std::string idText = std::to_string(id);
+	const std::string idText = fmt::to_string(id);
 	if (game.mainLoopActive) TextFormat::log("Text removed, ID: " + idText);
 
 	// Check if the given id corresponds to any text
-	ScreenText* screenText = GetTextFromID(id);
-	if (screenText == nullptr) {
+	ScreenText *screenText = GetTextFromID(id);
+	if (!screenText) {
 		TextFormat::log("Attempted to remove non-existent text ID " + idText);
 		return;
 	}
@@ -229,9 +244,10 @@ void TextRenderer::CheckTextStatus() noexcept
 	std::vector<std::uint16_t> toRemove;
 	float currentTime = static_cast<float>(glfwGetTime());
 
-	for (const auto& [id, text] : m_screenTexts) {
-		bool timePassed = currentTime - text->GetTime() > hideTimer;
-		if (text->textType == TextType::Temporary && timePassed) toRemove.emplace_back(id);
+	for (auto it = m_screenTexts.begin(); it != m_screenTexts.end(); ++it) {
+		ScreenText *text = it->second;
+		bool timePassed = currentTime - text->GetTime() > 5.0f;
+		if (text->textType == TextType::Temporary && timePassed) toRemove.emplace_back(it->first);
 		else if (text->textType == TextType::TemporaryShow && timePassed) text->textType = TextType::Hidden;
 	}
 
@@ -240,35 +256,59 @@ void TextRenderer::CheckTextStatus() noexcept
 
 float TextRenderer::GetUnitSizeMultiplier(std::uint8_t unitSize) const noexcept
 {
-	return static_cast<float>(unitSize) / defaultUnitSize;
+	// Returns the float multiplier for a given unit size
+	return static_cast<float>(unitSize) / static_cast<float>(defaultUnitSize);
 }
 
 float TextRenderer::GetCharScreenWidth(int charIndex, float unitMultiplier) const noexcept
 {
-	// Character width calculator excluding letter spacing
-	return static_cast<float>(m_charSizes[charIndex]) * textWidth * unitMultiplier;
+	// Returns the given character's text width (excluding letter spacing)
+	return static_cast<float>(game.constants.charSizes[charIndex]) * textWidth * unitMultiplier;
 }
 
-float TextRenderer::GetTextScreenWidth(std::string text, float unitMultiplier) const noexcept
+float TextRenderer::GetTextScreenWidth(const std::string &text, float unitMultiplier) const noexcept
 {
-	const float spaceWidth = spaceCharacterUnits * unitMultiplier, characterSpacing = characterSpacingUnits * unitMultiplier;
-	float widthSum = 0.0f;
-	float largestWidth = 0.0f;
+	// Get relative size of character spacing and space character
+	const float spaceWidth = spaceCharacterSize * unitMultiplier, spacing = characterSpacingSize * unitMultiplier;
+	float lineWidthSum = 0.0f; // Current width of line
+	float largestLineWidth = 0.0f; // Largest recorded width
 
-	for (const char& c : text) {
+	const auto CheckText = [&](int c) {
 		switch (c) {
+			// Space character - just add width of a space
 			case ' ':
-				widthSum += spaceWidth;
+				lineWidthSum += spaceWidth;
 				break;
+			// New line - Check if current line was largest and reset line width counter
 			case '\n':
-				largestWidth = fmaxf(largestWidth, widthSum);
-				widthSum = 0.0f;
+				largestLineWidth = fmaxf(largestLineWidth, lineWidthSum);
+				lineWidthSum = 0.0f;
 				break;
+			// Any other character - add the size of the character as well as character spacing
 			default:
-				widthSum += GetCharScreenWidth(c - 33, unitMultiplier) + characterSpacing;
+				lineWidthSum += GetCharScreenWidth(c - 33, unitMultiplier) + spacing;
+				break;
 		}
-	}
-	return widthSum * 0.5f;
+	};
+
+	// Calculate width of each line to determine the maximum width of the given string
+	for (const char &c : text) CheckText(static_cast<int>(c));
+	CheckText(static_cast<int>('\n')); // Include last line in comparison
+
+	// Return width of largest line
+	return largestLineWidth;
+}
+
+float TextRenderer::GetTextHeight(ScreenText *screenText) const noexcept
+{
+	const std::string &text = screenText->GetText(); // Text to calculate height of
+	return GetTextHeight(screenText->GetUnitSize(), static_cast<int>(std::count(text.begin(), text.end(), '\n')) + 1); // Add extra to include single line text
+}
+
+float TextRenderer::GetTextHeight(std::uint8_t fontSize, int lines) const noexcept
+{
+	const float lineHeight = GetUnitSizeMultiplier(fontSize) * textHeight; // Get line height of text
+	return lineHeight * static_cast<float>(lines); // Return line height multiplied by new line occurences
 }
 
 void TextRenderer::UpdateText(ScreenText *screenText) const noexcept
@@ -296,8 +336,8 @@ void TextRenderer::UpdateText(ScreenText *screenText) const noexcept
 		std::uint32_t charIndex, col;
 	} *textData = new TextObjectCharData[(doShadowText ? displayLength * 2 : displayLength) + hasBackground];
 
-	// Starting text position (top-left corner), multiply by 2 and sub 1 to use range [-1, 1] for shader
-	glm::vec2 pos = { (screenText->GetPosition().x * 2.0f) - 1.0f, (screenText->GetPosition().y * 2.0f) - 1.0f };
+	// Starting text position (top-left corner)
+	glm::vec2 pos = screenText->GetPosition();
 
 	const glm::vec2 initialPosition = pos; // Beginning position for new lines and background
 	glm::vec2 maxPos = pos; // Bottom-right corner (for background)
@@ -305,39 +345,40 @@ void TextRenderer::UpdateText(ScreenText *screenText) const noexcept
 	// Size multipliers
 	const std::uint8_t unitSize = screenText->GetUnitSize();
 	const float unitSizeMultiplier = GetUnitSizeMultiplier(unitSize);
-	const float spaceOffset = spaceCharacterUnits * unitSizeMultiplier;
+	const float spaceOffset = spaceCharacterSize * unitSizeMultiplier;
 	const float characterHeight = unitSizeMultiplier * textHeight;
-	const float characterSpacing = characterSpacingUnits * unitSizeMultiplier;
+	const float spacing = characterSpacingSize * unitSizeMultiplier;
 
 	// Update maximum X and/or Y position when changing
-	const auto& UpdateMaxPosX = [&]() { if (pos.x > maxPos.x) maxPos.x = pos.x; };
-	const auto& UpdateMaxPos = [&]() { UpdateMaxPosX(); if (pos.y < maxPos.y) maxPos.y = pos.y; };
+	const auto &UpdateMaxPosX = [&]() { if (pos.x > maxPos.x) maxPos.x = pos.x; };
+	const auto &UpdateMaxPos = [&]() { UpdateMaxPosX(); if (pos.y < maxPos.y) maxPos.y = pos.y; };
+
+	// Ensure no invalid characters are present
+	const std::string &text = screenText->GetText();
+	if (std::find_if(text.begin(), text.end(), [&](const char &c) { return (c < ' ' || c > '~') && c != '\n'; }) != text.end()) {
+		TextFormat::warn(fmt::format("Invalid text found in text object: '{}' (VBO {}). Update cancelled.", text.substr(0u, 50u) + "...", screenText->GetVBO()), "Invalid text");
+		return;
+	}
 
 	int dataIndex = hasBackground;
-	for (const char& currentChar : screenText->GetText()) {
+	for (const char &currentChar : text) {
+		const int charValue = static_cast<int>(currentChar);
 		// For a new line character, reset the X position offset and set the Y position lower
-		if (currentChar == '\n') {
+		if (charValue == static_cast<int>('\n')) {
 			pos.y -= characterHeight;
 			pos.x = initialPosition.x;
 			UpdateMaxPos();
 			continue;
 		}
 		// For a space, just increase the X position offset by an amount 
-		else if (currentChar == ' ') {
+		else if (currentChar == static_cast<int>(' ')) {
 			pos.x += spaceOffset;
 			UpdateMaxPosX();
 			continue;
 		}
-		// Make sure only compatible text is shown
-		else if (currentChar < ' ' || currentChar > '~') {
-			const int crnt = static_cast<int>(currentChar);
-			const std::string err = fmt::format("ID: {}\nCharacter: {}\nPosition: {}, {}", GetIDFromText(screenText), crnt, pos.x, pos.y);
-			TextFormat::warn(err, "Invalid text character in text object");
-			continue;
-		}
 		
 		// Only characters after the space character (ASCII 32) are displayed
-		const int charIndex = currentChar - 33;
+		const int charIndex = charValue - 33;
 
 		// Get display width of character
 		const float charWidth = GetCharScreenWidth(charIndex, unitSizeMultiplier);
@@ -345,15 +386,14 @@ void TextRenderer::UpdateText(ScreenText *screenText) const noexcept
 		// Create new character object with current values
 		const TextObjectCharData letterData {
 			pos.x, pos.y, charWidth, characterHeight,
-			static_cast<std::uint32_t>(charIndex), colourIntValue
+			static_cast<std::uint32_t>(charIndex) << static_cast<std::uint32_t>(1u), colourIntValue
 		};
 
 		// Create a black and slightly offset copy for shadow text rendered underneath/before actual character
 		if (doShadowText) {
-			constexpr std::uint32_t blackColourValue = 255u << 24u;
-			constexpr float shadowOffset = 0.005f;
+			const std::uint32_t blackColourValue = 255u << 24u;
 			const TextObjectCharData shadowLetterData = {
-				pos.x + shadowOffset, pos.y - shadowOffset, charWidth, characterHeight,
+				pos.x + (textWidth * 0.5f), pos.y - textWidth, charWidth, characterHeight,
 				letterData.charIndex, blackColourValue
 			};
 			// Add shadow character to array
@@ -364,7 +404,7 @@ void TextRenderer::UpdateText(ScreenText *screenText) const noexcept
 		std::memcpy(textData + (dataIndex++), &letterData, sizeof(letterData));
 
 		// Advance in X axis by the character width and letter spacing
-		pos.x += charWidth + characterSpacing;
+		pos.x += charWidth + spacing;
 		UpdateMaxPosX();
 	}
 
@@ -372,9 +412,9 @@ void TextRenderer::UpdateText(ScreenText *screenText) const noexcept
 	// The background texture is made up of an entire white column in the texture so it appears as a box
 	if (hasBackground) {
 		// Default background colour
-		constexpr std::uint32_t colour = 100u;
-		constexpr std::uint32_t backgroundRGBA = colour + (colour << 8u) + (colour << 16u) + (colour << 24u);
-		constexpr std::uint32_t backgroundChar = static_cast<std::uint32_t>(sizeof(m_charSizes)) - 1u;
+		const std::uint32_t colour = 100u;
+		const std::uint32_t backgroundRGBA = colour + (colour << 8u) + (colour << 16u) + (colour << 24u);
+		const std::uint32_t backgroundChar = static_cast<std::uint32_t>((static_cast<int>(sizeof(game.constants.charSizes)) - 1) * 2);
 
 		const int fullXBackground = screenText->HasSettingEnabled(TS_BackgroundFullX);
 		const int fullYBackground = screenText->HasSettingEnabled(TS_BackgroundFullY);
@@ -401,11 +441,11 @@ void TextRenderer::UpdateText(ScreenText *screenText) const noexcept
 
 TextRenderer::~TextRenderer() noexcept
 {
-	// Delete all text objects from their ids (cannot loop over and delete at the same time)
+	// Store all ids then delete linked text object - cannot delete whilst iterating
 	std::vector<std::uint16_t> ids;
 	ids.reserve(m_screenTexts.size());
-	for (const auto& [id, text] : m_screenTexts) ids.emplace_back(id);
-	for (const std::uint16_t& id : ids) RemoveText(id);
+	for (auto it = m_screenTexts.begin(); it != m_screenTexts.end(); ++it) ids.emplace_back(it->first);
+	for (const std::uint16_t &id : ids) RemoveText(id);
 	
 	// Bind VAO to retrieve correct buffer IDs
 	glBindVertexArray(m_textVAO);
@@ -416,7 +456,7 @@ TextRenderer::~TextRenderer() noexcept
 	
 	// Delete renderer buffers
 	const GLuint deleteBuffers[] = { static_cast<GLuint>(textSSBO), static_cast<GLuint>(m_textVBO) };
-	glDeleteBuffers(sizeof(deleteBuffers) / sizeof(GLuint), deleteBuffers);
+	glDeleteBuffers(static_cast<int>(Math::size(deleteBuffers)), deleteBuffers);
 
 	// Delete renderer VAO
 	const GLuint deleteVAO = static_cast<GLuint>(m_textVAO);
@@ -453,7 +493,7 @@ void TextRenderer::ScreenText::_ChangeInternalText(std::string newText) noexcept
 	for (char x : newText) if (x > ' ' && x <= '~') ++m_displayLength;
 }
 
-void TextRenderer::ScreenText::_ChangeInternalPosition(glm::vec2 newPos) noexcept { m_pos = glm::vec2(newPos.x, 1.0f - newPos.y); }
+void TextRenderer::ScreenText::_ChangeInternalPosition(glm::vec2 newPos) noexcept { m_pos = newPos; }
 void TextRenderer::ScreenText::_ChangeInternalColour(ColourData newColour) noexcept { m_RGBColour = newColour; }
 void TextRenderer::ScreenText::_ChangeInternalSettings(std::uint8_t settings) noexcept { m_settings = settings; }
 void TextRenderer::ScreenText::_ChangeInternalUnitSize(std::uint8_t newUnitSize) noexcept { m_unitSize = newUnitSize; }
@@ -461,7 +501,7 @@ void TextRenderer::ScreenText::_ChangeInternalUnitSize(std::uint8_t newUnitSize)
 // Variable getters
 TextRenderer::ColourData TextRenderer::ScreenText::GetColour() const noexcept { return m_RGBColour; }
 glm::vec2 TextRenderer::ScreenText::GetPosition() const noexcept { return m_pos; }
-std::string& TextRenderer::ScreenText::GetText() noexcept { return m_text; }
+const std::string &TextRenderer::ScreenText::GetText() const noexcept { return m_text; }
 std::uint8_t TextRenderer::ScreenText::GetUnitSize() const noexcept { return m_unitSize; }
 std::uint8_t TextRenderer::ScreenText::GetSettings() const noexcept { return m_settings; }
 

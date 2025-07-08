@@ -40,15 +40,10 @@ layout (std140, binding = 3) uniform GamePositions {
 layout (std140, binding = 4) uniform GameSizes {
 	float blockTextureSize;
 	float inventoryTextureSize;
-	float screenAspect;
-	float textWidth;
-	float textHeight;
-	float inventoryWidth;
-	float inventoryHeight;
 };
 
 layout (location = 0) in uint data;
-// TTTT TTTH HHHH WWWW WZZZ ZZYY YYYX XXXX
+// TTTT TTTT TTTT TTTT TZZZ ZZYY YYYX XXXX
 layout (location = 1) in vec4 baseXZ;
 layout (location = 2) in vec4 baseYZ;
 layout (location = 3) in vec4 baseYW;
@@ -58,7 +53,6 @@ out vec4 mult;
 
 void main()
 {
-	TexCoord = vec2((baseYZ.x + (data >> 25)) * blockTextureSize, baseYW.y);
 	const ChunkOffset cd = chunkData[gl_DrawIDARB];
 
 	dvec3 blockPos = dvec3(
@@ -67,15 +61,14 @@ void main()
 		(data >> 10) & 31
 	) + dvec3(cd.x, cd.y, cd.z);
 
-	const vec3 sizeMult = vec3((data >> 15) & 31, (data >> 20) & 31, 1.0);
-
-		 if (cd.f == 0) blockPos += baseXZ.wyx * sizeMult;	// X+
-	else if (cd.f == 1) blockPos += baseYZ.zyx * sizeMult;	// X-
-	else if (cd.f == 2) blockPos += baseYZ.ywx * sizeMult;	// Y+
-	else if (cd.f == 3) blockPos += baseYW.yzx * sizeMult;	// Y-
-	else if (cd.f == 4) blockPos += baseYZ.xyw * sizeMult;	// Z+
-	               else blockPos += baseXZ.xyz * sizeMult;	// Z-
+		 if (cd.f == 0) blockPos += baseXZ.wyx;	// X+
+	else if (cd.f == 1) blockPos += baseYZ.zyx;	// X-
+	else if (cd.f == 2) blockPos += baseYZ.ywx;	// Y+
+	else if (cd.f == 3) blockPos += baseYW.yzx;	// Y-
+	else if (cd.f == 4) blockPos += baseYZ.xyw;	// Z+
+	               else blockPos += baseXZ.xyz;	// Z-
 	
 	gl_Position = originMatrix * vec4(blockPos - playerPosition.xyz, 1.0);
+	TexCoord = vec2((baseYZ.x + float(data >> 15)) * blockTextureSize, baseYW.y);
 	mult = worldLight;
 }

@@ -1,4 +1,4 @@
-#version 420 core
+#version 430 core
 
 layout (std140, binding = 0) uniform GameMatrices {
 	mat4 matrix;

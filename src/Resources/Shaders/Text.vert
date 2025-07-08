@@ -6,7 +6,7 @@ layout (location = 1) in uint baseIndex;
 layout (location = 2) in vec4 d1; // X, Y, width, height
 layout (location = 3) in uvec2 d2; // Character, colour
 
-uniform float texturePositions[96];
+uniform float texturePositions[191];
 
 out vec2 t;
 out vec4 c;

@@ -1,4 +1,4 @@
-#version 420 core
+#version 430 core
 
 layout (binding = 0) uniform sampler2D blocksTexture;
 
