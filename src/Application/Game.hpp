@@ -23,54 +23,85 @@ public:
 	
 		void TakeScreenshot() noexcept;
 		void ToggleInventory() noexcept;
+		void ToggleFullscreen() noexcept;
 		void ApplyInput(int key, int action) noexcept;
 		void AddChatMessage(std::string message) noexcept;
 		void BeginChat() noexcept;
 		void AddCommandText(std::string newText) noexcept;
 		void ApplyCommand();
 	private:
+		struct ConversionData {
+			ConversionData(int i, bool b, const std::string &s) noexcept : index(i), decimal(b), strarg(s) {}
+			int index;
+			bool decimal;
+			std::string strarg;
+		};
+
+		bool revBool(bool &b) const noexcept { b = !b; return b; }
+
 		GameObject *m_app = nullptr;
 		std::vector<std::string> m_previousChats;
 		int m_chatHistorySelector = -1;
 
 		std::vector<std::string> CMD_args;
-		int CMD_currentIndex = 0;
+		int currentCMDInd = 0;
+
+		ConversionData cvd = { 0, false, "" };
+		bool queryChat = true;
 		
 		bool HasArgument(int index) { return static_cast<int>(CMD_args.size()) > index; }
-		std::string &GetArgument(int index) { CMD_currentIndex = index + 1; return CMD_args[index]; }
-		template<typename T> T IntArg(int index) { return static_cast<T>(TextFormat::strtoi64(GetArgument(index))); }
-		template<typename T> T IntArg(int index, T min, T max) { return glm::clamp(static_cast<T>(TextFormat::strtoi64(GetArgument(index))), min, max);	}
-		double DblArg(int index, double min = std::numeric_limits<double>::lowest(), double max = std::numeric_limits<double>::max()) {
-			return glm::clamp(std::stod(GetArgument(index)), min, max);
-		}
+		std::string &GetArg(int index) { currentCMDInd = index; return CMD_args[index]; }
 		
-		typedef std::vector<std::pair<int, std::string>> ConversionList;
-		void DoConvert(const ConversionList &argsConversions);
-		void ConvertArgument(std::string &arg, const std::string &actual);
+		template<typename T, typename C = T> C IntArg(int index, T min = std::numeric_limits<T>::lowest(), T max = std::numeric_limits<T>::max()) {
+			return static_cast<C>(glm::clamp(static_cast<T>(TextFormat::strtoimax(GetArg(index))), min, max));
+		}
+		double DblArg(int index, double min = std::numeric_limits<double>::lowest(), double max = std::numeric_limits<double>::max());
+
+		void CMDConv(const std::vector<ConversionData> &argsConversions);
+		void CMDConv(const ConversionData &data);
+
+		template<typename T> bool isdec(const T&) const noexcept { return std::numeric_limits<T>::is_iec559; } 
+		template<typename T> ConversionData tcv(int index, T val) const noexcept { return { index, isdec(val), fmt::to_string(val) }; }
+
+		template<typename T> void query(const std::string &name, T value) noexcept {
+			const std::string asStr = fmt::format(std::is_integral<T>::value ? "{}" : "{:.3f}", value);
+			if (queryChat) AddChatMessage(fmt::format("Current {} is {}", name, asStr));
+			cvd = ConversionData(0, isdec(value), asStr);
+		}
+
+		template<glm::length_t L, typename T, glm::qualifier Q> void queryMult(
+			const std::string &name,
+			const glm::vec<L, T, Q> &value,
+			int startIndex = 0
+		) noexcept {
+			std::string fmtstr;
+			for (int i = 0, m = L - 1; i < L; ++i) fmtstr += fmt::format("{:.3f}{}", value[i], i != m ? " " : "");
+			if (queryChat) AddChatMessage(fmt::format("Current {}: {}", name, fmtstr));
+			cvd = ConversionData(startIndex, isdec(value[0]), fmtstr);
+		}
 	};
 
 	Player playerFunctions;
-	PlayerObject &player;
+	WorldPlayer &player;
 	World world;
 
 	GameObject() noexcept;
+	static void InitGame(char *location);
 	void Main();
 
 	void UpdateAspect() noexcept;
-	void UpdatePerspective() noexcept;
-
 	~GameObject();
 private:
 	void DebugFunctionTest() noexcept;
+	void PerlinResultTest() const noexcept;
 
 	void UpdateFrameValues() noexcept;
-	void MoveMatricesUpdate() noexcept;
-	void GameMiscUpdate() noexcept;
+	void MovedUpdate() noexcept;
+	void MiscUpdate() noexcept;
 
 	void ExitGame() noexcept;
 	
-	enum MatrixIndexes : int { Matrix_Perspective, Matrix_View, Matrix_World, Matrix_Origin };
-	glm::mat4 m_matrices[4];
+	glm::mat4 m_perspectiveMatrix;
 	
 	Skybox m_skybox;
 	GLuint m_matricesUBO, m_timesUBO, m_coloursUBO, m_positionsUBO, m_sizesUBO;
@@ -78,10 +109,10 @@ private:
 	double m_lastTime = 0.0, m_updateTime = 0.0;
 	int m_nowFPS, m_avgFPS, m_lowFPS;
 	
-	TextRenderer::ScreenText *m_infoText, *m_infoText2, *m_chatText, *m_commandText;
+	TextRenderer::ScreenText *m_infoText, *m_infoText2, *m_chatText, *m_commandText, *m_perfText;
 
 	double EditTime(bool isSet, double t = 0.0) noexcept;
-	float GetRelativeTextPosition(TextRenderer::ScreenText *sct, int linesOverride = -1) noexcept;
+// Ensure other variables have been initialized first (inner struct accesses them)
 public:
 	Callbacks callbacks;
 };

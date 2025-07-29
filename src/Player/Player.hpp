@@ -13,7 +13,7 @@ private:
 	GLuint m_outlineEBO;
 
 	std::uint8_t m_noInventoryInstances, m_totalInventoryInstances;
-	std::uint8_t selected = 0;
+	std::uint8_t selected{};
 
 	glm::i8vec3 placeBlockRelPosition;
 
@@ -27,10 +27,10 @@ private:
 		InventoryInstance() noexcept {}
 
 		glm::vec4 dims{};
-		std::uint32_t second = 0u;
+		std::uint32_t second{};
 	} *inventoryData = new InventoryInstance[3 + (9 * 5 * 2)];
 public:
-	PlayerObject player;
+	WorldPlayer player;
 	World *world;
 
 	enum class PlayerDirection : int { Forwards, Backwards, Left, Right, Fly_Up, Fly_Down, Jump };
@@ -57,7 +57,8 @@ public:
 
 	void RenderBlockOutline() const noexcept;
 	void RenderPlayerGUI() const noexcept;
-	void SetViewMatrix(glm::mat4 &result) const noexcept;
+	
+	glm::mat4 GetZeroMatrix() const noexcept;
 
 	void UpdateOffset() noexcept;
 	void UpdateFrustum() noexcept;

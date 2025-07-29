@@ -6,20 +6,21 @@
 #include "Rendering/TextRenderer.hpp"
 
 // Player variables that are able to be accessed by the world
-struct PlayerObject
+struct WorldPlayer
 {
 	struct InventorySlot 
 	{
 		ObjectID objectID = ObjectID::Air;
-		std::uint8_t count = 0;
+		std::uint8_t count{};
 		TextRenderer::ScreenText *slotText;
 	};
 
-	bool moved = true;
 	bool noclip = false;
-	bool grounded = true;
 	bool doGravity = false;
 	bool inventoryOpened = false;
+
+	bool moved = true;
+	bool grounded = true;
 
 	WorldDirection lookDirectionPitch = WldDir_None, lookDirectionYaw = WldDir_None;
 
@@ -27,31 +28,19 @@ struct PlayerObject
 	ObjectID headBlock = ObjectID::Air;
 	ObjectID feetBlock = ObjectID::Air;
 
-	glm::dvec3 position = {};
+	glm::dvec3 position{};
 
-	double posMagnitude = 0.0;
-	WorldPos offset{};
-	CameraFrustum frustum;
+	//double posMagnitude;
+	WorldPosition offset{};
+	CameraFrustum frustum{};
 
 	InventorySlot inventory[36];
-	WorldPos targetBlockPosition {};
+	WorldPosition targetBlockPosition{};
 
 	double fov = glm::radians(90.0);
-	double pitch = 0.0f, yaw = 0.0f;
+	double pitch = 0.0, yaw = 0.0;
 
-	double currentSpeed = 2.0, defaultSpeed = 2.0;
-
-	static const double gravity;
-	static const double waterGravityMultiplier;
-
-	static const double maxGravity;
-	static const double jumpPower;
-
-	static const double reachDistance;
-	static const std::uint8_t maxSlotCount;
-
-	static const double farPlaneDistance;
-	static const double nearPlaneDistance;
+	double defaultSpeed = 1.0, currentSpeed = defaultSpeed;
 };
 
 #endif // _SOURCE_PLAYER_PLRDEF_HDR_

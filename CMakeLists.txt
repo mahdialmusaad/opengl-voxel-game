@@ -13,7 +13,7 @@ option(GLFW_BUILD_TESTS OFF)
 if(MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
 else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Wno-reorder")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
 	# Define glad library
     if(NOT WIN32)
         set(GLAD_LIBRARIES dl)
@@ -40,8 +40,6 @@ include_directories(
 
 # Add GLFW to project
 add_subdirectory(${BCL}/glfw/)
-# Get OpenGL package
-find_package(OpenGL REQUIRED)
 
 # Folder shortcuts
 set(BCS_W ${BC_SRC}/World)
@@ -55,37 +53,39 @@ add_executable(
 	# Initial project argument
 	${PROJECT_NAME}
 
+	# External libraries
 	# lodepng
 	${BCL}/lodepng/lodepng.cpp
 	# glad
 	${BCL}/glad/gl.c
 
-	# src/Player
-    ${BCS_P}/Player.cpp
-	# src/Rendering
-    ${BCS_R}/TextRenderer.cpp
-	# src/Application
-    ${BCS_A}/Definitions.cpp
-	${BCS_A}/Callbacks.cpp
-    ${BCS_A}/Game.cpp
-	# src/World
-    ${BCS_W}/Chunk.cpp
-    ${BCS_W}/Sky.cpp
-    ${BCS_W}/World.cpp
-	# src/World/Generation
-		${BCS_WG}/Perlin.cpp
-		${BCS_WG}/Settings.cpp
+	# Main game
+
 	# src/
-    ${BC_SRC}/Main.cpp
+	${BC_SRC}/Main.cpp
+		# src/Player
+		${BCS_P}/Player.cpp
+		# src/Rendering
+		${BCS_R}/TextRenderer.cpp
+		${BCS_R}/Frustum.cpp
+		# src/Application
+		${BCS_A}/Definitions.cpp
+		${BCS_A}/Callbacks.cpp
+		${BCS_A}/Game.cpp
+		# src/World
+		${BCS_W}/Chunk.cpp
+		${BCS_W}/Sky.cpp
+		${BCS_W}/World.cpp
+			# src/World/Generation
+			${BCS_WG}/Perlin.cpp
+			${BCS_WG}/Settings.cpp
 )
 
 # Link external libraries
 target_link_libraries(
 	${PROJECT_NAME} 
-	glfw 
-	OpenGL::GL
-	${GLAD_LIBRARIES} 
-	${GLFW_LIBRARIES}
+	glfw
+	${GLAD_LIBRARIES}
 )
 
 # Shortcut to resulting folder

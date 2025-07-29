@@ -10,12 +10,12 @@ public:
 	typedef glm::vec<4, std::uint8_t> ColourData;
 
 	enum TextSettings : std::uint8_t {
-		TS_Background = 1u,
-		TS_BackgroundFullX = 2u,
-		TS_BackgroundFullY = 4u,
-		TS_Shadow = 8u,
-		TS_InventoryVisible = 16u,
-		TS_DebugText = 32u
+		TS_Background = static_cast<std::uint8_t>(1u),
+		TS_BackgroundFullX = static_cast<std::uint8_t>(2u),
+		TS_BackgroundFullY = static_cast<std::uint8_t>(4u),
+		TS_Shadow = static_cast<std::uint8_t>(8u),
+		TS_InventoryVisible = static_cast<std::uint8_t>(16u),
+		TS_DebugText = static_cast<std::uint8_t>(32u)
 	};
 
 	enum class TextType : std::uint8_t {
@@ -51,21 +51,23 @@ public:
 		glm::vec2 m_pos = { 0.0f, 0.0f };
 		float m_textTime = 0.0f;
 
-		std::uint16_t m_displayLength = 0u;
-		std::uint8_t m_unitSize = 16u;
-		std::uint8_t m_settings;
+		std::uint16_t m_displayLength{};
+		std::uint8_t m_settings{};
+		std::uint8_t m_unitSize = static_cast<std::uint8_t>(16u);
 
-		ColourData m_RGBColour = { 255u, 255u, 255u, 255u };
+		ColourData m_RGBColour = ColourData(static_cast<std::uint8_t>(255u));
 		GLuint m_vbo;
 	public:
 		TextType textType;
 		~ScreenText() noexcept;
 	};
 
-	static const std::uint8_t defaultUnitSize;
+	const float defTextWidth = 0.006f;
+	
+	float spaceCharacterSize = 0.04f, characterSpacingSize = 0.009f, textWidth = defTextWidth, textHeight = 0.06f;
+	int maxChatLineChars = 60, maxChatLines = 11;
 
-	float spaceCharacterSize = 0.04f, characterSpacingSize = 0.009f, textWidth = 0.009f, textHeight = 0.07f;
-	int maxChatCharacters = 60, maxChatLines = 11;
+	static constexpr unsigned defaultUnitSize = 10u;
 
 	TextRenderer() noexcept;
 	void UpdateShaderUniform() noexcept;
@@ -76,8 +78,8 @@ public:
 	ScreenText *CreateText(
 		glm::vec2 pos, 
 		std::string text, 
-		std::uint8_t unitSize = defaultUnitSize,
-		std::uint8_t settings = 0u,
+		unsigned settings = 0,
+		unsigned unitSize = defaultUnitSize,
 		TextType textType = TextType::Default,
 		bool update = true
 	) noexcept;
@@ -96,10 +98,13 @@ public:
 
 	float GetUnitSizeMultiplier(std::uint8_t unitSize) const noexcept;
 	float GetCharScreenWidth(int charIndex, float unitMultiplier) const noexcept;
-	float GetTextScreenWidth(const std::string &text, float unitMultiplier) const noexcept;
+	float GetTextWidth(const std::string &text, std::uint8_t unit) const noexcept;
 
 	float GetTextHeight(ScreenText *screenText) const noexcept;
 	float GetTextHeight(std::uint8_t fontSize, int lines) const noexcept;
+	float GetRelativeTextYPos(TextRenderer::ScreenText *sct, int linesOverride = -1) noexcept;
+
+	void FormatChatText(std::string &text) const noexcept;
 
 	void CheckTextStatus() noexcept;
 	void RemoveText(std::uint16_t id) noexcept;

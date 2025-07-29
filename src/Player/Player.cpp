@@ -2,8 +2,6 @@
 
 Player::Player() noexcept
 {
-	TextFormat::log("Player enter");
-
 	// Debug raycast test
 	m_raycastVAO = OGL::CreateVAO();
 	glEnableVertexAttribArray(0u);
@@ -17,7 +15,8 @@ Player::Player() noexcept
 	// To ensure that the block selection outline is always visible, a slightly *smaller* square outline 
 	// is rendered slightly *in front* of each block face to avoid Z-fighting and block clipping
 
-	const float front1 = 1.002f, front0 = -0.002f, small1 = 0.998f, small0 = 0.002f;
+	const float deviance = 0.001f;
+	const float front1 = 1.0f + deviance, front0 = -deviance, small1 = 1.0f - deviance, small0 = -deviance;
 	const float cubeCoordinates[] = {
 		// Top face
 		small0, front1, small0,
@@ -105,8 +104,6 @@ Player::Player() noexcept
 
 	UpdateCameraVectors();
 	UpdateOffset();
-
-	TextFormat::log("Player exit");
 }
 
 void Player::WorldInitialize() noexcept
@@ -115,32 +112,31 @@ void Player::WorldInitialize() noexcept
 
 	// Selected block information text - created in player class instead of
 	// with other text objects so it can be updated only when the selected block changes
+	const unsigned defsize = world->textRenderer.defaultUnitSize;
 	m_blockText = world->textRenderer.CreateText(
-		{}, "", 12u, 
-		TextRenderer::TS_Shadow | TextRenderer::TS_Background | TextRenderer::TS_DebugText, 
-		TextRenderer::TextType::Default, false
+		{}, "", TextRenderer::TS_Shadow | TextRenderer::TS_Background | TextRenderer::TS_DebugText, 
+		defsize, TextRenderer::TextType::Default, false
 	);
+	
 	UpdateCameraDirection(); // Update yaw/pitch and raycast block which updates above text
 
 	// Inventory item counters - hotbar slots have a mirrored one in the inventory
 	for (int slotIndex = 0; slotIndex < 36; ++slotIndex) {
-		PlayerObject::InventorySlot &slot = player.inventory[slotIndex];
+		WorldPlayer::InventorySlot &slot = player.inventory[slotIndex];
 		const std::string text = fmt::to_string(slot.count);
 		bool isHotbar = slotIndex < 9;
 		
 		// Position is determined in UpdateInventoryText function
 		slot.slotText = world->textRenderer.CreateText(
-			{}, text, 10u, 
-			isHotbar ? TextRenderer::TS_Shadow : (TextRenderer::TS_Shadow | TextRenderer::TS_InventoryVisible), 
+			{}, text, isHotbar ? TextRenderer::TS_Shadow : (TextRenderer::TS_Shadow | TextRenderer::TS_InventoryVisible), defsize - 2u,
 			slot.count ? TextRenderer::TextType::Default : TextRenderer::TextType::Hidden, false
 		);
 
 		// Also create copy of hotbar text for inventory hotbar
 		if (isHotbar) {
-			m_inventoryHotbarText[slotIndex] = world->textRenderer.CreateText(
-				{}, text, slot.slotText->GetUnitSize(),
-				TextRenderer::TS_Shadow | TextRenderer::TS_InventoryVisible, slot.slotText->textType, false
-			);
+			TextRenderer::ScreenText *hotbarText = world->textRenderer.CreateText(slot.slotText, false);
+			world->textRenderer.ChangeSettings(hotbarText, TextRenderer::TS_Shadow | TextRenderer::TS_InventoryVisible, false);
+			m_inventoryHotbarText[slotIndex] = hotbarText;
 		}
 	}
 
@@ -150,14 +146,14 @@ void Player::WorldInitialize() noexcept
 void Player::InventoryTextTest() noexcept
 {
 	for (int slotIndex = 0; slotIndex < 9; ++slotIndex) {
-		PlayerObject::InventorySlot &slot = player.inventory[slotIndex];
+		WorldPlayer::InventorySlot &slot = player.inventory[slotIndex];
 		world->textRenderer.ChangePosition(slot.slotText, { game.testvals.x + (slotIndex * game.testvals.y), game.testvals.z });
 	}
 }
 
 void Player::RaycastDebugCheck() noexcept
 {
-	game.shader.UseShader(Shader::ShaderID::Vec3);
+	shader.UseProgram(shader.programs.test);
 	glBindVertexArray(m_raycastVAO);
 	glBindBuffer(GL_ARRAY_BUFFER, m_raycastVBO);
 	
@@ -205,36 +201,40 @@ void Player::CheckInput() noexcept
 
 void Player::ApplyMovement() noexcept
 {
+	game.perfs.movement.Start();
+
 	// Make player slowly come to a stop instead of immediately stopping when no movement is applied
 	// TODO: Framerate-independent lerp/smoothing
 	const double movementLerp = glm::clamp(game.deltaTime * 10.0, 0.0, 1.0);
 	
-	// Gravity should have a maximum instead of increasing indefinetly (terminal velocity)
-	if (player.doGravity) m_velocity.y = glm::max(m_velocity.y + player.gravity * game.deltaTime, player.maxGravity);
+	// Apply gravity if enabled
+	const double gravity = -1.0, terminalVel = -10.0;
+	if (player.doGravity) m_velocity.y = glm::max(m_velocity.y + gravity * game.deltaTime, terminalVel);
 	else m_velocity.y = Math::lerp(m_velocity.y, 0.0, movementLerp);
 
-	if (glm::length(m_velocity) <= DBL_EPSILON) return; // No movement checks for 0 velocity
+	if (Math::largestUnsignedAxis(m_velocity) < 0.005) return; // Treat near-zero max velocity the same as no movement
 
 	// Positions and axis direction list
+	const double ext = 0.2;
 	struct CollisionCheck {
 		double x, z; bool doX, doZ;
 	} static const collisionChecks[] = {
 		{  0.0,  0.0,  false,  false }, // Y only
-		{  0.1,  0.0,  true,   false }, // Positive X
-		{ -0.1,  0.0,  true,   false }, // Negative X
-		{  0.0,  0.1,  false,  true  }, // Positive Z
-		{  0.0, -0.1,  false,  true  }, // Negative Z
-		{ -0.1,  0.1,  true,   true  }, // Forward left
-		{  0.1,  0.1,  true,   true  }, // Forward right
-		{  0.1, -0.1,  true,   true  }, // Backward right
-		{ -0.1, -0.1,  true,   true  }, // Backward left
+		{  ext,  0.0,  true,   false }, // Positive X
+		{ -ext,  0.0,  true,   false }, // Negative X
+		{  0.0,  ext,  false,  true  }, // Positive Z
+		{  0.0, -ext,  false,  true  }, // Negative Z
+		{ -ext,  ext,  true,   true  }, // Forward left
+		{  ext,  ext,  true,   true  }, // Forward right
+		{  ext, -ext,  true,   true  }, // Backward right
+		{ -ext, -ext,  true,   true  }, // Backward left
 	};
 	
 	// Reset specific velocity values if they make the player intersect with a block;
 	// reset Y velocity if a block is detected below or above instead
 
 	enum VelocityResetState { NoneReset, XReset, ZReset, XAndZ } resetState = NoneReset;
-	WorldPos collidedBlockPos;
+	WorldPosition collidedBlockPos;
 
 	const auto ResetVelocities = [&](const CollisionCheck &col) {
 		// Only change velocity if its sign matches with the direction checked:
@@ -258,12 +258,12 @@ void Player::ApplyMovement() noexcept
 		return false;
 	};
 	
-	const auto CheckDirections = [&](const glm::dvec3 &newPos, double yPos, bool resetY = false, bool doGrounded = false) {
+	const auto CheckDirections = [&](const glm::dvec3 &newPos, double yPos, bool resetY, bool doGrounded) {
 		bool first = true;
 		for (const CollisionCheck &col : collisionChecks) {
 			if (!resetY && first) { first = false; continue; } // The 'Y only' check only applies to ground and ceiling checks
-			collidedBlockPos = ChunkSettings::ToWorld(newPos + glm::dvec3(col.x, yPos, col.z)); // World position of block to check
-			if (!ChunkSettings::GetBlockData(world->GetBlock(collidedBlockPos)).isSolid) continue; // Check for a solid block
+			collidedBlockPos = ChunkValues::ToWorld(newPos + glm::dvec3(col.x, yPos, col.z)); // World position of block to check
+			if (!ChunkValues::GetBlockData(world->GetBlock(collidedBlockPos)).isSolid) continue; // Check for a solid block
 
 			// Reset Y velocity and possibly change grounded state for floor and ceiling checks
 			if (resetY) {
@@ -290,14 +290,16 @@ void Player::ApplyMovement() noexcept
 	if (!player.noclip) {
 		const glm::dvec3 newPosition = player.position + m_velocity; // The new position to check collisions for
 		// All collision checks
-		CheckDirections(newPosition, abovePos, true); // Blocks above player
+		CheckDirections(newPosition, abovePos, true, false); // Blocks above player
 		CheckDirections(newPosition, groundPos, true, true); // Blocks on the ground beneath
-		CheckDirections(newPosition, legsPos); // Blocks around 'legs' position
-		if (resetState != XAndZ) CheckDirections(newPosition, 0.0); // Blocks around camera position (only if velocity hasn't been reset already)
+		CheckDirections(newPosition, legsPos, false, false); // Blocks around 'legs' position
+		if (resetState != XAndZ) CheckDirections(newPosition, 0.0, false, false); // Blocks around camera position (only if velocity hasn't been reset already)
 	}
 
 	player.position += m_velocity; // Add new velocity to position
 	PositionVariables(); // Update variables and other data affected by position
+
+	game.perfs.movement.End();
 }
 
 void Player::SetPosition(const glm::dvec3 &newPos) noexcept
@@ -315,13 +317,13 @@ const glm::dvec3 &Player::GetVelocity() const noexcept
 void Player::PositionVariables() noexcept
 {
 	player.moved = true;
-	player.posMagnitude = glm::length(player.position);
 
 	// Determine block at head position (air, water, etc) and the one the player is standing on
-	const WorldPos playerBlockPos = ChunkSettings::ToWorld(player.position);
+	const WorldPosition playerBlockPos = ChunkValues::ToWorld(player.position);
 	player.headBlock = world->GetBlock(playerBlockPos);
 	player.feetBlock = world->GetBlock({playerBlockPos.x, playerBlockPos.y - 2, playerBlockPos.z});
 
+	UpdateFrustum();
 	UpdateOffset();
 	RaycastBlock();
 }
@@ -329,7 +331,7 @@ void Player::PositionVariables() noexcept
 void Player::BreakBlock() noexcept
 {
 	// Check if the selected block is solid/valid
-	if (ChunkSettings::GetBlockData(player.targetBlock).isSolid) {
+	if (ChunkValues::GetBlockData(player.targetBlock).isSolid) {
 		// Set broken block to air and redo raycast
 		world->SetBlock(player.targetBlockPosition, ObjectID::Air, true);
 		const int slotIndex = SearchForFreeMatchingSlot(player.targetBlock);
@@ -341,16 +343,16 @@ void Player::BreakBlock() noexcept
 void Player::PlaceBlock() noexcept
 {
 	// Determine selected block in inventory
-	PlayerObject::InventorySlot &useSlot = player.inventory[selected];
+	WorldPlayer::InventorySlot &useSlot = player.inventory[selected];
 	const ObjectID placeBlock = useSlot.objectID;
 
 	// Only place if the current selected block is valid
-	if (placeBlock != ObjectID::Air && ChunkSettings::GetBlockData(player.targetBlock).isSolid) {
-		const WorldPos placePosition = player.targetBlockPosition + static_cast<WorldPos>(placeBlockRelPosition);
-		if (ChunkSettings::GetBlockData(world->GetBlock(placePosition)).isSolid) return; // Don't replace already existing blocks
+	if (placeBlock != ObjectID::Air && ChunkValues::GetBlockData(player.targetBlock).isSolid) {
+		const WorldPosition placePosition = player.targetBlockPosition + static_cast<WorldPosition>(placeBlockRelPosition);
+		if (ChunkValues::GetBlockData(world->GetBlock(placePosition)).isSolid) return; // Don't replace already existing blocks
 
-		const WorldPos playerBlockPos = ChunkSettings::ToWorld(player.position);
-		const WorldPos playerLegsBlockPos = { playerBlockPos.x, playerBlockPos.y - static_cast<PosType>(1), playerBlockPos.z };
+		const WorldPosition playerBlockPos = ChunkValues::ToWorld(player.position);
+		const WorldPosition playerLegsBlockPos = { playerBlockPos.x, playerBlockPos.y - static_cast<PosType>(1), playerBlockPos.z };
 		if (placePosition == playerBlockPos || placePosition == playerLegsBlockPos) return; // Don't place blocks inside the player
 
 		world->SetBlock(placePosition, placeBlock, true); // Place block on side of selected block
@@ -386,9 +388,11 @@ void Player::AddVelocity(PlayerDirection direction) noexcept
 			m_velocity.y -= directionMultiplier;
 			break;
 		// Jumping movement
-		case PlayerDirection::Jump:
-			if (player.grounded) m_velocity.y = player.jumpPower;
+		case PlayerDirection::Jump: {
+			const double jumpPower = 0.2;
+			if (player.grounded) m_velocity.y = jumpPower;
 			break;
+		}
 		default:
 			break;
 	}
@@ -398,10 +402,12 @@ int Player::SearchForItem(ObjectID item, bool includeFull) noexcept
 {
 	// Return index of item in inventory or -1 if none was found, taking 'fullness' into account
 	const int numSlots = static_cast<int>(Math::size(player.inventory));
+	const int maxSlotCount = 99;
+	
 	for (int i = 0; i < numSlots; ++i) { 
-		const PlayerObject::InventorySlot &slot = player.inventory[i];
+		const WorldPlayer::InventorySlot &slot = player.inventory[i];
 		if (slot.objectID == item) {
-			if (includeFull && slot.count >= player.maxSlotCount) continue;
+			if (includeFull && static_cast<int>(slot.count) >= maxSlotCount) continue;
 			return i;
 		}
 	}
@@ -421,10 +427,10 @@ int Player::SearchForFreeMatchingSlot(ObjectID item) noexcept
 void Player::RenderBlockOutline() const noexcept
 {
 	// Only show outline when the player is looking at a breakable block (e.g. can't break water or air)
-	if (!ChunkSettings::GetBlockData(player.targetBlock).isSolid) return;
+	//if (!ChunkValues::GetBlockData(player.targetBlock).isSolid) return;
 
-	// Enable outline shader and VAO to use correct shaders and buffers
-	game.shader.UseShader(Shader::ShaderID::Outline);
+	// Enable outline program and bind VAO to use correct buffers
+	shader.UseProgram(shader.programs.outline);
 	glBindVertexArray(m_outlineVAO);
 
 	// GL_LINES - each pair of indices determine the line's start and end position
@@ -434,39 +440,36 @@ void Player::RenderBlockOutline() const noexcept
 void Player::RenderPlayerGUI() const noexcept
 {
 	// Bind VAO and use inventory shader
-	game.shader.UseShader(Shader::ShaderID::Inventory);
+	shader.UseProgram(shader.programs.inventory);
 	glBindVertexArray(m_inventoryVAO);
 	
-	if (player.inventoryOpened) {
-		glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, m_noInventoryInstances - 1); // Draw hotbar instances (without crosshair)
-		for (int i = 0; i < 9; ++i) world->textRenderer.RenderText(player.inventory[i].slotText, !i, true); // Render hotbar text under inventory background
-		game.shader.UseShader(Shader::ShaderID::Inventory); // Switch back to inventory shader
-		glBindVertexArray(m_inventoryVAO); // Use inventory VAO and draw rest of inventory
-		glDrawArraysInstancedBaseInstance(GL_TRIANGLE_STRIP, 0, 4, m_totalInventoryInstances, 0u);
-		for (int i = 0; i < 9; ++i) world->textRenderer.RenderText(m_inventoryHotbarText[i], !i, true); // Render inventory hotbar text (shader switches on first)
-		for (int i = 9; i < 36; ++i) world->textRenderer.RenderText(player.inventory[i].slotText, false, true); // Render inventory text
+	// Draw hotbar instances only
+	if (!player.inventoryOpened) {
+		glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, m_noInventoryInstances);
+		return;
 	}
-	// Draw hotbar instances 
-	else glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, m_noInventoryInstances);
+
+	glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, m_noInventoryInstances - 1); // Draw hotbar instances (without crosshair)
+	for (int i = 0; i < 9; ++i) world->textRenderer.RenderText(player.inventory[i].slotText, !i, true); // Render hotbar text under inventory background
+	shader.UseProgram(shader.programs.inventory); // Switch back to inventory shader
+	glBindVertexArray(m_inventoryVAO); // Use inventory VAO and draw rest of inventory
+	glDrawArraysInstancedBaseInstance(GL_TRIANGLE_STRIP, 0, 4, m_totalInventoryInstances, 0u);
+	for (int i = 0; i < 9; ++i) world->textRenderer.RenderText(m_inventoryHotbarText[i], !i, true); // Render inventory hotbar text (shader switches on first)
+	for (int i = 9; i < 36; ++i) world->textRenderer.RenderText(player.inventory[i].slotText, false, true); // Render inventory text
 }
 
-void Player::SetViewMatrix(glm::mat4 &result) const noexcept
-{
-	// TODO: 'lookAt' function but using reference instead of a new matrix
-	result = glm::lookAt(player.position, player.position + m_camFront, m_camUp);
-}
+glm::mat4 Player::GetZeroMatrix() const noexcept { constexpr glm::dvec3 empty{}; return glm::lookAt(empty, m_camFront, m_camUp); }
 
 void Player::UpdateCameraDirection(double x, double y) noexcept
 {
 	if (player.inventoryOpened) return;
-
-	// Looking straight up causes camera to flip, so stop just before 90 degrees
-	const double not90 = 89.9999;
-
+	
 	// Calculate camera angles
 	player.yaw += x * game.sensitivity;
 	player.yaw = player.yaw > 180.0 ? (-180.0 + (player.yaw - 180.0)) : player.yaw < -180.0 ? (180.0 + (player.yaw + 180.0)) : player.yaw;
-
+	
+	// Looking straight up causes camera to flip, so stop just before 90 degrees
+	const double not90 = 89.9999;
 	player.pitch = glm::clamp(player.pitch + (y * game.sensitivity), -not90, not90);
 	player.moved = true; // Trigger update for other camera-related variables
 
@@ -484,9 +487,9 @@ void Player::UpdateCameraDirection(double x, double y) noexcept
 void Player::RaycastBlock() noexcept
 {
 	// DDA (Digital Differential Analyser) algorithm for raycasting:
-	// Rather than moving in steps and potentially missing a block, this algorithm
+	// Rather than moving in fixed steps and potentially missing a block, this algorithm
 	// traverses in a grid-like pattern, ensuring all blocks in the way are detected.
-	// See https://lodev.org/cgtutor/raycasting.html for the source code.
+	// See https://lodev.org/cgtutor/raycasting.html for the original source.
 
 	// Determine steps in each axis
 	glm::dvec3 deltaRay = { 
@@ -496,56 +499,65 @@ void Player::RaycastBlock() noexcept
 	};
 
 	// Store data about block player was previously looking at
-	const WorldPos initialSelectedPosition = player.targetBlockPosition;
+	const WorldPosition initialSelectedPosition = player.targetBlockPosition;
 	const ObjectID initialSelectedBlock = player.targetBlock;
 
 	// Initial values for raycasting
-	player.targetBlockPosition = ChunkSettings::ToWorld(player.position);
+	player.targetBlockPosition = ChunkValues::ToWorld(player.position);
 	glm::dvec3 sideDistance;
-	WorldPos step;
+	WorldPosition step;
 
 	// Determine directions and magnitude in each axis
 	// X axis
 	if (m_camFront.x < 0.0) {
 		step.x = static_cast<PosType>(-1);
-		sideDistance.x = (player.position.x - static_cast<PosType>(player.position.x)) * deltaRay.x;
+		sideDistance.x = (player.position.x - static_cast<double>(player.targetBlockPosition.x)) * deltaRay.x;
 	} else {
 		step.x = static_cast<PosType>(1);
-		sideDistance.x = (static_cast<PosType>(player.position.x) + 1.0 - player.position.x) * deltaRay.x;
+		sideDistance.x = (static_cast<double>(player.targetBlockPosition.x) + 1.0 - player.position.x) * deltaRay.x;
 	}
 	// Y axis
 	if (m_camFront.y < 0.0) {
 		step.y = static_cast<PosType>(-1);
-		sideDistance.y = (player.position.y - static_cast<PosType>(player.position.y)) * deltaRay.y;
+		sideDistance.y = (player.position.y - static_cast<double>(player.targetBlockPosition.y)) * deltaRay.y;
 	} else {
 		step.y = static_cast<PosType>(1);
-		sideDistance.y = (static_cast<PosType>(player.position.y) + 1.0 - player.position.y) * deltaRay.y;
+		sideDistance.y = (static_cast<double>(player.targetBlockPosition.y) + 1.0 - player.position.y) * deltaRay.y;
 	}
 	// Z axis
 	if (m_camFront.z < 0.0) {
 		step.z = static_cast<PosType>(-1);
-		sideDistance.z = (player.position.z - static_cast<PosType>(player.position.z)) * deltaRay.z;
+		sideDistance.z = (player.position.z - static_cast<double>(player.targetBlockPosition.z)) * deltaRay.z;
 	} else {
 		step.z = static_cast<PosType>(1);
-		sideDistance.z = (static_cast<PosType>(player.position.z) + 1.0 - player.position.z) * deltaRay.z;
+		sideDistance.z = (static_cast<double>(player.targetBlockPosition.z) + 1.0 - player.position.z) * deltaRay.z;
 	}
 
-	enum RayAxis : int { Raycast_X, Raycast_Y, Raycast_Z };
+	enum class RayAxis { Raycast_X, Raycast_Y, Raycast_Z };
 
 	// Used to calculate where the 'side' of the block is depending on where the player looks at the block
-	WorldPos previousTargetLocation = -game.constants.worldDirections[player.lookDirectionYaw]; // Default value
+	WorldPosition previousTargetLocation = -game.constants.worldDirections[player.lookDirectionYaw]; // Default value
 
-	for (int i = 0; i < 6; ++i) {
+	// Update block ID of ray block and return if it is solid (stop raycasting if it is)
+	const auto UpdateBlock = [&]() {
 		player.targetBlock = world->GetBlock(player.targetBlockPosition); // Determine block at current raycast position
-		if (ChunkSettings::GetBlockData(player.targetBlock).isSolid) break; // Stop if a solid block is in the way
-		
+		return ChunkValues::GetBlockData(player.targetBlock).isSolid; // Stop if a solid block is in the way
+	};
+	
+	int blocksReach = 7; // Counter for how many blocks out the player can reach
+
+	// If the player is already inside of a block, don't bother raycasting (1 due to pre-increment check)
+	if (UpdateBlock()) blocksReach = 1;
+
+	while (--blocksReach) {
 		// Check shortest axis and move in that direction
-		RayAxis shortestAxis = RayAxis::Raycast_X;
-		if (sideDistance.y < sideDistance.x && sideDistance.y < sideDistance.z) shortestAxis = RayAxis::Raycast_Y;
-		if (sideDistance.z < sideDistance.y && sideDistance.z < sideDistance.x) shortestAxis = RayAxis::Raycast_Z;
-
+		RayAxis shortestAxis = 
+		sideDistance.x < sideDistance.y ? 
+		(sideDistance.x < sideDistance.z ? RayAxis::Raycast_X : RayAxis::Raycast_Z) :
+		(sideDistance.y < sideDistance.z ? RayAxis::Raycast_Y: RayAxis::Raycast_Z);
+		
 		previousTargetLocation = player.targetBlockPosition;
-
+		
 		switch (shortestAxis)
 		{
 			case RayAxis::Raycast_X:
@@ -563,24 +575,27 @@ void Player::RaycastBlock() noexcept
 			default:
 				break;
 		}
+
+		// Check what block is at the current ray position and stop if it is solid
+		if (UpdateBlock()) break;
 	}
 
-	// Possible: Use 'world direction' index instead of storing difference
-	placeBlockRelPosition = static_cast<glm::i8vec3>(previousTargetLocation - player.targetBlockPosition); 
+	// Use to determine the 'side' the player is looking at for block placement
+	placeBlockRelPosition = static_cast<glm::i8vec3>(previousTargetLocation - player.targetBlockPosition);
 
-	// Update block text if it's a different block than previous (position or type)
+	// Update block text if it's a different block than the previous (differs by position or type)
 	if (player.targetBlock != initialSelectedBlock || player.targetBlockPosition != initialSelectedPosition) UpdateBlockInfoText();
 }
 
 void Player::UpdateBlockInfoText() noexcept
 {
-	const WorldBlockData &blockData = ChunkSettings::GetBlockData(player.targetBlock); // Get block properties
+	const WorldBlockData &blockData = ChunkValues::GetBlockData(player.targetBlock); // Get block properties
 
 	// Format string with block information text
-	const WorldPos offset = {
-		ChunkSettings::WorldToOffset(player.targetBlockPosition.x),
-		ChunkSettings::WorldToOffset(player.targetBlockPosition.y),
-		ChunkSettings::WorldToOffset(player.targetBlockPosition.z)
+	const WorldPosition offset = {
+		ChunkValues::WorldToOffset(player.targetBlockPosition.x),
+		ChunkValues::WorldToOffset(player.targetBlockPosition.y),
+		ChunkValues::WorldToOffset(player.targetBlockPosition.z)
 	};
 	bool isFarAway = Math::isLargeOffset(offset);
 
@@ -588,44 +603,22 @@ void Player::UpdateBlockInfoText() noexcept
 		"Selected:\n{} {} {}{}({} {} {})\n\"{}\" (ID {})\nLight emission: {}\nStrength: {}\nSolid: {}\nTransparency: {}\nTextures: {} {} {} {} {} {}", 
 		player.targetBlockPosition.x, player.targetBlockPosition.y, player.targetBlockPosition.z,
 		isFarAway ? "\n" : " ", offset.x, offset.y, offset.z,
-		blockData.name, blockData.id, blockData.lightEmission, blockData.strength, blockData.isSolid, blockData.hasTransparency,
+		blockData.name, blockData.id, blockData.emission, blockData.strength, blockData.isSolid, blockData.hasTransparency,
 		blockData.textures[0], blockData.textures[1], blockData.textures[2], blockData.textures[3], blockData.textures[4], blockData.textures[5]
 	);
 
 	// Determine the width of the information text
-	const float textWidth = world->textRenderer.GetTextScreenWidth(informationText, world->textRenderer.GetUnitSizeMultiplier(m_blockText->GetUnitSize()));
+	const float textWidth = world->textRenderer.GetTextWidth(informationText, m_blockText->GetUnitSize());
 
 	// Update the block info text
-	world->textRenderer.ChangePosition(m_blockText, { 0.99f - textWidth, 0.99f }, false); // Update position to ensure text fits
+	world->textRenderer.ChangePosition(m_blockText, { 0.993f - textWidth, 0.99f }, false); // Update position to ensure text fits
 	world->textRenderer.ChangeText(m_blockText, informationText); // Update text with block information
-}
-
-void Player::UpdateFrustum() noexcept
-{
-	// Calculate frustum values
-	const double halfVside = player.farPlaneDistance * glm::tan(player.fov);
-	const double halfHside = halfVside * game.aspect;
-	const glm::dvec3 frontMultFar = m_camFront * player.farPlaneDistance;
-
-	// Set each of the frustum planes of the camera
-	// Near plane
-	player.frustum.near = { player.position + (player.nearPlaneDistance * m_camFront), m_camFront };
-
-	// Right and left planes
-	glm::dvec3 planeCalc = m_camRight * halfHside;
-	player.frustum.right = { player.position, glm::cross(frontMultFar - planeCalc, m_camUp) };
-	player.frustum.left = { player.position, glm::cross(m_camUp, frontMultFar + planeCalc) };
-
-	// Top and bottom planesw
-	planeCalc = m_camUp * halfVside;
-	player.frustum.top = { player.position, glm::cross(m_camRight, frontMultFar - planeCalc) };
-	player.frustum.bottom = { player.position, glm::cross(frontMultFar + planeCalc, m_camRight) };
 }
 
 void Player::UpdateOffset() noexcept
 {
-	const WorldPos initial = player.offset; // Get initial offset for comparison
-	player.offset = ChunkSettings::WorldToOffset(player.position); // Calculate new player offset
+	const WorldPosition initial = player.offset; // Get initial offset for comparison
+	player.offset = ChunkValues::WorldToOffset(player.position); // Calculate new player offset
 
 	// Check if offset changed
 	if ((initial.x != player.offset.x || initial.z != player.offset.z)) { 
@@ -634,6 +627,16 @@ void Player::UpdateOffset() noexcept
 	}
 	// Also update debug chunk borders to match player Y chunk offset
 	else if (initial.y != player.offset.y) world->DebugChunkBorders(false);
+}
+
+void Player::UpdateFrustum() noexcept
+{
+	// Update frustum variables
+	player.frustum.UpdateFrustum(
+		player.position,
+		m_camFront, m_camUp, m_camRight,
+		player.fov
+	);
 }
 
 void Player::UpdateCameraVectors() noexcept
@@ -656,12 +659,14 @@ void Player::UpdateCameraVectors() noexcept
 	// Set the front and right vectors excluding Y axis/pitch for movement ignoring camera pitch
 	m_NPcamFront = glm::normalize(glm::dvec3(m_camFront.x, 0.0, m_camFront.z));
 	m_NPcamRight = glm::normalize(glm::dvec3(m_camRight.x, 0.0, m_camRight.z));
+
+	UpdateFrustum(); // Update camera frustum to use new camera vectors
 }
 
 void Player::UpdateScroll(float yoffset) noexcept
 {
 	const int newSelection = static_cast<int>(selected) + (yoffset > 0.0f ? 1 : -1);
-	selected = static_cast<std::uint8_t>(Math::loopAround(newSelection, 0, 9));
+	selected = static_cast<std::uint8_t>(Math::loop(newSelection, 0, 9));
 	UpdateInventory();
 }
 
@@ -723,7 +728,7 @@ void Player::UpdateInventory() noexcept
 	enum TextureIndex : std::uint32_t { TI_Background, TI_Unequipped, TI_Equipped, TI_Crosshair };
 
 	// Reset inventory instances count
-	m_totalInventoryInstances = 0u;
+	m_totalInventoryInstances = std::uint8_t{};
 
 	const auto AddHotbarSlot = [&](int hotbarID, TextureIndex texture) noexcept {
 		inventoryData[m_totalInventoryInstances++] = { GetSlotDims(SlotType::Hotbar, hotbarID, false), texture };
@@ -731,7 +736,7 @@ void Player::UpdateInventory() noexcept
 		// Also add block texture if there is a valid item in the slot - use top texture
 		const int itemSlotObject = static_cast<int>(player.inventory[hotbarID].objectID);
 		if (itemSlotObject != static_cast<int>(ObjectID::Air)) {
-			const std::uint32_t blockTexture = ChunkSettings::GetBlockData(itemSlotObject).textures[WldDir_Up];
+			const std::uint32_t blockTexture = ChunkValues::GetBlockData(itemSlotObject).textures[WldDir_Up];
 			inventoryData[m_totalInventoryInstances++] = { GetSlotDims(SlotType::Hotbar, hotbarID, true), blockTexture, true };
 		}
 	};
@@ -770,7 +775,7 @@ void Player::UpdateInventory() noexcept
 		// Same as hotbar, check for valid slot item
 		const int itemSlotObject = static_cast<int>(player.inventory[inventoryID].objectID);
 		if (itemSlotObject != static_cast<int>(ObjectID::Air)) {
-			const std::uint32_t blockTexture = ChunkSettings::GetBlockData(itemSlotObject).textures[WldDir_Up];
+			const std::uint32_t blockTexture = ChunkValues::GetBlockData(itemSlotObject).textures[WldDir_Up];
 			inventoryData[m_totalInventoryInstances++] = { GetSlotDims(SlotType::Inventory, inventoryID, true), blockTexture, true };
 		}
 	}
@@ -781,7 +786,7 @@ void Player::UpdateInventory() noexcept
 
 void Player::UpdateInventoryTextPos() noexcept
 {
-	const glm::vec2 textOffset = { 0.02f, 0.05f * game.aspect };
+	const glm::vec2 textOffset = { 0.02f, 0.045f * game.aspect };
 	
 	for (int i = 0; i < 9; ++i) {
 		world->textRenderer.ChangePosition(player.inventory[i].slotText, GetSlotPos(SlotType::Hotbar, i, false) + textOffset);
@@ -793,7 +798,7 @@ void Player::UpdateInventoryTextPos() noexcept
 
 void Player::UpdateSlot(int slotIndex, ObjectID object, std::uint8_t count)
 {
-	PlayerObject::InventorySlot &slot = player.inventory[slotIndex];
+	WorldPlayer::InventorySlot &slot = player.inventory[slotIndex];
 	bool needsUpdate = object != slot.objectID; // Determine if inventory elements need to be updated
 	bool shouldMirror = slotIndex < 9; // Hotbar text changes should be mirrored to the one in the inventory
 

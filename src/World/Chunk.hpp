@@ -6,7 +6,8 @@
 
 struct Chunk
 {
-	typedef std::unordered_map<WorldPos, Chunk*, Math::WPHash> WorldMapDef;
+public:
+	typedef std::unordered_map<WorldPosition, Chunk*, Math::WPHash> WorldMapDef;
 
 	enum class ChunkState : std::uint8_t
 	{
@@ -24,31 +25,31 @@ struct Chunk
 	};
 
 	struct BlockQueue {
-		BlockQueue(int x, int y, int z, ObjectID id, bool natural) noexcept : pos{x, y, z}, blockID(id), natural(natural) {}
+		BlockQueue(glm::ivec3 pos, ObjectID id, bool natural) noexcept : pos(glm::i8vec3(pos)), blockID(id), natural(natural) {}
 		glm::i8vec3 pos;
 		ObjectID blockID;
 		bool natural;
 	};
 
 	typedef std::vector<BlockQueue> BlockQueueVector;
-	typedef std::unordered_map<WorldPos, BlockQueueVector, Math::WPHash> BlockQueueMap;
+	typedef std::unordered_map<WorldPosition, BlockQueueVector, Math::WPHash> BlockQueueMap;
+	typedef BlockQueueMap::value_type BlockQueuePair;
 
-	ChunkSettings::BlockArray *chunkBlocks = nullptr;
-	FaceAxisData chunkFaceData[6] {};
+	ChunkValues::BlockArray *chunkBlocks = nullptr;
+	FaceAxisData chunkFaceData[6];
 
-	const double positionMagnitude;
-	const WorldPos *offset;
-
+	const WorldPosition *offset;
 	ChunkState gameState = ChunkState::Normal;
 	
-	Chunk(WorldPos offset) noexcept;
-	void ConstructChunk(const WorldPerlin::NoiseResult *perlinResults, BlockQueueMap &blockQueue) noexcept;
-	
+	void ConstructChunk(const WorldPerlin::NoiseResult *perlinResults, BlockQueueMap &blockQueue, const WorldPosition offset) noexcept;
 	void AttemptGenerateTree(BlockQueueMap &treeBlocksQueue, int x, int y, int z, const WorldPerlin::NoiseResult &noise, ObjectID log, ObjectID leaves) noexcept;
+
+	void AddBlockQueue(BlockQueueMap &map, const WorldPosition &offset, const BlockQueue &queue);
+	
 	static bool NoiseValueRand(const WorldPerlin::NoiseResult &noise, int oneInX) noexcept;
-
+	
 	void CalculateTerrainData(WorldMapDef &chunksMap) noexcept;
-
+	void CalculateTerrainData(WorldMapDef &chunksMap, std::uint32_t *resultArray) noexcept;
 	void AllocateChunkBlocks() noexcept;
 
 	~Chunk();

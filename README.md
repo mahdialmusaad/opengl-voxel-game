@@ -8,7 +8,7 @@ A voxel game built for performance and efficiency.
 ## Features
 This game offers a wide variety of features to create a vast gameplay experience while allowing for new features to be trivially added.
 
-Examples include:
+Examples of features include:
 - **64-bit** generation to allow worlds to span _trillions_ of blocks
 - [Dynamic skybox](src/World/Sky.cpp) with clouds, stars and the sun and moon
 - Custom [text rendering system](src/Rendering/TextRenderer.cpp) that supports different colours, sizes and other features
@@ -33,7 +33,7 @@ To write a command, use the chat with a forward slash as the first character, im
 
 `/name arg1 arg2...`
 
-A message written with the first character as anything else will be treated as a chat message otherwise.
+A message written without a forward slash at the start else will be treated as a chat message instead.
 
 Any command argument marked with an **asterik (*)** is optional. If the command has only one argument and it is optional, entering the command _without_ any arguments acts as a query for the value it changes. 
 
@@ -41,21 +41,28 @@ Any command argument marked with an **asterik (*)** is optional. If the command 
 
 Using a **tilde (~)** as an argument will be treated as the current value. Any number after the tilde will be **added** to the value.
 
->Example: `/tp ~ ~10 ~` will move the player +10 blocks in the Y axis and `/tp ~ ~-10 ~` will move them downwards by 10 blocks.
+>Example: `/tp ~ ~10 ~` will move the player +10 blocks in the Y axis whereas <code>/tp&nbsp;~&nbsp;~-10&nbsp;~</code> will move them downwards by 10 blocks.
+
+A **negative symbol (-)** can also be added before the tilde to negate the resulting value.
+
+>Example: `/tp ~ -~10 ~` will first calculate the +10 of the Y position then negate it. If the Y position was 50, it would be changed to -60 as 50 + 10 = 60 and then 60 * -1 = -60.
+
+The command '**help**' can also be used in-game to display information on how commands are formatted. It also provides a list of all available* commands and descriptions of their purpose.
 
 #### Notable examples include:
-- /tp x y z *pitch *yaw - Teleport to the specified coordinates with optional arguments to set camera pitch and yaw. Scientific notation and other keywords are allowed.
-- /fill x<sub>1</sub> y<sub>1</sub> z<sub>1</sub> x<sub>2</sub> y<sub>2</sub> z<sub>2</sub> id - Fills from the first position to the second (all inclusive) with the specified block ID<sup>^</sup>
-- /speed *n - Change the player's current speed to the specified value.
-- /rd *n - Changes the render distance to the specified value \[0, 50\]
-- /tick *n - Change the tick speed to the specified value, which affects the speed at which in-game time passes. \[-100, 100\]
-- /time *n - Change the current in-game time to the specified value.
-- /fov *n - Change the camera's field of view to the specified value.
-- /clear - Clears the chat
+- /**tp** x y z *pitch *yaw - Teleport to the specified coordinates with optional arguments to set camera pitch and yaw.
+- /**fill** x<sub>1</sub> y<sub>1</sub> z<sub>1</sub> x<sub>2</sub> y<sub>2</sub> z<sub>2</sub> id - Fills from the first position to the second (all inclusive) with the specified block ID<sup>^</sup>
+- /**speed** *n - Change the player's current speed to the specified value.
+- /**tick** *n - Change the tick speed to the specified value, which affects the speed at which in-game time passes.
+- /**time** *n - Change the current in-game time to the specified value. The day-night cycle is respected.
+- /**fov** *n - Change the camera's field of view to the specified value.
+- /**clear** - Clears the chat
 
-Writing any command with the only argument as `?` (or an invalid number of arguments) will display help for that command if available.
+Writing any command with the only argument as `?` or with an invalid number of arguments will display help for that command.
 
-<sub><sup>^</sup>A full list of all the blocks and their associated IDs and properties can be found in the [following file](src/World/Generation/Settings.hpp).</sub>
+^<sub>A full list of all the blocks and their associated IDs and properties can be found in the [following file](src/World/Generation/Settings.hpp).</sub>
+
+*<sub>Debug commands are not included within the list of commands. They can, however, be seen in the commands implementation in the same file linked above.</sub>
 
 <img src="markdown/cmd.png"></img>
 <sup>In-game screenshot with GUI enabled</sup>
@@ -66,19 +73,20 @@ The implementations of controls can also be viewed and easily edited in [this fi
 Default controls are as follows:
 - Movement: **WASD**
 - Write command: **/** (forward slash)
+- Write chat message **T**
 - Exit game/close chat: **ESC**
 
 ### Toggle inputs:
-- Toggle fullscreen: **F**
 - Toggle vertical sync: **X**
 - Toggle inventory: **E**
+- Toggle fog: **F**
 - Toggle gravity: **C**
 - Toggle noclip: **N**
 - Toggle chunk generation: **V**
 
 ### Value inputs*
-- Change speed: **COMMA** and **PERIOD**
-- Change FOV: **I** and **O**
+- Change speed: **COMMA** and **PERIOD** (repeatable)
+- Change FOV: **I** and **O** (repeatable)
 - Change render distance: **[** and **]** (square brackets)
 
 ### Function inputs
@@ -86,6 +94,7 @@ Default controls are as follows:
 - Take screenshot: **F2**
 - Free cursor: **F3**
 - Toggle debug text: **F4**
+- Toggle fullscreen: **F11**
 
 ### Debug inputs
 - Wireframe: **Z**
@@ -93,7 +102,7 @@ Default controls are as follows:
 - Toggle chunk borders: **J**
 - Rebuild chunks: **U**
 
-<sub>* The first input increases the value whilst the other decreases it.</sub>
+*<sub>The first input increases the value whilst the other decreases it. A 'repeatable' input means either input can be held down to repeatedly change the value. Some values are limited to certain bounds, which also applies when editing them with commands.</sub>
 ## Build
 To compile and run the game, you can simply use [CMake](https://cmake.org/).
 
@@ -109,10 +118,6 @@ If you are using CMake in a **terminal**, you can run the following (with your o
 ```bash
 $ cmake -S [source-dir] -B [build-dir]
 ```
-
-If you encounter any problems, feel free to create a new issue so it can be resolved.
-
-<sup>If you are using MSVC, you can compile using the /MP flag to do so in parallel.</sup>
 
 ## Libraries
 This game makes use of a few libraries to work. They can be seen in the 'libraries' folder or below. Make sure to support them, this would not be possible without them!

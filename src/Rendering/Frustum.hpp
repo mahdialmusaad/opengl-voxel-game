@@ -4,24 +4,29 @@
 
 #include "Application/Definitions.hpp"
 
-struct CameraFrustum {
-	struct FrustumPlane 
-	{
-		glm::dvec3 normal = { 0.0, 1.0, 0.0 };
-		double distance = 0.0;
+struct CameraFrustum
+{
+	CameraFrustum() noexcept = default;
+	static constexpr double farPlaneDistance = 10000.0, nearPlaneDistance = 0.05;
 
-		FrustumPlane() noexcept {};
-		FrustumPlane(const glm::dvec3 &distVec, const glm::dvec3 &_normal) noexcept : normal(_normal), distance(glm::dot(_normal, distVec)) {}
-		double DistToPlane(const glm::dvec3 &point) const noexcept { return glm::dot(normal, point) - distance; }
+	struct FrustumPlane
+	{
+		glm::dvec3 normal = { 0.0f, 1.0f, 0.0f };
+		double distance;
+
+		FrustumPlane() noexcept = default;
+		FrustumPlane(const glm::dvec3 &distVec, const glm::dvec3 &norm) noexcept;
+
+		float DistToPlane(const glm::dvec3 &point) const noexcept;
 	};
 
-	FrustumPlane top;
-	FrustumPlane bottom;
+	void UpdateFrustum(const glm::dvec3 &position, const glm::dvec3 &cFront, const glm::dvec3 &cUp, const glm::dvec3 &cRight, double fov) noexcept;
 
-	FrustumPlane right;
-	FrustumPlane left;
+	bool SphereInFrustum(const glm::dvec3 &center, double radius) const noexcept;
 
-	FrustumPlane near;
+	// The 'far' plane would prevent rendering of chunks further away than it so
+	// it is not included in frustum checks. This also improves performance slightly.
+	FrustumPlane top, near, left, right, bottom;
 };
 
 #endif // _SOURCE_RENDERING_FRUSTUM_HDR_

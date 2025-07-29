@@ -4,15 +4,30 @@
 
 #include <random>
 
+// Editable settings to do with terrain generation and noise calculations.
+namespace NoiseValues {
+	constexpr double defaultY = 0.64847273; // Default Y value for noise calculation
+	constexpr double defaultZ = 0.23569347; // Default Z value for noise calculation
+
+	constexpr double noiseStep = 0.01; // How much to traverse in the 'noise map' per block.
+
+	constexpr float maxTerrain = 200.0f; // Maximum height for terrain (structures can still be higher).
+	constexpr float minSurface = 50.0f; // Minimum height for surface (including underwater surface).
+
+	constexpr float terrainRange = maxTerrain - minSurface; // Do not change
+
+	struct LookupVec2 { float x, y; } constexpr noiseLookupVec2[4] = {
+		{ 1.0f, 1.0f }, { -1.0f, 1.0f }, { -1.0f, -1.0f }, { 1.0f, -1.0f }
+	};
+}
+
 struct WorldPerlin {
 	struct NoiseResult {
-		NoiseResult(float cont = 0.0f, float flat = 0.0f, float temp = 0.0f, float hum = 0.0f) noexcept :
-			continentalnessHeight(cont), flatness(flat), temperature(temp), humidity(hum) {
-		};
-		float continentalnessHeight;
-		float flatness;
-		float temperature;
-		float humidity;
+		NoiseResult() noexcept = default;
+		NoiseResult(double x, double z, float cont, float flat, float temp, float hum) noexcept :
+			posX(x), posZ(z), landHeight(cont), flatness(flat), temperature(temp), humidity(hum) {};
+		double posX, posZ;
+		float landHeight, flatness, temperature, humidity;
 	};
 
 	struct NoiseSpline {
@@ -27,7 +42,7 @@ struct WorldPerlin {
 		NoiseSpline(Spline *_splines) noexcept;
 		float GetNoiseHeight(float noise) const noexcept;
 
-		enum MaxSplines_ENUM : int { maxSplines = 10 };
+		enum { maxSplines = 10 };
 		Spline splines[maxSplines];
 	};
 
@@ -37,24 +52,20 @@ struct WorldPerlin {
 	void ChangeSeed();
 	void ChangeSeed(std::int64_t newSeed);
 
-	static constexpr double defaultY = 0.64847273f;
-	static constexpr double defaultZ = 0.23569347f;
-	
-	float Noise1D(double x) const noexcept;
-	float Noise2D(double x, double y) const noexcept;
-	float Noise3D(double x, double y, double z) const noexcept;
-
-	float Octave1D(double x, int octaves) const noexcept;
-	float Octave2D(double x, double y, int octaves) const noexcept;
-	float Octave3D(double x, double y, double z, int octaves) const noexcept;
-
+	float GetNoise(double x, double y, double z) const noexcept;
+	float GetOctave(double x, double y, double z, int octaves) const noexcept;
 private:
-	template<typename T> static constexpr T lerp(T a, T b, T t) noexcept { return a + (b - a) * t; }
-	static float fade(float x) noexcept;
-	static float grad(std::uint8_t hash, float x, float y, float z) noexcept;
+	static float lerp(float a, float b, float t) noexcept { return a + (b - a) * t; };
+	float getDot(const NoiseValues::LookupVec2 &vec, int permVal) const noexcept {
+		const NoiseValues::LookupVec2 &lv2 = NoiseValues::noiseLookupVec2[permVal & 3];
+		return vec.x * lv2.x + vec.y * lv2.y;
+	}
+	float grad(std::uint8_t hash, float x, float y, float z) const noexcept;
+
+	float fade(float x) const noexcept { return x * x * (3.0f - 2.0f * x); }
+	float RemapNoise(float result) const noexcept { return (result * 0.5f) + 0.5f; }
 
 	std::uint8_t m_permutationTable[512] {};
-	void ShuffleTable();
 };
 
 #endif // _SOURCE_GENERATION_PERLIN_HDR_

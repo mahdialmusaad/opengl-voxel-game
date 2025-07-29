@@ -13,23 +13,18 @@ layout (std430, binding = 0) readonly buffer chunkMeshData {
 };
 
 layout (std140, binding = 0) uniform GameMatrices {
-	mat4 matrix;
 	mat4 originMatrix;
 	mat4 starMatrix;
+	mat4 planetsMatrix;
 };
 
 layout (std140, binding = 1) uniform GameTimes {
 	float time;
-	float fogTime;
+	float fogEnd;
+	float fogRange;
 	float starTime;
 	float gameTime;
 	float cloudsTime;
-};
-
-layout (std140, binding = 2) uniform GameColours {
-	vec4 mainSkyColour;
-	vec4 eveningSkyColour;
-	vec4 worldLight;
 };
 
 layout (std140, binding = 3) uniform GamePositions {
@@ -48,27 +43,21 @@ layout (location = 1) in vec4 baseXZ;
 layout (location = 2) in vec4 baseYZ;
 layout (location = 3) in vec4 baseYW;
 
-out vec2 TexCoord;
-out vec4 mult;
+out vec3 texAndFactor;
 
 void main()
 {
 	const ChunkOffset cd = chunkData[gl_DrawIDARB];
+	dvec3 blockPos = dvec3(data & 31, (data >> 5) & 31, (data >> 10) & 31) + dvec3(cd.x, cd.y, cd.z);
 
-	dvec3 blockPos = dvec3(
-		data & 31,
-		(data >> 5) & 31,
-		(data >> 10) & 31
-	) + dvec3(cd.x, cd.y, cd.z);
-
-		 if (cd.f == 0) blockPos += baseXZ.wyx;	// X+
-	else if (cd.f == 1) blockPos += baseYZ.zyx;	// X-
-	else if (cd.f == 2) blockPos += baseYZ.ywx;	// Y+
-	else if (cd.f == 3) blockPos += baseYW.yzx;	// Y-
-	else if (cd.f == 4) blockPos += baseYZ.xyw;	// Z+
-	               else blockPos += baseXZ.xyz;	// Z-
+	     if (cd.f == 0) blockPos += baseXZ.wyx; // X+
+	else if (cd.f == 1) blockPos += baseYZ.zyx; // X-
+	else if (cd.f == 2) blockPos += baseYZ.ywx; // Y+
+	else if (cd.f == 3) blockPos += baseYW.yzx; // Y-
+	else if (cd.f == 4) blockPos += baseYZ.xyw; // Z+
+	               else blockPos += baseXZ.xyz; // Z-
 	
-	gl_Position = originMatrix * vec4(blockPos - playerPosition.xyz, 1.0);
-	TexCoord = vec2((baseYZ.x + float(data >> 15)) * blockTextureSize, baseYW.y);
-	mult = worldLight;
+	const vec3 relPos = vec3(blockPos - playerPosition.xyz);
+	gl_Position = originMatrix * vec4(relPos, 1.0);
+	texAndFactor = vec3((baseYZ.x + float(data >> 15)) * blockTextureSize, baseYW.y, clamp((fogEnd - length(relPos)) / fogRange, 0.0, 1.0));
 }

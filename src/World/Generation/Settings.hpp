@@ -40,30 +40,30 @@ struct WorldBlockData
 {
 	typedef const WorldBlockData &WBD;
 	typedef bool (*renderLookupDefinition)(WBD original, WBD target);
-
+	
 	constexpr WorldBlockData(
 		ObjectID oid,
 		const char *name,
 		TextureIDTypeof t0, TextureIDTypeof t1, TextureIDTypeof t2, TextureIDTypeof t3, TextureIDTypeof t4, TextureIDTypeof t5,
 		bool hasTransparency,
 		bool isSolid,
-		std::int8_t strength,
-		std::uint8_t light,
+		int light,
+		int strength,
 		renderLookupDefinition renderFunc
 	) noexcept :
 		id(static_cast<int>(oid)),
 		name(name),
 		textures{ t0, t1, t2, t3, t4, t5 },
-		lightEmission(light),
+		emission(static_cast<std::uint8_t>(light)),
 		strength(static_cast<std::uint8_t>(strength)),
 		hasTransparency(hasTransparency),
 		isSolid(isSolid),
-		notObscuredBy(*renderFunc) {
+		notObscuredBy(renderFunc) {
 	}
 
 	const int id;
 	const char *name;
-	const std::uint8_t textures[6], lightEmission, strength;
+	const std::uint8_t textures[6], emission, strength;
 	const bool hasTransparency, isSolid;
 	const renderLookupDefinition notObscuredBy;
 };
@@ -83,7 +83,7 @@ namespace WorldBlockData_DEF
 		LogSide,
 		Leaves,
 		Planks,
-		DefaultTex = 0u,
+		DefaultTex = TextureIDTypeof{},
 	};
 	enum BlockDataBoolean : bool {
 		Transp = true,
@@ -91,7 +91,7 @@ namespace WorldBlockData_DEF
 		YSolid = true,
 		NSolid = false
 	};
-	enum LightStages : std::uint8_t {
+	enum LightStages {
 		LightN,
 		Light1,
 		Light2,
@@ -111,123 +111,134 @@ namespace WorldBlockData_DEF
 
 	// All blocks and their properties
 	constexpr WorldBlockData BlockIDData[static_cast<int>(ObjectID::NumUnique)] = {
-	// ID, tex0, tex1, tex2, tex3, tex4, tex5, transparency, solid, light, strength, function
-		{ 
-			ObjectID::Air, "Air",
-			DefaultTex, DefaultTex, DefaultTex, DefaultTex, DefaultTex, DefaultTex, 
-			Transp, NSolid, 0, LightN, R_Never
-		},
-		{ 
-			ObjectID::Grass, "Grass",
-			GrassSide, GrassSide, GrassTop, Dirt, GrassSide, GrassSide, 
-			Opaque, YSolid, 8, LightN, R_Default
-		},
-		{
-			ObjectID::Dirt, "Dirt",
-			Dirt, Dirt, Dirt, Dirt, Dirt, Dirt,
-			Opaque, YSolid, 7, LightN, R_Default
-		},
-		{
-			ObjectID::Stone, "Stone",
-			Stone, Stone, Stone, Stone, Stone, Stone,
-			Opaque, YSolid, 30, LightN, R_Default
-		},
-		{
-			ObjectID::Sand, "Sand",
-			Sand, Sand, Sand, Sand, Sand, Sand,
-			Opaque, YSolid, 6, LightN, R_Default
-		},
-		{
-			ObjectID::Water, "Water",
-			Water, Water, Water, Water, Water, Water,
-			Transp, NSolid, 0, LightN, R_HideSelf
-		},
-		{
-			ObjectID::Log, "Log",
-			LogSide, LogSide, LogInner, LogInner, LogSide, LogSide,
-			Opaque, YSolid, 12, LightN, R_Default
-		},
-		{
-			ObjectID::Leaves, "Leaves",
-			Leaves, Leaves, Leaves, Leaves, Leaves, Leaves,
-			Transp, YSolid, 3, LightN, R_Default
-		},
-		{
-			ObjectID::Planks, "Planks",
-			Planks, Planks, Planks, Planks, Planks, Planks,
-			Opaque, YSolid, 10, LightN, R_Default
-		},
+	{ 
+		ObjectID::Air, "Air",
+		DefaultTex, DefaultTex, DefaultTex, DefaultTex, DefaultTex, DefaultTex, 
+		Transp, NSolid, LightN, 0, R_Never
+	},
+	{ 
+		ObjectID::Grass, "Grass",
+		GrassSide, GrassSide, GrassTop, Dirt, GrassSide, GrassSide, 
+		Opaque, YSolid, LightN, 8, R_Default
+	},
+	{
+		ObjectID::Dirt, "Dirt",
+		Dirt, Dirt, Dirt, Dirt, Dirt, Dirt,
+		Opaque, YSolid, LightN, 7, R_Default
+	},
+	{
+		ObjectID::Stone, "Stone",
+		Stone, Stone, Stone, Stone, Stone, Stone,
+		Opaque, YSolid, LightN, 30, R_Default
+	},
+	{
+		ObjectID::Sand, "Sand",
+		Sand, Sand, Sand, Sand, Sand, Sand,
+		Opaque, YSolid, LightN, 6, R_Default
+	},
+	{
+		ObjectID::Water, "Water",
+		Water, Water, Water, Water, Water, Water,
+		Transp, NSolid, LightN, 0, R_HideSelf
+	},
+	{
+		ObjectID::Log, "Log",
+		LogSide, LogSide, LogInner, LogInner, LogSide, LogSide,
+		Opaque, YSolid, LightN, 12, R_Default
+	},
+	{
+		ObjectID::Leaves, "Leaves",
+		Leaves, Leaves, Leaves, Leaves, Leaves, Leaves,
+		Transp, YSolid, LightN, 3, R_Default
+	},
+	{
+		ObjectID::Planks, "Planks",
+		Planks, Planks, Planks, Planks, Planks, Planks,
+		Opaque, YSolid, LightN, 10, R_Default
+	},
 	};
 };
 
-
 // Game settings
-namespace ChunkSettings
+namespace ChunkValues
 {
-	constexpr int CHUNK_SIZE = 32; // (POWER OF 2 ONLY) Changing this requires the world shader to be updated as well.
-	constexpr int HEIGHT_COUNT = 8; // How many chunks in a 'full chunk'
-
+	constexpr int size = 16; // The side length of a chunk (cube).
+	constexpr int worldHeight = 256; // The maximum block height in the world (must be a multiple of the chunk size)
+	
 	// Chunk generation settings (editable)
-	constexpr int CHUNK_BASE_DIRT_HEIGHT = HEIGHT_COUNT / 2;
-	constexpr int CHUNK_WATER_HEIGHT = CHUNK_SIZE * HEIGHT_COUNT / 4;
-	constexpr int CHUNK_MOUNTAIN_HEIGHT = CHUNK_WATER_HEIGHT * 3;
-	constexpr int CHUNK_LAND_MINIMUM_HEIGHT = CHUNK_WATER_HEIGHT / 2;
-	constexpr double NOISE_STEP = 0.01;
-	constexpr int TREE_GEN_CHANCE = 100;
+	constexpr int baseDirtHeight = 3; // Amount of dirt blocks between surface and stone.
+	constexpr int waterMaxHeight = 80; // Maximum Y position of water.
+	constexpr int treeSpawnChance = 100; // The chance for a grass block to have a tree.
+	// Settings/values to do with noise can be found in the 'perlin' file.
 	
 	// Calculation shortcuts - do not change
-	constexpr int CHUNK_SIZE_SQUARED = CHUNK_SIZE * CHUNK_SIZE;
-	constexpr int MAX_WORLD_HEIGHT = CHUNK_SIZE * HEIGHT_COUNT;
+	constexpr int heightCount = worldHeight / size;
+	constexpr int sizeLess = size - 1;
+	constexpr int sizeSquared = size * size;
+	const double sqrtSize = Math::sqrt(size);
+	constexpr int maxHeight = size * heightCount;
 
-	constexpr std::int32_t CHUNK_BLOCKS_AMOUNT = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
-	constexpr std::int32_t CHUNK_UNIQUE_FACES = CHUNK_BLOCKS_AMOUNT * 6;
+	// Use template recursion to get no. of bits needed to store an integer at runtime
+	template<int X> struct bitsStore { enum { value = bitsStore<(X >> 1)>::value + 1 }; };
+	template<> struct bitsStore<0> { enum { value = 0 }; };
+	constexpr int sizeBits = 5; // This value must be reflected in the block shader.
 
-	constexpr int MAX_WORLD_HEIGHT_INDEX = MAX_WORLD_HEIGHT - 1;
-	constexpr float NOISE_MULTIPLIER = static_cast<float>(MAX_WORLD_HEIGHT) * 0.5f;
-
-	constexpr int CHUNK_SIZE_HALF = CHUNK_SIZE / 2;
-
-	constexpr int CHUNK_SIZE_M1 = CHUNK_SIZE - 1;
-	constexpr float CHUNK_SIZE_FLT = static_cast<float>(CHUNK_SIZE);
-	constexpr double CHUNK_SIZE_DBL = static_cast<double>(CHUNK_SIZE);
-
-	constexpr float CHUNK_SIZE_RECIP = 1.0f / CHUNK_SIZE_FLT;
-	constexpr double CHUNK_SIZE_RECIP_DBL = 1.0 / CHUNK_SIZE_DBL;
+	constexpr std::int32_t blocksAmount = size * size * size;
+	constexpr std::int32_t uniqueFaces = blocksAmount * 6;
 
 	template<typename T> WorldBlockData::WBD GetBlockData(T blockID) noexcept { return WorldBlockData_DEF::BlockIDData[static_cast<int>(blockID)]; }
 
 	PosType ToWorld(double a) noexcept;
 	template<typename T> PosType ToWorld(T a) noexcept { return static_cast<PosType>(a); }
-	template<typename T, glm::qualifier Q> WorldPos ToWorld(const glm::vec<3, T, Q> &vec) noexcept { return { ToWorld(vec.x), ToWorld(vec.y), ToWorld(vec.z) }; }
+	template<typename T, glm::qualifier Q> WorldPosition ToWorld(const glm::vec<3, T, Q> &vec) noexcept {
+		return { ToWorld(vec.x), ToWorld(vec.y), ToWorld(vec.z) };
+	}
 	
 	template<typename T> PosType WorldToOffset(T x) noexcept {
 		const PosType v = ToWorld(x);
-		const PosType a = v < static_cast<PosType>(0) ? v - static_cast<PosType>(CHUNK_SIZE_M1) : v;
-		return (a - (a % static_cast<PosType>(CHUNK_SIZE))) / static_cast<PosType>(CHUNK_SIZE);
+		const PosType a = v < PosType{} ? v - static_cast<PosType>(sizeLess) : v;
+		return (a - (a % static_cast<PosType>(size))) / static_cast<PosType>(size);
 	}
-	template<typename T, glm::qualifier Q> WorldPos WorldToOffset(const glm::vec<3, T, Q> &pos) noexcept { return { WorldToOffset(pos.x), WorldToOffset(pos.y), WorldToOffset(pos.z) }; }
+	template<typename T, glm::qualifier Q> WorldPosition WorldToOffset(const glm::vec<3, T, Q> &pos) noexcept {
+		return { WorldToOffset(pos.x), WorldToOffset(pos.y), WorldToOffset(pos.z) };
+	}
 	
-	template<typename T> int WorldToLocal(T x) noexcept { return static_cast<int>(static_cast<PosType>(x) - (static_cast<PosType>(CHUNK_SIZE) * WorldToOffset(x))); }
-	template<typename T, glm::qualifier Q> glm::ivec3 WorldToLocal(const glm::vec<3, T, Q> &pos) noexcept { return { WorldToLocal(pos.x), WorldToLocal(pos.y), WorldToLocal(pos.z) }; }
+	template<typename T> int WorldToLocal(T x) noexcept {
+		return static_cast<int>(static_cast<PosType>(x) - (static_cast<PosType>(size) * WorldToOffset(x)));
+	}
+	template<typename T, glm::qualifier Q> glm::ivec3 WorldToLocal(const glm::vec<3, T, Q> &pos) noexcept {
+		return { WorldToLocal(pos.x), WorldToLocal(pos.y), WorldToLocal(pos.z) };
+	}
 	
 	bool IsOnCorner(const glm::ivec3 &pos, WorldDirection dir) noexcept;
-	bool ChunkOnFrustum(const CameraFrustum &frustum, glm::vec3 center) noexcept;
 
 	struct BlockArray {
-		typedef ObjectID (InnerArrayDef)[CHUNK_SIZE];
-		typedef InnerArrayDef (OuterArrayDef)[CHUNK_SIZE];
-		typedef OuterArrayDef (ArrayDef)[CHUNK_SIZE];
-
-		ArrayDef blocks{};
+		ObjectID blocks[size][size][size];
 		template<typename T, glm::qualifier Q> ObjectID at(glm::vec<3, T, Q> v) const noexcept { return blocks[v.x][v.y][v.z]; }
 		ObjectID &atref(glm::ivec3 v) noexcept { return blocks[v.x][v.y][v.z]; }
 	} const emptyChunk{};
+
+	static_assert(!(worldHeight % size), "The world height must be a multiple of the chunk size.");
 };
 
-struct ChunkLookupData {
+struct ChunkLookupData
+{
 	glm::i8vec3 pos;
 	std::uint8_t index;
-	static void CalculateLookupData(ChunkLookupData (&lookupData)[ChunkSettings::CHUNK_UNIQUE_FACES]) noexcept;
-} extern chunkLookupData[ChunkSettings::CHUNK_UNIQUE_FACES];
+	static void CalculateLookupData(ChunkLookupData *lookupData) noexcept;
+} extern chunkLookupData[ChunkValues::uniqueFaces];
+
+// Ranges for certain values across the game
+namespace ValueLimits
+{
+	template<typename T> struct LVec { T min, max; };
+	template<typename T> using LMS = std::numeric_limits<T>;
+	template<typename T> void ClampAdd(T &val, T add, const LVec<T> &lvec) { val = glm::clamp(val + add, lvec.min, lvec.max); };
+
+	constexpr double VLradian = 0.01745329251994329576923690768489;
+	constexpr LVec<double> fovLimit  = { 5.0 * VLradian, 160.0 * VLradian };
+	constexpr LVec<int> renderLimit  = { 4, LMS<int>::max() };
+	constexpr LVec<double> tickLimit = { -200.0, 200.0 };
+}
 
 #endif // _SOURCE_GENERATION_SETTINGS_HDR_

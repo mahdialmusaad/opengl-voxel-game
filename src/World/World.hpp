@@ -10,27 +10,29 @@ public:
 	Chunk::WorldMapDef allchunks;
 	TextRenderer textRenderer;
 
-	PlayerObject &player;
-	std::uint32_t squaresCount = 0u;
-	int chunkRenderDistance = 4;
+	WorldPlayer &player;
+	std::uint32_t squaresCount, renderSquaresCount, renderChunksCount;
+	std::int32_t chunkRenderDistance = static_cast<std::int32_t>(4);
 
-	World(PlayerObject &player) noexcept;
-	void DrawWorld() noexcept;
+	World(WorldPlayer &player) noexcept;
+	void DrawWorld() const noexcept;
 
 	void DebugChunkBorders(bool drawing) noexcept;
 	void DebugReset() noexcept;
 
-	Chunk *WorldPositionToChunk(const WorldPos &pos) const noexcept;
-	ObjectID GetBlock(const WorldPos &pos) const noexcept;
-	void SetBlock(const WorldPos &pos, ObjectID block, bool updateChunk) noexcept;
+	Chunk *WorldPositionToChunk(const WorldPosition &pos) const noexcept;
+	ObjectID GetBlock(const WorldPosition &pos) const noexcept;
+	void SetBlock(const WorldPosition &pos, ObjectID block, bool updateChunk) noexcept;
 
-	Chunk *GetChunk(const WorldPos &offset) const noexcept;
+	Chunk *GetChunk(const WorldPosition &offset) const noexcept;
 	PosType HighestBlockPosition(PosType x, PosType z) const noexcept;
 
-	bool InRenderDistance(WorldPos &playerOffset, const WorldPos &chunkOffset) noexcept;
+	PosType PlayerChunkDistance(const WorldPosition &chunkOffset) const noexcept;
+	bool InRenderDistance(const WorldPosition &chunkOffset) const noexcept;
+
 	void UpdateRenderDistance(int newRenderDistance) noexcept;
 
-	bool FillBlocks(WorldPos from, WorldPos to, ObjectID objectID) noexcept;
+	std::uintmax_t FillBlocks(WorldPosition from, WorldPosition to, ObjectID objectID) noexcept;
 
 	void OffsetUpdate() noexcept;
 	void UpdateWorldBuffers() noexcept;
@@ -41,31 +43,30 @@ public:
 		WorldDirection direction;
 	};
 
-	int GetNearbyChunks(Chunk *chunk, NearbyChunkData *nearbyData, bool includeY);
-	int GetIndirectCalls() const noexcept { return static_cast<int>(m_indirectCalls); }
-	int GetNumChunks(bool includeHeight = true) const noexcept { 
-		const int patternChunks = (2 * chunkRenderDistance * chunkRenderDistance) + (2 * chunkRenderDistance) + 1;
-		return patternChunks * (includeHeight ? ChunkSettings::HEIGHT_COUNT : 1); 
-	}
+	int GetNearbyChunks(const WorldPosition &offset, NearbyChunkData *nearbyData, bool includeY) const noexcept;
+
+	int GetIndirectCalls() const noexcept;
+	int GetNumChunks(bool includeHeight = true) const noexcept;
 
 	~World() noexcept;
 private:
-	void RemoveChunk(Chunk *chunk) noexcept;
-	void SetPerlinValues(WorldPerlin::NoiseResult *results, ChunkOffset offset) noexcept;
+	void SetPerlinValues(WorldPerlin::NoiseResult *results, WorldXZPosition chunkPos) noexcept;
 
 	GLuint m_bordersVAO, m_bordersVBO, m_bordersEBO;
 	GLint m_borderUniformLocation;
 
 	GLuint m_worldVAO, m_worldInstancedVBO, m_worldPlaneVBO;
-	GLsizei m_indirectCalls = 0;
+	GLsizei m_indirectCalls;
 	bool canMap = false;
 
 	typedef std::vector<Chunk::BlockQueue> BlockQueueVector;
-	std::unordered_map<WorldPos, BlockQueueVector, Math::WPHash> m_blockQueue;
+	std::unordered_map<WorldPosition, BlockQueueVector, Math::WPHash> m_blockQueue;
 
 	void ApplyQueue(Chunk *chunk, const BlockQueueVector &blockQueue, bool calc) noexcept;
-	bool ApplyQueue(const BlockQueueVector &blockQueue, const WorldPos &offset, bool calc) noexcept;
+	bool ApplyQueue(const BlockQueueVector &blockQueue, const WorldPosition &offset, bool calc) noexcept;
 	bool ApplyQueue(Chunk *chunk, bool calc) noexcept;
+
+	void AddSurrounding(Chunk::WorldMapDef &chunksMap, NearbyChunkData *nearbyData, const WorldPosition &offset, bool inclY) const noexcept;
 
 	void ApplyUpdateRequest() noexcept;
 
@@ -77,10 +78,10 @@ private:
 	};
 
 	struct IndirectDrawCommand {
-		std::uint32_t count;
-		std::uint32_t instanceCount;
-		std::uint32_t first;
-		std::uint32_t baseInstance;
+		GLuint count;
+		GLuint instanceCount;
+		GLuint first;
+		GLuint baseInstance;
 	};
 
 	struct ChunkTranslucentData {
@@ -88,14 +89,13 @@ private:
 		Chunk *chunk;
 	};
 
-	Chunk::FaceAxisData **faceDataPointers;
-	ChunkTranslucentData *translucentChunks;
-	IndirectDrawCommand *worldIndirectData;
-	ShaderChunkFace *worldOffsetData;
+	Chunk::FaceAxisData **faceDataPointers = nullptr;
+	ChunkTranslucentData *translucentChunks = nullptr;
+	IndirectDrawCommand *worldIndirectData = nullptr;
+	ShaderChunkFace *worldOffsetData = nullptr;
+	WorldXZPosition *surroundingOffsets = nullptr;
 
-	ChunkOffset *surroundingOffsets = nullptr;
-
-	WorldPerlin::NoiseResult *noiseResults = new WorldPerlin::NoiseResult[ChunkSettings::CHUNK_SIZE_SQUARED];
+	struct ChunkThreadsData { std::thread thread; Chunk::BlockQueueMap map; } *calcThreadData = new ChunkThreadsData[game.threads];
 };
 
 #endif

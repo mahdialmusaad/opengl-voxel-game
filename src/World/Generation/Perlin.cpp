@@ -10,97 +10,8 @@ void WorldPerlin::ChangeSeed()
 void WorldPerlin::ChangeSeed(std::int64_t newSeed)
 {
 	seed = newSeed;
-	ShuffleTable();
-}
 
-float WorldPerlin::Noise1D(double x) const noexcept
-{
-	return Noise3D(x, defaultY, defaultZ);
-}
-
-float WorldPerlin::Noise2D(double x, double y) const noexcept
-{
-	return Noise3D(x, y, defaultZ);
-}
-
-float WorldPerlin::Noise3D(double x, double y, double z) const noexcept
-{
-	double floorX = floor(x), 
-		   floorY = floor(y), 
-		   floorZ = floor(z);
-
-	int X = static_cast<int>(static_cast<std::int64_t>(floorX) & 255), 
-		Y = static_cast<int>(static_cast<std::int64_t>(floorY) & 255), 
-		Z = static_cast<int>(static_cast<std::int64_t>(floorZ) & 255);
-	
-	int A = m_permutationTable[X] + Y, B = m_permutationTable[X + 1] + Y;
-	int AA = m_permutationTable[A] + Z, AB = m_permutationTable[A + 1] + Z;
-	int BA = m_permutationTable[B] + Z, BB = m_permutationTable[B + 1] + Z;
-
-	float fx = static_cast<float>(x - floorX), nX = fx - 1.0f, 
-		  fy = static_cast<float>(y - floorY), nY = fy - 1.0f, 
-		  fz = static_cast<float>(z - floorZ), nZ = fz - 1.0f;
-
-	float u = fade(fx), v = fade(fy);
-
-	return lerp(
-		lerp(
-			lerp(grad(m_permutationTable[AA], fx, fy, fz), grad(m_permutationTable[BA], nX, fy, fz), u), 
-			lerp(grad(m_permutationTable[AB], fx, nY, fz), grad(m_permutationTable[BB], nX, nY, fz), u), v
-		), 
-		lerp(
-			lerp(grad(m_permutationTable[AA + 1], fx, fy, nZ), grad(m_permutationTable[BA + 1], nX, fy, nZ), u), 
-			lerp(grad(m_permutationTable[AB + 1], fx, nY, nZ), grad(m_permutationTable[BB + 1], nX, nY, nZ), u), v
-		), 
-		fade(fz)
-	);
-}
-
-float WorldPerlin::Octave1D(double x, int octaves) const noexcept
-{
-	float total = 0.0f, frequency = 1.0f, amplitude = 1.0f, tvalue = 0.0f;
-
-	for (int i = 0; i < octaves; ++i) {
-		tvalue += Noise1D(x * frequency) * amplitude;
-		total += amplitude;
-		amplitude *= 0.5f;
-		frequency *= 2.0f;
-	}
-
-	return tvalue / total;
-}
-
-float WorldPerlin::Octave2D(double x, double y, int octaves) const noexcept
-{
-	float total = 0.0f, frequency = 1.0f, amplitude = 1.0f, tvalue = 0.0f;
-
-	for (int i = 0; i < octaves; ++i) {
-		tvalue += Noise2D(x * frequency, y * frequency) * amplitude;
-		total += amplitude;
-		amplitude *= 0.5f;
-		frequency *= 2.0f;
-	}
-
-	return tvalue / total;
-}
-
-float WorldPerlin::Octave3D(double x, double y, double z, int octaves) const noexcept
-{
-	float total = 0.0f, frequency = 1.0f, amplitude = 1.0f, tvalue = 0.0f;
-
-	for (int i = 0; i < octaves; ++i) {
-		tvalue += Noise3D(x * frequency, y * frequency, z * frequency) * amplitude;
-		total += amplitude;
-		amplitude *= 0.5f;
-		frequency *= 2.0f;
-	}
-
-	return tvalue / total;
-}
-
-void WorldPerlin::ShuffleTable()
-{
-	static const std::uint8_t defaultPerlinTable[256] = {
+	const std::uint8_t defaultPerlinTable[256] = {
 		151u, 160u, 137u, 91u, 90u, 15u,
 		131u, 13u, 201u, 95u, 96u, 53u, 194u, 233u, 7u, 225u, 140u, 36u, 103u, 30u, 69u, 142u, 8u, 99u, 37u, 240u, 21u, 10u, 23u,
 		190u, 6u, 148u, 247u, 120u, 234u, 75u, 0u, 26u, 197u, 62u, 94u, 252u, 219u, 203u, 117u, 35u, 11u, 32u, 57u, 177u, 33u,
@@ -121,12 +32,60 @@ void WorldPerlin::ShuffleTable()
 	for (int i = 0; i < 256; ++i) m_permutationTable[i + 256] = m_permutationTable[i] = defaultPerlinTable[dist(gen)];
 }
 
-float WorldPerlin::fade(float x) noexcept
+float WorldPerlin::GetNoise(double x, double y, double z) const noexcept
 {
-	return x * x * (3.0f - 2.0f * x);
+	// Perlin noise algorithm - used for smooth procedural terrain generation.
+	// View original source from Ken Perlin at https://mrl.cs.nyu.edu/~perlin/noise/
+
+	const double floorX = std::floor(x), floorY = std::floor(y), floorZ = std::floor(z);
+
+	const int X = static_cast<int>(static_cast<std::int64_t>(floorX) & static_cast<std::int64_t>(255));
+	const int Y = static_cast<int>(static_cast<std::int64_t>(floorY) & static_cast<std::int64_t>(255));
+	const int Z = static_cast<int>(static_cast<std::int64_t>(floorZ) & static_cast<std::int64_t>(255));
+	
+	const int A = static_cast<int>(m_permutationTable[X]) + Y, B = static_cast<int>(m_permutationTable[X + 1]) + Y;
+	const int AA = static_cast<int>(m_permutationTable[A]) + Z, AB =static_cast<int>( m_permutationTable[A + 1]) + Z;
+	const int BA = static_cast<int>(m_permutationTable[B]) + Z, BB = static_cast<int>(m_permutationTable[B + 1]) + Z;
+
+	const float fx = static_cast<float>(x - floorX), nX = fx - 1.0f; 
+	const float fy = static_cast<float>(y - floorY), nY = fy - 1.0f;
+	const float fz = static_cast<float>(z - floorZ), nZ = fz - 1.0f;
+
+	const float u = fade(fx), v = fade(fy);
+
+	return RemapNoise(lerp(
+		lerp(
+			lerp(grad(m_permutationTable[AA], fx, fy, fz), grad(m_permutationTable[BA], nX, fy, fz), u), 
+			lerp(grad(m_permutationTable[AB], fx, nY, fz), grad(m_permutationTable[BB], nX, nY, fz), u), v
+		),
+		lerp(
+			lerp(grad(m_permutationTable[AA + 1], fx, fy, nZ), grad(m_permutationTable[BA + 1], nX, fy, nZ), u), 
+			lerp(grad(m_permutationTable[AB + 1], fx, nY, nZ), grad(m_permutationTable[BB + 1], nX, nY, nZ), u), v
+		),
+		fade(fz)
+	));
 }
 
-float WorldPerlin::grad(std::uint8_t hash, float x, float y, float z) noexcept
+float WorldPerlin::GetOctave(double x, double y, double z, int octaves) const noexcept
+{
+	float total = 0.0f, amplitude = 1.0f;
+	double frequency = 1.0;
+
+	for (int i = 0; i < octaves; ++i) {
+		total += GetNoise(
+			x * frequency,
+			y * frequency,
+			z * frequency
+		) * amplitude;
+		amplitude *= 0.5f;
+		frequency *= 2.0;
+	}
+
+	const float result = total / (static_cast<float>(octaves) * 0.5f);
+	return result * result * result * result * (3.0f - result * 2.0f);
+}
+
+float WorldPerlin::grad(std::uint8_t hash, float x, float y, float z) const noexcept
 {
 	const int h = hash & 15;
 	const float u = h < 8 ? x : y;
@@ -148,17 +107,17 @@ float WorldPerlin::NoiseSpline::GetNoiseHeight(float noise) const noexcept
 		const Spline &currentSpline = splines[i];
 		// Check if the noise value (0.0 - 1.0) is after a point to get the height value
 		// between the current point and the next point at the relative noise location
-		if (noise > currentSpline.normalizedLocation) {
-			const Spline &nextSpline = splines[std::min(i + 1, static_cast<int>(maxSplines))];
-			// Get the height value between the current point and the next point, 
-			// specifically at where the noise value is relative to them
-			// (e.g. 0.4 noise value is halfway between points 0.2 and 0.6, interpolation factor is 0.5)
-			return WorldPerlin::lerp(
-				currentSpline.heightModifier, 
-				nextSpline.heightModifier, 
-				(noise - currentSpline.normalizedLocation) / (nextSpline.normalizedLocation - currentSpline.normalizedLocation)
-			);
-		}
+		if (noise <= currentSpline.normalizedLocation) continue;
+
+		const Spline &nextSpline = splines[std::min(i + 1, static_cast<int>(maxSplines))];
+		// Get the height value between the current point and the next point, 
+		// specifically at where the noise value is relative to them
+		// (e.g. 0.4 noise value is halfway between points 0.2 and 0.6, interpolation factor is 0.5)
+		return WorldPerlin::lerp(
+			currentSpline.heightModifier, 
+			nextSpline.heightModifier, 
+			(noise - currentSpline.normalizedLocation) / (nextSpline.normalizedLocation - currentSpline.normalizedLocation)
+		);
 	}
 
 	// Otherwise, the noise value is above the spline points so return the last one

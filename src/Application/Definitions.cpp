@@ -1,49 +1,58 @@
 #include "Definitions.hpp"
 
-// -------------------- Math struct -------------------- 
+// (Math namespace is all inline for now)
 
-std::size_t Math::WPHash::operator()(const WorldPos &vec) const noexcept
-{
-	return 
-		static_cast<std::size_t>(vec.x) ^ 
-		(
-			((static_cast<std::size_t>(vec.y) << static_cast<std::size_t>(1u)) ^ 
-			(static_cast<std::size_t>(vec.z) << static_cast<std::size_t>(1u))
-		) >> static_cast<std::size_t>(1u));
-}
-int Math::loopAround(int x, int minInc, int maxExcl) noexcept { return minInc + ((maxExcl + x) % maxExcl); }
-bool Math::isLargeOffset(const WorldPos &pos, PosType threshold) noexcept { return glm::max(glm::max(glm::abs(pos.x), glm::abs(pos.y)), glm::abs(pos.z)) >= threshold; }
-
-// -------------------- TextFormat struct -------------------- 
+// -------------------- TextFormat -------------------- 
 
 void TextFormat::log(std::string t, bool nl) noexcept { fmt::print("[ {:.3f}ms ] {}{}",  glfwGetTime() * 1000.0, t, (nl ? "\n" : "")); }
 void TextFormat::warn(std::string t, std::string ttl) noexcept
 {
-	std::cout << "\n";
-	static std::string stars = std::string(25, '*');
+	fmt::print("\n");
+	const std::string stars = std::string(25, '*');
 	log(fmt::format("{} {}", stars, ttl), false);
 	fmt::print(" {}\n{}\n", stars, t);
 }
 
+int TextFormat::numChar(const std::string &str, const char c) noexcept
+{
+	return static_cast<int>(std::count(str.begin(), str.end(), c));
+}
 bool TextFormat::stringEndsWith(const std::string &str, const std::string &ending) noexcept
 {
 	return str.compare(str.length() - ending.length(), ending.length(), ending) == 0;
 }
-std::string TextFormat::getParentDirectory(const std::string &dir) noexcept
+void TextFormat::strsplit(std::vector<std::string> &vec, const std::string &str, const char sp) noexcept
 {
-	const std::size_t pos = dir.find_last_of("\\/");
-	return pos == std::string::npos ? "" : dir.substr(0u, pos);
+	std::size_t lastIndex{};
+	// Use 'do...while' as 'lastIndex' is initially 0 and only changed as part of the split logic - 
+	// a 'while loop' will not be entered at all as 'lastIndex' is checked initially and evaluates to false.
+	do {
+		std::size_t splitIndex = str.find(sp, lastIndex); // Get next index of split character in string
+		const std::string arg = str.substr(lastIndex, splitIndex - lastIndex); // Get substring of text between split character
+		vec.emplace_back(arg); // Add text in between split character to given vector
+		lastIndex = ++splitIndex; // Start of next substring is after split character so it doesn't get detected again
+	} while (lastIndex);
+	// If there is no space at the end, 'splitIndex' will become std::string::npos so the '.substr' uses the rest of the string.
+	// Since 'lastIndex' is set to 1 more than 'splitIndex' (pre-inc), it overflows to 0 (size_t is unsigned) and evaluates to false.
+	
 }
-
-std::int64_t TextFormat::strtoi64(const std::string &numText) noexcept
+std::size_t TextFormat::findNthOf(const std::string &str, const char find, int nth) noexcept
 {
-	int64_t val;
+	if (nth < 1) return std::size_t{};
+	std::size_t index = std::string::npos;
+	do index = str.find(find, ++index); while (--nth && index != std::string::npos);
+	return index;
+}
+std::intmax_t TextFormat::strtoimax(const std::string &numText)
+{
+	std::intmax_t val;
 	std::istringstream valStr(numText);
 	valStr >> val;
+	if (valStr.fail()) throw std::invalid_argument("Invalid intmax_t conversion");
 	return val;
 }
 
-// -------------------- OGL struct -------------------- 
+// -------------------- OGL -------------------- 
 
 GLuint OGL::CreateVAO(bool bind) noexcept
 {
@@ -65,234 +74,135 @@ void OGL::SetupUBO(GLuint &ubo, GLuint index, std::size_t uboSize) noexcept
 	glBufferStorage(GL_UNIFORM_BUFFER, uboSize, nullptr, GL_DYNAMIC_STORAGE_BIT);
 	glBindBufferBase(GL_UNIFORM_BUFFER, index, ubo);
 }
-void OGL::UpdateUBO(GLuint &ubo, GLintptr offset, GLsizeiptr bytes, const void *data) noexcept
+void OGL::UpdateUBO(GLuint &ubo, const void *data, std::size_t bytes, std::size_t offset) noexcept
 {
+	game.perfs.uboUpdate.Start();
 	glBindBuffer(GL_UNIFORM_BUFFER, ubo);
-	glBufferSubData(GL_UNIFORM_BUFFER, offset, bytes, data);
+	glBufferSubData(GL_UNIFORM_BUFFER, static_cast<GLintptr>(offset), static_cast<GLsizeiptr>(bytes), data);
+	game.perfs.uboUpdate.End();
 }
 
-std::string OGL::GetString(GLenum stringID) noexcept
+std::string OGL::GetString(GLenum stringID) noexcept { return reinterpret_cast<const char*>(glGetString(stringID)); }
+
+// -------------------- Shader -------------------- 
+
+void Shader::InitShaders() { EachProgram([&](Program &prog) { InitProgram(prog); }); }
+void Shader::UseProgram(Program &program) const noexcept { glUseProgram(program.program); }
+
+GLint Shader::GetLocation(Program &program, const char *name) const noexcept
 {
-	return std::string(reinterpret_cast<const char*>(glGetString(stringID)));
+	UseProgram(program);
+	const GLchar* glCharName = reinterpret_cast<const GLchar*>(name);
+	return glGetUniformLocation(program.program, glCharName);
 }
 
-// -------------------- Shader struct -------------------- 
-
-void Shader::InitShader()
+GLuint Shader::CreateShader(const std::string &fileData, const std::string &name, bool isVertex) noexcept
 {
-	static const auto CheckProgramError = [&](GLuint program, const std::string &vertex, const std::string &fragment)
-	{
-		// Check for any errors in the given program ID
-		int success;
-		glGetProgramiv(program, GL_LINK_STATUS, &success);
-
-		if (!success) {
-			int length = 0;
-			glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length);
-			char *infolog = new char[length] {};
-			glGetProgramInfoLog(program, length, nullptr, infolog);
-
-			TextFormat::warn(
-				fmt::format("Linked vertex shader: {}\nLinked fragment shader: {}\nError message:\n{}", vertex, fragment, infolog), 
-				"Shader Program Error - ID: " + fmt::to_string(program)
-			);
-
-			delete[] infolog;
-		}
-	};
-	static const auto CheckShaderError = [&](const std::string &filename, GLuint shader)
-	{
-		// Check for any errors in the given vertex or fragment shader ID
-		int success;
-		glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-
-		if (!success) {
-			int length = 0;
-			glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
-			char *infolog = new char[length] {};
-			glGetShaderInfoLog(shader, length, nullptr, infolog);
-
-			TextFormat::warn(
-				fmt::format("Filename: {}\nError message:\n{}", filename, infolog), 
-				"Shader Error - ID: " + fmt::to_string(shader)
-			);
-
-			delete[] infolog;
-			return true;
-		}
-
-		return false;
-	};
-	static const auto CreateShaderFromFilename = [&](const std::string filename)
-	{
-		// Determine if the current file is a vertex file or fragment file
-		const std::string vertend = ".vert";
-		const GLuint shaderID = glCreateShader(TextFormat::stringEndsWith(filename, vertend) ? GL_VERTEX_SHADER : GL_FRAGMENT_SHADER);
-
-		// Read file contents into std::string and convert to C-style string for OGL shader creation
-		const std::string contents = ReadFileFromDisk(filename);
-		const char *c_contents = contents.c_str();
-
-		// Create shader with string and compile and check for any errors in the GLSL contents
-		glShaderSource(shaderID, 1, &c_contents, nullptr);
-		glCompileShader(shaderID);
-		const bool err = CheckShaderError(filename, shaderID);
-
-		// Return shader identifier
-		return err ? static_cast<GLuint>(0u) : shaderID;
-	};
-
-	// Load all of the vertex and fragment shaders and then create a shader program with them
-	const int numPrograms = static_cast<int>(ShaderID::MAX);
+	// Create either a vertex or fragment shader
+	const GLuint shaderID = glCreateShader(isVertex ? GL_VERTEX_SHADER : GL_FRAGMENT_SHADER);
 	
-	// Load order should match the ShaderID enum
-	typedef std::pair<std::string, std::string> FilePair;
-	static const FilePair shaderPairs[numPrograms] = {
-		{"Blocks.vert", "Blocks.frag"},
-		{"Clouds.vert", "Clouds.frag"},
-		{"Inventory.vert", "Inventory.frag"},
-		{"Outline.vert", "Outline.frag"},
-		{"Sky.vert", "Sky.frag"},
-		{"Stars.vert", "Stars.frag"},
-		{"Text.vert", "Text.frag"},
-		{"Planets.vert", "Planets.frag"},
-		{"Vec3.vert", "Vec3.frag"},
-		{"Border.vert", "Border.frag"}
+	// Create shader with GLSL code and compile
+	const char* data = fileData.c_str();
+	glShaderSource(shaderID, 1, &data, nullptr);
+	glCompileShader(shaderID);
+
+	// Check for any errors during shader code compilation
+	return !CheckShaderStatus(shaderID, name) ? GLuint{} : shaderID; // Check for errors and return shader ID if not
+}
+
+bool Shader::CheckShaderStatus(GLuint shader, const std::string &name) noexcept
+{
+	// Check for any errors in the given vertex or fragment shader ID
+	int value; // GL_FALSE = error, GL_TRUE = success
+	glGetShaderiv(shader, GL_COMPILE_STATUS, &value);
+
+	if (value == GL_TRUE) return true; // True - no errors
+
+	// Get length of error message and use it to get the error message into a char array
+	glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &value);
+	GLchar *infolog = new GLchar[value] {};
+	glGetShaderInfoLog(shader, value, nullptr, infolog);
+
+	TextFormat::warn(fmt::format("Error message:\n{}", reinterpret_cast<char*>(infolog)), "Shader Error - " + name);
+	delete[] infolog; // Clear error message memory
+
+	return false; // False - there was an error
+}
+
+void Shader::InitProgramFile(Program &prog, const std::string &vertexData, const std::string &fragmentData)
+{
+	enum ShaderData { SD_Vertex, SD_Fragment };
+
+	// Create a vertex + fragment shader, throwing if compilation failed
+	const auto Create = [&](ShaderData which, bool isVert) {
+		const GLuint shader = CreateShader(
+			which == SD_Vertex ? vertexData : fragmentData,
+			prog.name + (which == SD_Vertex ? ".vert" : ".frag"),
+			isVert
+		);
+		if (!shader) throw std::runtime_error("Shader compilation failed");
+		return shader;
 	};
 
-	const std::string shadersFile = "Shaders\\";
+	const GLuint vertex = Create(SD_Vertex, true);
+	const GLuint fragment = Create(SD_Fragment, false);
 
-	// Load each vertex and fragment pair from disk and create a shader program from them
-	for (int programIndex = 0; programIndex < numPrograms; ++programIndex) {
-		const FilePair &pair = shaderPairs[programIndex];
-		const std::string vertexFileName = pair.first, fragmentFileName = pair.second;
+	// Create a new program (delete old one if it already exists)
+	if (prog.program) glDeleteProgram(prog.program);
+	prog.program = glCreateProgram();
 
-		// Create shaders from the associated files
-		const GLuint vertexID = CreateShaderFromFilename(game.resourcesFolder + shadersFile + vertexFileName),
-			fragmentID = CreateShaderFromFilename(game.resourcesFolder + shadersFile + fragmentFileName);
+	// Attach both shaders to the program
+	glAttachShader(prog.program, vertex);
+	glAttachShader(prog.program, fragment);
+	glLinkProgram(prog.program);
 
-		// Stop and throw error if any program failed to compile
-		if (!vertexID || !fragmentID) { 
-			throw std::runtime_error("Program compilation failed"); 
-			return; 
-		}
-
-		// Create new shader using the vertex and fragment shaders (delete original if exists)
-		GLuint &currentProgram = m_programs[programIndex];
-		if (currentProgram) glDeleteProgram(currentProgram);
-		currentProgram = glCreateProgram(); 
-
-		glAttachShader(currentProgram, vertexID);
-		glAttachShader(currentProgram, fragmentID);
-		glLinkProgram(currentProgram);
-
-		// Delete shaders after link success to free up memory as they are no longer needed
-		glDeleteShader(vertexID);
-		glDeleteShader(fragmentID);
-
-		// Check for any shader program errors
-		CheckProgramError(currentProgram, vertexFileName, fragmentFileName);
-		
-		TextFormat::log(
-			fmt::format("Shader program {} '{}' created using {} ({}) and {} ({})", 
-			currentProgram, vertexFileName.substr(0, vertexFileName.size()-5), vertexFileName, vertexID, fragmentFileName, fragmentID
-		));
-	}
+	// Delete shaders
+	glDetachShader(prog.program, vertex);
+	glDeleteShader(vertex);
+	glDetachShader(prog.program, fragment);
+	glDeleteShader(fragment);
 }
 
-GLuint Shader::IDFromShaderName(ShaderID id) const noexcept
+void Shader::InitProgram(Program &prog)
 {
-	return m_programs[static_cast<int>(id)];
-}
-void Shader::UseShader(ShaderID id) const noexcept
-{
-	glUseProgram(IDFromShaderName(id));
-}
+	std::string vertexData, fragmentData;
 
-GLint Shader::GetLocation(ShaderID id, const char *name) noexcept
-{ 
-	return glGetUniformLocation(IDFromShaderName(id), name);
-}
+	// Get vertex and fragment files from program name
+	static const std::string shadersFile = game.resourcesFolder + "Shaders\\"; // Directory for shaders
 
-std::string Shader::ReadFileFromDisk(const std::string &filename)
-{
-	// Check if file exists
-	if (!FileManager::FileExists(filename)) {
-		TextFormat::warn(fmt::format("File {} does not exist!", filename), "Invalid filename");
-		return "";
-	}
+	// Read vertex and fragment files into string
+	FileManager::ReadFile(shadersFile + prog.name + ".vert", vertexData, false, true);
+	FileManager::ReadFile(shadersFile + prog.name + ".frag", fragmentData, false, true);
 
-	// Setup file stream
-	std::ifstream fileStream(filename, std::ios::binary | std::ios::ate);
-
-	// Check if stream is valid
-	if (fileStream.good()) {
-		const std::streampos fileSize = fileStream.tellg(); // Get file size
-		fileStream.seekg(std::ios::beg); // Move reader to beginning
-		std::string fileContents(fileSize, 0); // Create string with allocated size
-		fileStream.read(&fileContents[0], fileSize); // Read file, placing data in created string
-
-		// Return string with file contents
-		if (game.mainLoopActive) TextFormat::log(fmt::format("File '{}' read from disk.", filename));
-		return fileContents;
-	}
-
-	TextFormat::warn(fmt::format("File stream failed to initialize on '{}'", filename), "File read error");
-	return "";
+	// Create shaders and program using shader files
+	InitProgramFile(prog, vertexData, fragmentData);
 }
 
-void Shader::LoadImage(OGLImageInfo &info, const char *filename, bool border, int filterParam, bool mipmap)
-{
-	// Create a new texture object
-	GLuint tex;
-	glGenTextures(1, &tex);
-
-	// Set the newly created texture as the currently bound one 
-	glActiveTexture(GL_TEXTURE0 + (tex - 1)); // GL_TEXTURE0, GL_TEXTURE1, ...
-	glBindTexture(GL_TEXTURE_2D, tex);
-
-	// Use nearest texture filtering for blocky texture appearance and mipmap selection
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filterParam);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filterParam);
-
-	// Texture coordinate overflow handling - show a specific colour, repeat the texture, etc
-	
-	const GLint texWrapParam = border ? GL_CLAMP_TO_BORDER : GL_REPEAT;
-
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, texWrapParam);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, texWrapParam);
-
-	if (border) {
-		const float borderColours[4] {}; // RGBA 0 - transparent colour outside texture bounds
-		glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColours);
-	}
-
-	// Load in found image whilst setting data
-	if (lodepng::decode(info.data, info.width, info.height, (game.resourcesFolder + filename).c_str())) throw std::runtime_error("Image load fail");
-
-	// Save the texture data into the currently bound texture object
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, info.width, info.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, info.data.data());
-
-	// Create mipmaps for the texture
-	if (mipmap) glGenerateMipmap(GL_TEXTURE_2D);
-
-	TextFormat::log("Loaded image: " + std::string(filename));
-}
+// Capitalize first letter
+Shader::Program::Program(const char *shaderName) noexcept : name(shaderName) { name[0] -= static_cast<char>(32); }
 
 Shader::~Shader() noexcept
 {
-	// Delete all valid shader programs
-	for (const GLuint &program : m_programs) {
-		if (program == 0u) continue;
-		glDeleteProgram(program);
-	}
+	// Delete all valid programs
+	EachProgram([&](Program &prog) {
+		if (!prog.program) return;
+		glDeleteProgram(prog.program);
+	});
 }
 
-// -------------------- WorldNoise struct -------------------- 
+void Shader::EachProgram(std::function<void(Program&)> each)
+{
+	// Execute given function for each program
+	Program *progs = reinterpret_cast<Program*>(&programs);
+	const int numProgs = static_cast<int>(sizeof(ShaderPrograms) / sizeof(Program));
+	for (int i = 0; i < numProgs; ++i) each(progs[i]);
+}
+
+// -------------------- WorldNoise -------------------- 
 
 WorldNoise::WorldNoise(WorldPerlin::NoiseSpline *splines, std::int64_t *seeds)
 {
-	WorldPerlin *perlins[] = { &continentalness, &flatness, &depth, &temperature, &humidity };
+	WorldPerlin *perlins[] = { &elevation, &flatness, &depth, &temperature, &humidity };
 	for (int i = 0; i < NoiseEnums::MAX; ++i) {
 		WorldPerlin *perlin = perlins[i];
 		perlin->noiseSplines = splines[i];
@@ -301,18 +211,23 @@ WorldNoise::WorldNoise(WorldPerlin::NoiseSpline *splines, std::int64_t *seeds)
 }
 WorldNoise::WorldNoise(WorldPerlin::NoiseSpline *splines)
 {
-	WorldPerlin *perlins[] = { &continentalness, &flatness, &depth, &temperature, &humidity };
+	WorldPerlin *perlins[] = { &elevation, &flatness, &depth, &temperature, &humidity };
+	const int perlinsSize = static_cast<int>(Math::size(perlins));
 	bool hasSplines = splines != nullptr;
-
-	for (int i = 0; i < NoiseEnums::MAX; ++i) {
+	
+	for (int i = 0; i < perlinsSize; ++i) {
 		WorldPerlin *perlin = perlins[i];
 		if (hasSplines) perlin->noiseSplines = splines[i];
 		perlin->ChangeSeed(); 
 	}
 }
 
-// -------------------- FileManager struct -------------------- 
+// -------------------- FileManager -------------------- 
 
+void FileManager::GetParentDirectory(std::string &dir) noexcept
+{
+	dir = dir.substr(std::size_t{}, dir.find_last_of("\\/"));
+}
 bool FileManager::DirectoryExists(std::string path)
 {
 	struct stat info;
@@ -320,7 +235,8 @@ bool FileManager::DirectoryExists(std::string path)
 }
 bool FileManager::FileExists(std::string path) 
 {
-	return std::ifstream(path).good();
+	struct stat info;
+	return stat(path.c_str(), &info) == 0 && info.st_mode & S_IFREG;
 }
 bool FileManager::Exists(std::string path)
 {
@@ -333,4 +249,75 @@ void FileManager::DeletePath(std::string path)
 void FileManager::CreatePath(std::string path)
 {
 	if (mkdir(path.c_str()) != 0) throw FileError(fmt::format("Failed to create path '{}'", path));
+}
+
+void FileManager::ReadFile(const std::string &filename, std::string &contents, bool message, bool throwing)
+{
+	// Check if file exists
+	if (!FileManager::FileExists(filename)) {
+		TextFormat::warn(fmt::format("File {} does not exist!", filename), "Invalid filename");
+		if (throwing) throw std::runtime_error("Invalid filename");
+		return;
+	}
+
+	// Setup file stream (moves to eof with ate bit)
+	std::ifstream fileStream(filename, std::ios::binary | std::ios::ate);
+	
+	// Check if stream is valid
+	if (!fileStream.good()) {
+		TextFormat::warn(fmt::format("File stream failed to initialize on '{}'", filename), "File read error");
+		if (throwing) throw FileManager::FileError("File read error");
+		return;
+	}
+
+	const std::streampos fileSize = fileStream.tellg(); // Get file size
+	fileStream.seekg(std::ios::beg); // Move reader to beginning
+	contents.resize(fileSize); // Resize string to fit entire file
+	fileStream.read(&contents[0], fileSize); // Read file to contents string
+
+	// Log file read message
+	if (message && game.mainLoopActive) TextFormat::log(fmt::format("File '{}' read from disk.", filename));
+}
+
+void FileManager::LoadImage(ImageInfo &info, const std::string &filename, const ImageInfo::Format &formatInfo, const ImageInfo::Mipmap &mipmapInfo)
+{
+	// Create a new texture object
+	GLuint tex;
+	glGenTextures(1, &tex);
+
+	// Set the newly created texture as the currently bound one
+	glActiveTexture(GL_TEXTURE0 + (tex - 1)); // GL_TEXTURE0, GL_TEXTURE1, ...
+	glBindTexture(GL_TEXTURE_2D, tex);
+
+	bool doMipMap = mipmapInfo.mipmapParam;
+
+	// Determine pixel colour to show depending on texture coordinates - nearest or combined
+	// Optionally determine mipmap level selection method with same options
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, doMipMap ? mipmapInfo.mipmapParam : GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+	// Texture coordinate overflow handling
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, formatInfo.wrapParam);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, formatInfo.wrapParam);
+
+	// Determine 'border' colour with clamp wrap setting
+	if (formatInfo.wrapParam == GL_CLAMP_TO_BORDER) {
+		static const float borderColours[4] { 1.0f, 0.0f, 0.0f, 1.0f };
+		glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColours);
+	}
+
+	// Load in found image whilst setting data
+	if (lodepng::decode(
+		info.data, info.width, info.height,
+		game.resourcesFolder + filename, formatInfo.imgFormat, formatInfo.bitDepth
+	)) throw FileManager::FileError("Image load fail");
+
+	// Save the texture data into the currently bound texture object
+	glTexImage2D(GL_TEXTURE_2D, 0, formatInfo.OGLFormat, info.width, info.height, 0, formatInfo.OGLFormat, GL_UNSIGNED_BYTE, info.data.data());
+
+	// Create mipmaps (with bias setting for different LODs) for the texture 
+	if (doMipMap) {
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, mipmapInfo.bias);
+		glGenerateMipmap(GL_TEXTURE_2D);
+	}
 }
