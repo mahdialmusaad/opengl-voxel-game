@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
-project(Game)
+project(game)
 
 # Optionally set C++ version
-# set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_C_STANDARD 11)
 
 # GLFW build options
 option(GLFW_BUILD_DOCS OFF)
@@ -11,13 +12,19 @@ option(GLFW_BUILD_TESTS OFF)
 
 # Compiler warning settings
 if(MSVC)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
 else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
 	# Define glad library
-    if(NOT WIN32)
-        set(GLAD_LIBRARIES dl)
-    endif()
+	if(NOT WIN32)
+		set(GLAD_LIBRARIES dl)
+		set(GL_FLAG -lGL)
+	endif()
+
+	# Debug build settings
+	set(CMAKE_CXX_FLAGS_DEBUG_INIT "-Og -g3 -fno-inline -ggdb")
+
+	# Normal build settings
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic ${GL_FLAG}")
 endif()
 
 # Shortcut to libraries directory in root and game source directory
@@ -26,16 +33,8 @@ set(BC_SRC ${PROJECT_SOURCE_DIR}/src)
 
 # Include folders, used for '#include ...'
 include_directories(
-	# Libraries root folder
-	${BCL}
-	# Game source folder
-	${BC_SRC}
-	# Some external library folders that would be annoying 
-	# to write out in full when doing '#include'
-	${BCL}/glfw/include
-	${BCL}/fmt/include
-	${BCL}/glm
-	${BCL}/glad
+	${BCL} # Libraries root folder
+	${BC_SRC} # Game source folder
 )
 
 # Add GLFW to project
@@ -57,10 +56,9 @@ add_executable(
 	# lodepng
 	${BCL}/lodepng/lodepng.cpp
 	# glad
-	${BCL}/glad/gl.c
+	${BCL}/glad/gladc.c
 
 	# Main game
-
 	# src/
 	${BC_SRC}/Main.cpp
 		# src/Player
@@ -89,14 +87,31 @@ target_link_libraries(
 )
 
 # Shortcut to resulting folder
-set(RESULT_FLD ${CMAKE_BINARY_DIR}/${PROJECT_NAME}/)
+set(RESULT_FLD ${CMAKE_BINARY_DIR}/${PROJECT_NAME})
 
 # Specify folder with build results as defined above
 set_target_properties(
 	${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${RESULT_FLD}
+	RUNTIME_OUTPUT_DIRECTORY ${RESULT_FLD}
 )
 
 # Add resources (shaders and textures) to resulting folder
 message("-- Copying game resources")
 file(COPY ${BC_SRC}/Resources DESTINATION ${RESULT_FLD})
+
+# CTest
+include(CTest)
+enable_testing()
+
+# Valgrind testing
+find_program(VALGRIND "valgrind")
+if(VALGRIND)
+	# Valgrind leak check test
+	add_test(
+		NAME valgrind_memcheck
+        	COMMAND ${VALGRIND}
+		  --leak-check=full
+		  --tool=memcheck
+		$<TARGET_FILE:${PROJECT_NAME}>
+	)
+endif()

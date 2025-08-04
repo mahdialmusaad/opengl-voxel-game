@@ -104,10 +104,10 @@ namespace WorldBlockData_DEF
 
 	// Functions each block uses when determining visibility next to another block
 	typedef WorldBlockData::WBD WBD;
-	constexpr bool R_Never(WBD, WBD) { return false; }
-	constexpr bool R_Always(WBD, WBD) { return true; }
-	constexpr bool R_HideSelf(WBD original, WBD target) { return original.id != target.id && target.hasTransparency; }
-	constexpr bool R_Default(WBD, WBD target) { return target.hasTransparency; }
+	inline bool R_Never(WBD, WBD) { return false; }
+	inline bool R_Always(WBD, WBD) { return true; }
+	inline bool R_HideSelf(WBD original, WBD target) { return original.id != target.id && target.hasTransparency; }
+	inline bool R_Default(WBD, WBD target) { return target.hasTransparency; }
 
 	// All blocks and their properties
 	constexpr WorldBlockData BlockIDData[static_cast<int>(ObjectID::NumUnique)] = {
@@ -162,7 +162,9 @@ namespace WorldBlockData_DEF
 // Game settings
 namespace ChunkValues
 {
-	constexpr int size = 16; // The side length of a chunk (cube).
+	constexpr int bitsStore(int value, int currentBits = 0) noexcept { return !value ? currentBits : bitsStore(value >> 1, currentBits + 1); }
+
+	constexpr int size = 32; // The side length of a chunk (cube).
 	constexpr int worldHeight = 256; // The maximum block height in the world (must be a multiple of the chunk size)
 	
 	// Chunk generation settings (editable)
@@ -171,24 +173,23 @@ namespace ChunkValues
 	constexpr int treeSpawnChance = 100; // The chance for a grass block to have a tree.
 	// Settings/values to do with noise can be found in the 'perlin' file.
 	
+	// This value must be reflected in the block shader.
+	constexpr int sizeBits = 5; //bitsStore(sizeLess); 
+
 	// Calculation shortcuts - do not change
 	constexpr int heightCount = worldHeight / size;
 	constexpr int sizeLess = size - 1;
-	constexpr int sizeSquared = size * size;
+	constexpr int sizeSquared = Math::pow(size, 2);
 	const double sqrtSize = Math::sqrt(size);
 	constexpr int maxHeight = size * heightCount;
 
-	// Use template recursion to get no. of bits needed to store an integer at runtime
-	template<int X> struct bitsStore { enum { value = bitsStore<(X >> 1)>::value + 1 }; };
-	template<> struct bitsStore<0> { enum { value = 0 }; };
-	constexpr int sizeBits = 5; // This value must be reflected in the block shader.
-
-	constexpr std::int32_t blocksAmount = size * size * size;
+	constexpr std::int32_t blocksAmount = Math::pow(static_cast<std::int32_t>(size), 3);
 	constexpr std::int32_t uniqueFaces = blocksAmount * 6;
 
 	template<typename T> WorldBlockData::WBD GetBlockData(T blockID) noexcept { return WorldBlockData_DEF::BlockIDData[static_cast<int>(blockID)]; }
 
-	PosType ToWorld(double a) noexcept;
+	PosType ToWorld(double x) noexcept;
+	PosType ToWorld(float x) noexcept;
 	template<typename T> PosType ToWorld(T a) noexcept { return static_cast<PosType>(a); }
 	template<typename T, glm::qualifier Q> WorldPosition ToWorld(const glm::vec<3, T, Q> &vec) noexcept {
 		return { ToWorld(vec.x), ToWorld(vec.y), ToWorld(vec.z) };
@@ -214,8 +215,8 @@ namespace ChunkValues
 
 	struct BlockArray {
 		ObjectID blocks[size][size][size];
-		template<typename T, glm::qualifier Q> ObjectID at(glm::vec<3, T, Q> v) const noexcept { return blocks[v.x][v.y][v.z]; }
-		ObjectID &atref(glm::ivec3 v) noexcept { return blocks[v.x][v.y][v.z]; }
+		template<typename T, glm::qualifier Q> inline ObjectID at(const glm::vec<3, T, Q> &v) const noexcept { return blocks[v.x][v.y][v.z]; }
+		ObjectID &atref(const glm::ivec3 &v) noexcept { return blocks[v.x][v.y][v.z]; }
 	} const emptyChunk{};
 
 	static_assert(!(worldHeight % size), "The world height must be a multiple of the chunk size.");
@@ -223,21 +224,17 @@ namespace ChunkValues
 
 struct ChunkLookupData
 {
-	glm::i8vec3 pos;
+	glm::u8vec3 pos;
 	std::uint8_t index;
-	static void CalculateLookupData(ChunkLookupData *lookupData) noexcept;
+	static void CalculateLookupData() noexcept;
 } extern chunkLookupData[ChunkValues::uniqueFaces];
 
 // Ranges for certain values across the game
 namespace ValueLimits
 {
 	template<typename T> struct LVec { T min, max; };
-	template<typename T> using LMS = std::numeric_limits<T>;
-	template<typename T> void ClampAdd(T &val, T add, const LVec<T> &lvec) { val = glm::clamp(val + add, lvec.min, lvec.max); };
-
-	constexpr double VLradian = 0.01745329251994329576923690768489;
-	constexpr LVec<double> fovLimit  = { 5.0 * VLradian, 160.0 * VLradian };
-	constexpr LVec<int> renderLimit  = { 4, LMS<int>::max() };
+	constexpr LVec<double> fovLimit  = { 5.0, 160.0 };
+	constexpr LVec<int> renderLimit  = { 4, 200 };
 	constexpr LVec<double> tickLimit = { -200.0, 200.0 };
 }
 

@@ -1,6 +1,7 @@
 #include "Settings.hpp"
 
-PosType ChunkValues::ToWorld(double a) noexcept { return static_cast<PosType>(std::floor(a)); }
+PosType ChunkValues::ToWorld(double x) noexcept { return static_cast<PosType>(glm::floor(x)); }
+PosType ChunkValues::ToWorld(float  x) noexcept { return static_cast<PosType>(glm::floor(x)); }
 
 bool ChunkValues::IsOnCorner(const glm::ivec3 &pos, WorldDirection dir) noexcept
 {
@@ -8,32 +9,35 @@ bool ChunkValues::IsOnCorner(const glm::ivec3 &pos, WorldDirection dir) noexcept
 	return val == (!(dir & 1) * ChunkValues::sizeLess); // Odd directions (left, down, back) are always in the negative directions and vice versa
 }
 
-void ChunkLookupData::CalculateLookupData(ChunkLookupData *lookupData) noexcept
+void ChunkLookupData::CalculateLookupData() noexcept
 {
 	// Results for chunk calculation - use to check which block is next to
 	// another and in which 'nearby chunk' (if it happens to be outside the current chunk)
-	std::int32_t lookupIndex{};
-	const std::uint8_t maxFace = static_cast<std::uint8_t>(6u);
-	
-	for (std::uint8_t face{}; face < maxFace; ++face) {
-		const glm::ivec3 nextDirection = glm::ivec3(game.constants.worldDirections[face]);
-		for (int x = 0; x < ChunkValues::size; ++x) {
-			const int nextX = x + nextDirection.x;
-			const bool xOverflowing = nextX < 0 || nextX >= ChunkValues::size;
 
-			for (int y = 0; y < ChunkValues::size; ++y) {
-				const int nextY = y + nextDirection.y;
-				const bool yOverflowing = nextY < 0 || nextY >= ChunkValues::size;
-				const bool xyOverflowing = xOverflowing || yOverflowing;
+	// Create and use given compute shader to calculate results
+	ShadersObject::Program compShader("Faces.comp");
+	compShader.Use();
 
-				for (int z = 0; z < ChunkValues::size; ++z) {
-					const int nextZ = z + nextDirection.z;
-					const bool zOverflowing = nextZ < 0 || nextZ >= ChunkValues::size;
-					ChunkLookupData &data = lookupData[lookupIndex++];
-					data.pos = { Math::loop(nextX, 0, ChunkValues::size), Math::loop(nextY, 0, ChunkValues::size), Math::loop(nextZ, 0, ChunkValues::size) };
-					data.index = (xyOverflowing || zOverflowing) ? face : maxFace;
-				}
-			}
-		}
-	}
+	constexpr GLsizeiptr lookupSize = static_cast<GLsizeiptr>(sizeof(std::uint32_t) * static_cast<std::size_t>(ChunkValues::uniqueFaces));
+
+	// Create shader storage buffer for compute shader to output results in
+	const GLuint ssbo = OGL::CreateBuffer(GL_SHADER_STORAGE_BUFFER);
+	glBufferStorage(GL_SHADER_STORAGE_BUFFER, lookupSize, nullptr, GLbitfield{});
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1u, ssbo);
+
+	// Set uniform variables in shader
+	const std::int32_t castSize = static_cast<std::int32_t>(ChunkValues::size);
+	glUniform1i(compShader.GetLocation("chunkSize"), castSize);
+	glUniform3iv(compShader.GetLocation("directions"), 6, &game.constants.worldDirectionsInt[0][0]);
+
+	// Begin shader execution and wait for completion
+	constexpr GLuint xGroup = static_cast<GLuint>(Math::roundUpX(ChunkValues::sizeSquared * 6, 32));
+	glDispatchCompute(xGroup, 1u, 1u);
+	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT); // (wait for SSBO)
+
+	// Put SSBO data into lookup data and delete the SSBO
+	glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, GLintptr{}, lookupSize, chunkLookupData);
+	glDeleteBuffers(1, &ssbo);
+
+	// (Compute shader is destroyed on scope leave)	
 }

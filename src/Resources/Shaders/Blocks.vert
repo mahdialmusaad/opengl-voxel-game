@@ -4,11 +4,10 @@
 struct ChunkOffset {
 	double x;
 	double z;
-	float y;
-	int f;
+	uint fy;
 };
 
-layout (std430, binding = 0) readonly buffer chunkMeshData {
+layout (std430, binding = 0) readonly restrict buffer chunkMeshData {
 	ChunkOffset chunkData[];
 };
 
@@ -47,17 +46,18 @@ out vec3 texAndFactor;
 
 void main()
 {
-	const ChunkOffset cd = chunkData[gl_DrawIDARB];
-	dvec3 blockPos = dvec3(data & 31, (data >> 5) & 31, (data >> 10) & 31) + dvec3(cd.x, cd.y, cd.z);
+	ChunkOffset cd = chunkData[gl_DrawIDARB];
+	dvec3 blockPos = dvec3(data & 31, (data >> 5) & 31, (data >> 10) & 31) + dvec3(cd.x, cd.fy & 0x1FFFFFFF, cd.z);
 
-	     if (cd.f == 0) blockPos += baseXZ.wyx; // X+
-	else if (cd.f == 1) blockPos += baseYZ.zyx; // X-
-	else if (cd.f == 2) blockPos += baseYZ.ywx; // Y+
-	else if (cd.f == 3) blockPos += baseYW.yzx; // Y-
-	else if (cd.f == 4) blockPos += baseYZ.xyw; // Z+
-	               else blockPos += baseXZ.xyz; // Z-
+	cd.fy >>= 29u;
+	     if (cd.fy == 0) blockPos += baseXZ.wyx; // X+
+	else if (cd.fy == 1) blockPos += baseYZ.zyx; // X-
+	else if (cd.fy == 2) blockPos += baseYZ.ywx; // Y+
+	else if (cd.fy == 3) blockPos += baseYW.yzx; // Y-
+	else if (cd.fy == 4) blockPos += baseYZ.xyw; // Z+
+	                else blockPos += baseXZ.xyz; // Z-
 	
 	const vec3 relPos = vec3(blockPos - playerPosition.xyz);
 	gl_Position = originMatrix * vec4(relPos, 1.0);
-	texAndFactor = vec3((baseYZ.x + float(data >> 15)) * blockTextureSize, baseYW.y, clamp((fogEnd - length(relPos)) / fogRange, 0.0, 1.0));
+	texAndFactor = vec3((baseYZ.x + float(data >> 15)) * blockTextureSize, baseYW.y, clamp((fogEnd - length(relPos - vec3(0.0, relPos.y * 0.9, 0.0))) / fogRange, 0.0, 1.0));
 }

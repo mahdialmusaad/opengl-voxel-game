@@ -16,7 +16,7 @@ Player::Player() noexcept
 	// is rendered slightly *in front* of each block face to avoid Z-fighting and block clipping
 
 	const float deviance = 0.001f;
-	const float front1 = 1.0f + deviance, front0 = -deviance, small1 = 1.0f - deviance, small0 = -deviance;
+	const float front1 = 1.0f + deviance, front0 = deviance, small1 = 1.0f - deviance, small0 = -deviance;
 	const float cubeCoordinates[] = {
 		// Top face
 		small0, front1, small0,
@@ -143,17 +143,9 @@ void Player::WorldInitialize() noexcept
 	UpdateInventoryTextPos(); // Update text positions
 }
 
-void Player::InventoryTextTest() noexcept
-{
-	for (int slotIndex = 0; slotIndex < 9; ++slotIndex) {
-		WorldPlayer::InventorySlot &slot = player.inventory[slotIndex];
-		world->textRenderer.ChangePosition(slot.slotText, { game.testvals.x + (slotIndex * game.testvals.y), game.testvals.z });
-	}
-}
-
 void Player::RaycastDebugCheck() noexcept
 {
-	shader.UseProgram(shader.programs.test);
+	game.shaders.programs.test.Use();
 	glBindVertexArray(m_raycastVAO);
 	glBindBuffer(GL_ARRAY_BUFFER, m_raycastVBO);
 	
@@ -427,10 +419,10 @@ int Player::SearchForFreeMatchingSlot(ObjectID item) noexcept
 void Player::RenderBlockOutline() const noexcept
 {
 	// Only show outline when the player is looking at a breakable block (e.g. can't break water or air)
-	//if (!ChunkValues::GetBlockData(player.targetBlock).isSolid) return;
+	if (!ChunkValues::GetBlockData(player.targetBlock).isSolid) return;
 
 	// Enable outline program and bind VAO to use correct buffers
-	shader.UseProgram(shader.programs.outline);
+	game.shaders.programs.outline.Use();
 	glBindVertexArray(m_outlineVAO);
 
 	// GL_LINES - each pair of indices determine the line's start and end position
@@ -440,7 +432,7 @@ void Player::RenderBlockOutline() const noexcept
 void Player::RenderPlayerGUI() const noexcept
 {
 	// Bind VAO and use inventory shader
-	shader.UseProgram(shader.programs.inventory);
+	game.shaders.programs.inventory.Use();
 	glBindVertexArray(m_inventoryVAO);
 	
 	// Draw hotbar instances only
@@ -451,7 +443,7 @@ void Player::RenderPlayerGUI() const noexcept
 
 	glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, m_noInventoryInstances - 1); // Draw hotbar instances (without crosshair)
 	for (int i = 0; i < 9; ++i) world->textRenderer.RenderText(player.inventory[i].slotText, !i, true); // Render hotbar text under inventory background
-	shader.UseProgram(shader.programs.inventory); // Switch back to inventory shader
+	game.shaders.programs.inventory.Use(); // Switch back to inventory shader
 	glBindVertexArray(m_inventoryVAO); // Use inventory VAO and draw rest of inventory
 	glDrawArraysInstancedBaseInstance(GL_TRIANGLE_STRIP, 0, 4, m_totalInventoryInstances, 0u);
 	for (int i = 0; i < 9; ++i) world->textRenderer.RenderText(m_inventoryHotbarText[i], !i, true); // Render inventory hotbar text (shader switches on first)
@@ -459,6 +451,7 @@ void Player::RenderPlayerGUI() const noexcept
 }
 
 glm::mat4 Player::GetZeroMatrix() const noexcept { constexpr glm::dvec3 empty{}; return glm::lookAt(empty, m_camFront, m_camUp); }
+glm::mat4 Player::GetYZeroMatrix() const noexcept { const glm::dvec3 yOnly = glm::dvec3(0.0, player.position.y, 0.0); return glm::lookAt(yOnly, yOnly + m_camFront, m_camUp); }
 
 void Player::UpdateCameraDirection(double x, double y) noexcept
 {
@@ -678,13 +671,14 @@ void Player::UpdateScroll(int slotIndex) noexcept
 
 glm::vec2 Player::GetSlotPos(SlotType stype, int id, bool isBlock) const noexcept
 {
+	// Inventory elements sizes and positions
 	const float slotWidth = 0.1f, slotHeight = slotWidth * game.aspect;
 	const float slotBlockWidth = slotWidth * 0.75f, slotBlockHeight = slotHeight * 0.75f;
 	const float slotBlockYOff = (slotHeight - slotBlockHeight) * 0.5f;
 	const float slotsStartX = -0.45f;
 	const float invHotbarYPos = -0.4f;
 
-	float yPosition;
+	float yPosition; // Resulting y position (x position is defined at end - simpler to calculate)
 
 	switch (stype)
 	{
@@ -702,10 +696,14 @@ glm::vec2 Player::GetSlotPos(SlotType stype, int id, bool isBlock) const noexcep
 		case SlotType::SlotBlockSize:
 			return { slotBlockWidth, slotBlockHeight };
 		default:
+			yPosition = 0.0f;
 			break;
 	}
 
+	// Resulting x position
 	const float xPosition = slotsStartX + (static_cast<float>(id % 9) * slotWidth * 0.98f);
+	
+	// Slot block textures are slightly offset from normal inventory slots
 	if (isBlock) return { xPosition + ((slotWidth - slotBlockWidth) * 0.5f), yPosition + slotBlockYOff };
 	else return { xPosition, yPosition };
 }
@@ -719,6 +717,8 @@ glm::vec4 Player::GetSlotDims(SlotType stype, int id, bool isBlock) const noexce
 
 void Player::UpdateInventory() noexcept
 {
+	game.perfs.invUpdate.Start();
+
 	// Bind VAO and VBO to ensure the correct buffers are edited
 	glBindVertexArray(m_inventoryVAO);
 	glBindBuffer(GL_ARRAY_BUFFER, m_inventoryIVBO);
@@ -782,6 +782,8 @@ void Player::UpdateInventory() noexcept
 
 	// Buffer inventory data for use in the shader - only include the filled data rather than the whole array
 	glBufferData(GL_ARRAY_BUFFER, sizeof(InventoryInstance) * m_totalInventoryInstances, inventoryData, GL_STATIC_DRAW);
+
+	game.perfs.invUpdate.End();
 }
 
 void Player::UpdateInventoryTextPos() noexcept

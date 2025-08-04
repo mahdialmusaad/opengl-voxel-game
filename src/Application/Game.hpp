@@ -25,7 +25,7 @@ public:
 		void ToggleInventory() noexcept;
 		void ToggleFullscreen() noexcept;
 		void ApplyInput(int key, int action) noexcept;
-		void AddChatMessage(std::string message) noexcept;
+		void AddChatMessage(std::string message, bool autonl = true) noexcept;
 		void BeginChat() noexcept;
 		void AddCommandText(std::string newText) noexcept;
 		void ApplyCommand();
@@ -90,7 +90,6 @@ public:
 	void Main();
 
 	void UpdateAspect() noexcept;
-	~GameObject();
 private:
 	void DebugFunctionTest() noexcept;
 	void PerlinResultTest() const noexcept;
@@ -98,13 +97,10 @@ private:
 	void UpdateFrameValues() noexcept;
 	void MovedUpdate() noexcept;
 	void MiscUpdate() noexcept;
-
-	void ExitGame() noexcept;
 	
 	glm::mat4 m_perspectiveMatrix;
 	
 	Skybox m_skybox;
-	GLuint m_matricesUBO, m_timesUBO, m_coloursUBO, m_positionsUBO, m_sizesUBO;
 	
 	double m_lastTime = 0.0, m_updateTime = 0.0;
 	int m_nowFPS, m_avgFPS, m_lowFPS;
@@ -112,8 +108,8 @@ private:
 	TextRenderer::ScreenText *m_infoText, *m_infoText2, *m_chatText, *m_commandText, *m_perfText;
 
 	double EditTime(bool isSet, double t = 0.0) noexcept;
-// Ensure other variables have been initialized first (inner struct accesses them)
 public:
+	// Ensure other variables have been initialized first (inner struct accesses them)
 	Callbacks callbacks;
 };
 

@@ -38,8 +38,7 @@ public:
 	Player() noexcept;
 	void WorldInitialize() noexcept;
 	void CheckInput() noexcept;
-
-	void InventoryTextTest() noexcept;
+	
 	void RaycastDebugCheck() noexcept;
 
 	void ApplyMovement() noexcept;
@@ -59,6 +58,7 @@ public:
 	void RenderPlayerGUI() const noexcept;
 	
 	glm::mat4 GetZeroMatrix() const noexcept;
+	glm::mat4 GetYZeroMatrix() const noexcept;
 
 	void UpdateOffset() noexcept;
 	void UpdateFrustum() noexcept;

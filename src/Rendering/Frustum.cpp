@@ -7,7 +7,7 @@
 // Frustum plane
 
 CameraFrustum::FrustumPlane::FrustumPlane(const glm::dvec3 &distVec, const glm::dvec3 &norm) noexcept : normal(glm::normalize(norm)), distance(glm::dot(normal, distVec)) {}
-float CameraFrustum::FrustumPlane::DistToPlane(const glm::dvec3 &point) const noexcept { return glm::dot(normal, point) - distance; }
+float CameraFrustum::FrustumPlane::NDistToPlane(const glm::dvec3 &point) const noexcept { return distance - glm::dot(normal, point); }
 void CameraFrustum::UpdateFrustum(const glm::dvec3 &position, const glm::dvec3 &cFront, const glm::dvec3 &cUp, const glm::dvec3 &cRight, double fov) noexcept
 {
 	// Calculate frustum values
@@ -29,9 +29,9 @@ void CameraFrustum::UpdateFrustum(const glm::dvec3 &position, const glm::dvec3 &
 
 bool CameraFrustum::SphereInFrustum(const glm::dvec3 &center, double radius) const noexcept
 {
-	return top   .DistToPlane(center) > -radius &&
-	       near  .DistToPlane(center) > -radius &&
-	       left  .DistToPlane(center) > -radius &&
-	       right .DistToPlane(center) > -radius &&
-	       bottom.DistToPlane(center) > -radius;
+	return top   .NDistToPlane(center) <= radius &&
+	       near  .NDistToPlane(center) <= radius &&
+	       left  .NDistToPlane(center) <= radius &&
+	       right .NDistToPlane(center) <= radius &&
+	       bottom.NDistToPlane(center) <= radius;
 }

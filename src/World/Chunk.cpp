@@ -126,15 +126,14 @@ void Chunk::AddBlockQueue(BlockQueueMap &map, const WorldPosition &offset, const
 
 bool Chunk::NoiseValueRand(const WorldPerlin::NoiseResult &noise, int oneInX) noexcept
 {
-	// Determine chance based on given values
-
 	// Large integer value for bitwise manipulation
 	std::int64_t mult = static_cast<std::int64_t>((noise.flatness * 8278555403.357f) - ((noise.temperature - noise.humidity) * 347894783.546f));
-
+	
 	// XOR and shift to get a hash of the noise value
 	mult ^= mult << 13;
 	mult ^= mult >> 17;
 	mult ^= mult << 5;
+	
 	return !(mult % oneInX);
 }
 

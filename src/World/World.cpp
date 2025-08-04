@@ -33,7 +33,7 @@ World::World(WorldPlayer &player) noexcept : player(player)
 	glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, sizeof(cubeLineIndices), cubeLineIndices, 0u);
 
 	// Get location of shader chunk position uniform variable
-	m_borderUniformLocation = shader.GetLocation(shader.programs.border, "chunkPos");
+	m_borderUniformLocation = game.shaders.programs.border.GetLocation("chunkPos");
 
 	// Create VAO for the world buffers to store buffer settings
 	m_worldVAO = OGL::CreateVAO();
@@ -49,7 +49,7 @@ World::World(WorldPlayer &player) noexcept : player(player)
 	glVertexAttribIPointer(0u, 1, GL_UNSIGNED_INT, 0, nullptr);
 
 	// Very important definition of a plane/quad for block rendering
-	// Laid out like this to allow for swizzling (e.g. verticesXZ.xyz) which is 'essentially free' in shaders
+	// Laid out like this to allow for swizzling (e.g. verticesXZ.xyz) which is "essentially free" in shaders
 	// See https://www.khronos.org/opengl/wiki/GLSL_Optimizations for more information
 
 	const float planeVertices[] = {
@@ -69,9 +69,10 @@ World::World(WorldPlayer &player) noexcept : player(player)
 	glBufferStorage(GL_ARRAY_BUFFER, sizeof(planeVertices), planeVertices, 0u);
 
 	// Shader storage buffer object (SSBO) to store chunk positions and face indexes for each chunk face (location = 0)
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0u, OGL::CreateBuffer(GL_SHADER_STORAGE_BUFFER));
+	m_worldSSBO = OGL::CreateBuffer(GL_SHADER_STORAGE_BUFFER);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0u, m_worldSSBO);
 	// Buffer which holds the indexes into the world data for each 'instanced draw call' in indirect draw call
-	OGL::CreateBuffer(GL_DRAW_INDIRECT_BUFFER);
+	m_worldIBO = OGL::CreateBuffer(GL_DRAW_INDIRECT_BUFFER);
 
 	// TODO (possible): noise splines for more varied terrain generation
 	game.noiseGenerators = WorldNoise(nullptr);
@@ -83,7 +84,7 @@ World::World(WorldPlayer &player) noexcept : player(player)
 void World::DrawWorld() const noexcept
 {
 	// Use correct VAO and shader program
-	shader.UseProgram(shader.programs.blocks);
+	game.shaders.programs.blocks.Use();
 	glBindVertexArray(m_worldVAO);
 
 	// Draw the entire world in a single draw call using the indirect buffer, essentially
@@ -98,7 +99,7 @@ void World::DebugChunkBorders(bool drawing) noexcept
 	if (!game.chunkBorders) return; // Only render/update if enabled
 
 	// Use borders VAO and shader for correct data editing/usage
-	shader.UseProgram(shader.programs.border);
+	game.shaders.programs.border.Use();
 	glBindVertexArray(m_bordersVAO);
 	
 	// Draw lines using indexed line data
@@ -106,7 +107,7 @@ void World::DebugChunkBorders(bool drawing) noexcept
 	else {
 		// Update chunk position in shader
 		const glm::dvec3 chunkPos = player.offset * static_cast<PosType>(ChunkValues::size);
-		glUniform3d(m_borderUniformLocation, chunkPos.x, chunkPos.y, chunkPos.z);
+		glUniform3dv(m_borderUniformLocation, 1, &chunkPos[0]);
 	}
 }
 
@@ -282,16 +283,18 @@ void World::UpdateRenderDistance(int newRenderDistance) noexcept
 	int crd = static_cast<int>(chunkRenderDistance), sInd = 0;
 	for (int x = -crd; x <= crd; ++x) for (int z = -crd; z <= crd; ++z) if (glm::abs(x) + glm::abs(z) <= crd) surroundingOffsets[sInd++] = { x, z };
 
-	glBindVertexArray(m_worldVAO); // Ensure correct buffers are updated
+	// Ensure correct buffers are updated
+	glBindVertexArray(m_worldVAO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_worldSSBO);
 
 	// Storage for draw commands
 	glBufferData(GL_DRAW_INDIRECT_BUFFER, static_cast<GLsizeiptr>(sizeof(IndirectDrawCommand) * maxChunkFacesTransparency), nullptr, GL_STATIC_DRAW);
-	// Shader data storage (chunk offset, face)
+	// Shader data storage (chunk position and face index)
 	glBufferData(GL_SHADER_STORAGE_BUFFER, static_cast<GLsizeiptr>(sizeof(ShaderChunkFace) * maxChunkFacesTransparency), nullptr, GL_STATIC_COPY);
 
 	TextFormat::log(fmt::format("Render distance changed ({})", chunkRenderDistance));
 
-	// Fill the newly sized buffers (empty) with new valid data
+	// Update chunks to use new offset radius (generate or delete)
 	OffsetUpdate();
 }
 
@@ -414,22 +417,19 @@ void World::OffsetUpdate() noexcept
 	}
 
 	// Number of full chunks per thread
-	const int numFullChunksEach = newOffsetsCount / game.threads;
-	int numFullChunksLeft = newOffsetsCount - (numFullChunksEach * game.threads); // Size may not be a multiple of threads count
+	const int numFullChunksEach = newOffsetsCount / game.numThreads;
+	int numFullChunksLeft = newOffsetsCount - (numFullChunksEach * game.numThreads); // Size may not be a multiple of threads count
 	const int chunkArrayLen = newOffsetsCount * ChunkValues::heightCount;
 
 	Chunk **chunkArray = new Chunk*[chunkArrayLen]; // Array of newly created chunks
 
-	game.perfs.generation.Start();
-
-	for (int thread = 0, threadIndex = 0; thread < game.threads; ++thread) {
+	for (int thread = 0, threadIndex = 0; thread < game.numThreads; ++thread) {
 		const int start = threadIndex;
 		threadIndex += numFullChunksEach + (numFullChunksLeft-- > 0 ? 1 : 0); // Spread leftover offsets over threads
-		ChunkThreadsData &threadData = calcThreadData[thread];
 
 		// Create the full chunks in parallel
-		threadData.thread = std::thread([&](int mapInd, int offsetStart, int offsetsEnd) {
-			Chunk::BlockQueueMap &threadMap = calcThreadData[mapInd].map;
+		game.genThreads[thread] = std::thread([&](int mapInd, int offsetStart, int offsetsEnd) {
+			Chunk::BlockQueueMap &threadMap = threadMaps[mapInd];
 			int chunksStart = offsetStart * ChunkValues::heightCount;
 			WorldPerlin::NoiseResult* noiseResults = new WorldPerlin::NoiseResult[ChunkValues::sizeSquared];
 			
@@ -452,19 +452,17 @@ void World::OffsetUpdate() noexcept
 	}
 
 	// Wait for all threads to finish and set the offset pointers of each chunk
-	for (int threadInd = 0; threadInd < game.threads; ++threadInd) {
-		ChunkThreadsData &threadData = calcThreadData[threadInd];
-		threadData.thread.join(); // Wait for the thread to finish
-
+	for (int threadInd = 0; threadInd < game.numThreads; ++threadInd) {
+		game.genThreads[threadInd].join(); // Wait for the thread to finish
+		
 		// Merge the thread queue map with the main one
-		for (const auto &it : threadData.map) {
+		Chunk::BlockQueueMap &threadMap = threadMaps[threadInd];
+		for (const auto &it : threadMap) {
 			Chunk::BlockQueueVector &main = m_blockQueue[it.first];
 			const Chunk::BlockQueueVector threadVec = it.second;
 			main.insert(main.end(), threadVec.begin(), threadVec.end());
 		}
 	}
-
-	game.perfs.generation.End();
 
 	for (int i = 0; i < chunkArrayLen; ++i) {
 		// Offsets are in a specific order so they can be calculated instead of stored
@@ -488,23 +486,21 @@ void World::OffsetUpdate() noexcept
 	for (const auto &pair : vecVals) ApplyQueue(pair.second, pair.first, false);
 
 	// Calculate chunks in the 'affected' map in parallel
-	const int affectedSize = static_cast<int>(affectedChunks.size()), numChunksEach = affectedSize / static_cast<std::size_t>(game.threads);
-	int numChunksLast = affectedSize - static_cast<std::size_t>(numChunksEach * game.threads);
+	const int affectedSize = static_cast<int>(affectedChunks.size()), numChunksEach = affectedSize / static_cast<std::size_t>(game.numThreads);
+	int numChunksLast = affectedSize - static_cast<std::size_t>(numChunksEach * game.numThreads);
 
 	// Put map values into array for non-linear access
 	int chunkCalcArrayIndex = 0;
 	Chunk **chunkCalcArray = new Chunk*[affectedSize];
 	for (const auto &it : affectedChunks) chunkCalcArray[chunkCalcArrayIndex++] = it.second;
 
-	game.perfs.chunkCalc.Start();
-
 	// Split chunk calculation amongst multiple threads
-	for (int thread = 0, threadStartIndex = 0; thread < game.threads; ++thread) {
+	for (int thread = 0, threadStartIndex = 0; thread < game.numThreads; ++thread) {
 		const int arrayStart = threadStartIndex; // Starting index
 		threadStartIndex += numChunksEach + (numChunksLast-- > 0 ? 1 : 0); // Spread the excess chunks across threads
-
+		
 		// Calculate in parallel
-		calcThreadData[thread].thread = std::thread([&](int start, int end) {
+		game.genThreads[thread] = std::thread([&](int start, int end) {
 			std::uint32_t *quadData = new std::uint32_t[ChunkValues::blocksAmount];
 			for (int i = start; i < end; ++i) chunkCalcArray[i]->CalculateTerrainData(allchunks, quadData);
 			delete[] quadData;
@@ -512,9 +508,7 @@ void World::OffsetUpdate() noexcept
 	}
 
 	// Wait for all threads to finish and delete them
-	for (int t = 0; t < game.threads; ++t) calcThreadData[t].thread.join();
-
-	game.perfs.chunkCalc.End();
+	for (int t = 0; t < game.numThreads; ++t) game.genThreads[t].join();
 
 	delete[] chunkCalcArray; // Clear chunk array
 
@@ -544,7 +538,7 @@ void World::UpdateWorldBuffers() noexcept
 		}
 	}
 
-	// Bind world vertex array to edit correct buffers
+	// Bind world vertex array and instanced buffer
 	glBindVertexArray(m_worldVAO);
 	glBindBuffer(GL_ARRAY_BUFFER, m_worldInstancedVBO);
 
@@ -578,7 +572,6 @@ void World::UpdateWorldBuffers() noexcept
 	if (canMap) glUnmapBuffer(GL_ARRAY_BUFFER);
 
 	// Buffer accumulated block data into instanced world VBO
-	glBindBuffer(GL_ARRAY_BUFFER, m_worldInstancedVBO);
 	glVertexAttribIPointer(0u, 1, GL_UNSIGNED_INT, 0, nullptr);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(std::uint32_t) * squaresCount, newWorldData, GL_STATIC_DRAW);
 
@@ -592,6 +585,8 @@ void World::UpdateWorldBuffers() noexcept
 
 void World::SortWorldBuffers() noexcept
 {
+	game.perfs.renderSort.Start();
+
 	// Offset value data
 	ShaderChunkFace offsetData;
 	m_indirectCalls = 0;
@@ -617,22 +612,20 @@ void World::SortWorldBuffers() noexcept
 		const WorldPosition &offset = it.first;
 
 		// Use frustum culling to determine if the chunk is on-screen
-		game.perfs.culling.Start();
-
 		const glm::dvec3 corner = offset * static_cast<PosType>(ChunkValues::size); // Get chunk corner
 		if (!player.frustum.SphereInFrustum(corner + centerOffset, chunkSphereRadius)) continue;
-
-		game.perfs.culling.End();
 		++renderChunksCount;
 		
 		// Set offset data for shader
 		offsetData.worldPositionX = corner.x;
-		offsetData.worldPositionY = static_cast<float>(corner.y); // The chunk Y position is limited, so no need for double
 		offsetData.worldPositionZ = corner.z;
 
-		for (offsetData.faceIndex = std::int32_t{}; offsetData.faceIndex < static_cast<std::int32_t>(6); ++offsetData.faceIndex) {
-			const Chunk::FaceAxisData &faceData = chunk->chunkFaceData[offsetData.faceIndex];
+		for (std::uint32_t faceIndex{}; faceIndex < static_cast<std::uint32_t>(6); ++faceIndex) {
+			const Chunk::FaceAxisData &faceData = chunk->chunkFaceData[faceIndex];
 			if (!faceData.TotalFaces<std::uint32_t>()) continue; // No faces present
+
+			// Store world Y position and face index in a single variable (last 3 bits = index, rest are Y position)
+			offsetData.faceIndexAndY = static_cast<std::uint32_t>(corner.y) + (faceIndex << static_cast<std::uint32_t>(29));
 			
 			// Add to vector if transparency is present
 			if (faceData.translucentFaceCount) {
@@ -644,7 +637,7 @@ void World::SortWorldBuffers() noexcept
 			// Check if it would even be possible to see this (opaque) face of the chunk
 			// e.g. you can't see forward faces when looking north at a chunk
 			
-			switch (offsetData.faceIndex) {
+			switch (faceIndex) {
 				case WldDir_Right:
 					if (player.offset.x < offset.x) continue;
 					break;
@@ -666,7 +659,7 @@ void World::SortWorldBuffers() noexcept
 				default:
 					break;
 			}
-			
+
 			// Set indirect and offset data at the same indexes in both buffers
 			worldIndirectData[m_indirectCalls] = { 4u, faceData.faceCount, 0u, faceData.dataIndex };
 			worldOffsetData[m_indirectCalls++] = offsetData; // Advance to next indirect call
@@ -678,19 +671,22 @@ void World::SortWorldBuffers() noexcept
 	for (std::size_t i{}; i < translucentChunksCount; ++i) {
 		// Get chunk face data
 		const ChunkTranslucentData &data = translucentChunks[i];
-		const Chunk::FaceAxisData &faceData = data.chunk->chunkFaceData[data.offsetData.faceIndex];
+		const Chunk::FaceAxisData &faceData = data.chunk->chunkFaceData[data.offsetData.faceIndexAndY >> static_cast<std::uint32_t>(29u)];
 
 		// Create indirect command with offset using the translucent face data
 		worldIndirectData[m_indirectCalls] = { 4u, faceData.translucentFaceCount, 0u, faceData.dataIndex + faceData.faceCount };
 		worldOffsetData[m_indirectCalls++] = data.offsetData;
 	}
 
-	// Bind world vertex array to edit correct buffers
+	// Bind world vertex array and SSBO to edit correct buffers
 	glBindVertexArray(m_worldVAO);
-	
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_worldSSBO);
+
 	// Update SSBO and indirect buffer with their respective data and sizes
 	glBufferSubData(GL_DRAW_INDIRECT_BUFFER, GLintptr{}, static_cast<GLsizeiptr>(sizeof(IndirectDrawCommand) * static_cast<std::size_t>(m_indirectCalls)), worldIndirectData);
 	glBufferSubData(GL_SHADER_STORAGE_BUFFER, GLintptr{}, static_cast<GLsizeiptr>(sizeof(ShaderChunkFace) * static_cast<std::size_t>(m_indirectCalls)), worldOffsetData);
+
+	game.perfs.renderSort.End();
 }
 
 int World::GetNearbyChunks(const WorldPosition &offset, NearbyChunkData *nearbyData, bool includeY) const noexcept
@@ -723,26 +719,20 @@ int World::GetNumChunks(bool includeHeight) const noexcept
 
 World::~World() noexcept
 {
-	// Bind vertex array to get correct buffers
-	glBindVertexArray(m_worldVAO);
-
-	// Get the IDs of unnamed buffers
-	GLint SSBOID, DIBID;
-	glGetIntegerv(GL_SHADER_STORAGE_BUFFER_BINDING, &SSBOID);
-	glGetIntegerv(GL_DRAW_INDIRECT_BUFFER_BINDING, &DIBID);
+	// Delete all chunks
+	for (const auto &it : allchunks) delete it.second;
 
 	// Delete created buffer objects
 	const GLuint deleteBuffers[] = { 
-		static_cast<GLuint>(SSBOID), 
-		static_cast<GLuint>(DIBID), 
+		m_worldSSBO, 
+		m_worldIBO, 
 		m_worldInstancedVBO, 
 		m_worldPlaneVBO,
 	};
 	glDeleteBuffers(static_cast<GLsizei>(Math::size(deleteBuffers)), deleteBuffers);
 
 	// Delete world VAO
-	const GLuint uintVAO = static_cast<GLuint>(m_worldVAO);
-	glDeleteVertexArrays(1, &uintVAO);
+	glDeleteVertexArrays(1, &m_worldVAO);
 
 	// Delete stored arrays
 	delete[] faceDataPointers;
@@ -750,5 +740,5 @@ World::~World() noexcept
 	delete[] translucentChunks;
 	delete[] worldIndirectData;
 	delete[] worldOffsetData;
-	delete[] calcThreadData;
+	delete[] threadMaps;
 }

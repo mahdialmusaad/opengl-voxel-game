@@ -62,8 +62,9 @@ void GameObject::Callbacks::KeyPressCallback(int key, int, int action, int)
 		// Handle text pasting
 		else if (game.holdingCtrl && key == GLFW_KEY_V) AddCommandText(glfwGetClipboardString(game.window));
 	}
+
 	// Determine if the input has a linked function and execute if so 
-	else ApplyInput(key, action);
+	ApplyInput(key, action);
 }
 
 void GameObject::Callbacks::CharCallback(unsigned codepoint)
@@ -154,16 +155,11 @@ void GameObject::Callbacks::MouseMoveCallback(double xpos, double ypos) noexcept
 void GameObject::Callbacks::WindowMoveCallback(int x, int y) noexcept
 {
 	if (game.fullscreen) return;
-	// Store window location for information purposes
 	game.windowX = x;
 	game.windowY = y;
 }
 
-void GameObject::Callbacks::CloseCallback() noexcept
-{
-	// Exit out of main game loop
-	game.mainLoopActive = false;
-}
+void GameObject::Callbacks::CloseCallback() noexcept { game.mainLoopActive = false; }
 
 void GameObject::Callbacks::TakeScreenshot() noexcept
 {
@@ -211,19 +207,8 @@ void GameObject::Callbacks::TakeScreenshot() noexcept
 	const double currentSecs = glfwGetTime();
 	const int milliseconds = static_cast<int>((currentSecs - floor(currentSecs)) * 1000.0f);
 
-	// Get *thread-safe* formatted time values depending on the system
-	const std::time_t timeSecs = time(0u);
-	std::tm timeValues;
-
-	#if defined(__unix__)
-		localtime_r(&timeSecs, &timeValues);
-	#elif defined(_MSC_VER)
-		localtime_s(&timeValues, &timeSecs);
-	#else
-		static std::mutex mtx;
-		std::lock_guard<std::mutex> lock(mtx);
-		timeValues = *std::localtime(&timeSecs);
-	#endif
+	// Get formatted time values
+	const std::tm timeValues = TextFormat::getTime();
 
 	// File name for displaying and creating directory path
 	const std::string filenamefmt = fmt::format("Screenshot {:%Y-%m-%d %H-%M-%S}-{:03}.png", timeValues, milliseconds);
@@ -249,7 +234,10 @@ void GameObject::Callbacks::TakeScreenshot() noexcept
 	pixels.clear();
 
 	// Create result text to be displayed
-	if (success) ScreenshotEnd("Screenshot saved as " + filenamefmt);
+	if (success) {
+		ScreenshotEnd("Screenshot saved as " + filenamefmt);
+		TextFormat::log("Screenshot taken");
+	}
 	else ScreenshotEnd(failedText);
 }
 
@@ -279,87 +267,12 @@ void GameObject::Callbacks::ToggleFullscreen() noexcept
 
 void GameObject::Callbacks::ApplyInput(int key, int action) noexcept
 {
-	// Select an inventory slot if user presses a number ('0' corresponds to the last slot)
-	if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
-		m_app->playerFunctions.UpdateScroll(key - GLFW_KEY_1);
-		return;
-	} else if (key == GLFW_KEY_0) {
-		m_app->playerFunctions.UpdateScroll(9);
+	// Select the corresponding inventory slot if a number is pressed (only if not chatting)
+	if (action == GLFW_PRESS && key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
+		if (!game.chatting) m_app->playerFunctions.UpdateScroll(key - GLFW_KEY_1);
 		return;
 	}
 	
-	// Input type
-	const int noCtrlInput = 1 << 3, noAltInput = 1 << 4, noShiftInput = 1 << 5;
-	const int repeatableInput = GLFW_PRESS | GLFW_REPEAT;
-	const int pressInput = GLFW_PRESS;
-
-	struct InputData {
-		int key, inputType;
-		std::function<void()> action;
-	};
-
-	// Get limit/clamp values
-	using namespace ValueLimits;
-
-	// Functions for 'value' inputs
-	const auto ChangeRender = [&](int change) {
-		m_app->world.UpdateRenderDistance(m_app->world.chunkRenderDistance + static_cast<std::int32_t>(change));
-	};
-	const auto ChangeFOV = [&](double change) {
-		ClampAdd(m_app->player.fov, change, fovLimit);
-		m_app->playerFunctions.UpdateFrustum();
-		m_app->player.moved = true;
-	};
-	
-	static const InputData gameKeyFunctions[] = {
-	// Default controls
-	{ GLFW_KEY_SLASH, pressInput, [&]() { game.isChatCommand = true; BeginChat(); }},
-	{ GLFW_KEY_T, pressInput, [&]() { game.isChatCommand = false; game.ignoreChatStart = true; BeginChat(); }},
-	{ GLFW_KEY_ESCAPE, pressInput, [&]() { game.mainLoopActive = false; }},
-	
-	// Toggle inputs
-	{ GLFW_KEY_X, pressInput, [&]() { glfwSwapInterval(revBool(game.vsyncFPS)); }},
-	{ GLFW_KEY_E, pressInput, [&]() { ToggleInventory(); }},
-	{ GLFW_KEY_F, pressInput, [&]() { revBool(game.hideFog); }},
-	{ GLFW_KEY_C, pressInput, [&]() { revBool(m_app->player.doGravity); }},
-	{ GLFW_KEY_N, pressInput, [&]() { revBool(m_app->player.noclip); }},
-	{ GLFW_KEY_V, pressInput, [&]() { revBool(game.noGeneration); }},
-
-	// Value inputs
-	// Render distance
-	{ GLFW_KEY_LEFT_BRACKET, pressInput, [&]() { ChangeRender(1); }},
-	{ GLFW_KEY_RIGHT_BRACKET, pressInput, [&]() { ChangeRender(-1); }},
-	// Speed
-	{ GLFW_KEY_COMMA, repeatableInput, [&]() { m_app->player.defaultSpeed += 1.0f; }},
-	{ GLFW_KEY_PERIOD, repeatableInput, [&]() { m_app->player.defaultSpeed -= 1.0f; }},
-	// FOV
-	{ GLFW_KEY_I, repeatableInput, [&]() { ChangeFOV(glm::radians(1.0)); }},
-	{ GLFW_KEY_O, repeatableInput, [&]() { ChangeFOV(glm::radians(-1.0)); }},
-
-	// Debug inputs
-	{ GLFW_KEY_Z, pressInput, [&]() { glPolygonMode(GL_FRONT_AND_BACK, revBool(game.wireframe) ? GL_LINE : GL_FILL); }},
-	{ GLFW_KEY_R, pressInput, [&]() {
-		shader.InitShaders();
-		m_app->world.textRenderer.UpdateShaderUniform();
-		m_app->world.DebugChunkBorders(false);
-		TextFormat::log("Reloaded shaders");
-	}},
-	{ GLFW_KEY_J, pressInput, [&]() { revBool(game.chunkBorders); m_app->world.DebugChunkBorders(false); }},
-	{ GLFW_KEY_U, pressInput, [&]() { revBool(game.testbool); m_app->world.DebugReset(); }},
-
-	// Function inputs
-	{ GLFW_KEY_F1, pressInput, [&]() { revBool(game.showGUI); }},
-	{ GLFW_KEY_F2, pressInput, [&]() { TakeScreenshot(); }},
-	{ GLFW_KEY_F3, pressInput, [&]() { glfwSetInputMode(game.window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); game.focusChanged = true; }},
-	{ GLFW_KEY_F4, pressInput, [&]() { revBool(game.debugText); }},
-	{ GLFW_KEY_F11, pressInput, [&]() { ToggleFullscreen(); }},
-	};
-
-	// Add to input information list
-	if (action == GLFW_RELEASE) game.keyboardState.erase(key);
-	else game.keyboardState.insert({ key, action });
-	game.anyKeyPressed = game.keyboardState.size() > 0;
-
 	// Determine modifier key status
 	switch (key)
 	{
@@ -377,20 +290,103 @@ void GameObject::Callbacks::ApplyInput(int key, int action) noexcept
 			return;
 	}
 
-	// Check if any input struct uses the pressed key
-	const std::size_t keyFuncsSize = Math::size(gameKeyFunctions);
-	const InputData *found = std::find_if(gameKeyFunctions, gameKeyFunctions + keyFuncsSize, [&](const InputData &id) { return id.key == key; });
+	// Add or remove from input information list
+	if (action == GLFW_RELEASE) {
+		game.keyboardState.erase(key);
+		game.anyKeyPressed = game.keyboardState.size();
+		return;
+	}
+	else {
+		game.keyboardState.insert({ key, action });
+		game.anyKeyPressed = true;
+	}
 
-	if (found != gameKeyFunctions + keyFuncsSize) {
+	// Input types
+	const int noCtrlInput = 1 << 3, noAltInput = 1 << 4, noShiftInput = 1 << 5;
+	const int bypassChatInput = 1 << 6;
+
+	const int repeatableInput = GLFW_PRESS | GLFW_REPEAT;
+	const int pressInput = GLFW_PRESS;
+
+	// Get limit/clamp values
+	using namespace ValueLimits;
+
+	// Functions for 'value' inputs
+	const auto ChangeRender = [&](int change) {
+		m_app->world.UpdateRenderDistance(m_app->world.chunkRenderDistance + static_cast<std::int32_t>(change));
+	};
+	const auto ChangeFOV = [&](double change) {
+		m_app->player.fov = glm::clamp(m_app->player.fov + change, glm::radians(fovLimit.min), glm::radians(fovLimit.max));
+		m_app->playerFunctions.UpdateFrustum();
+		m_app->player.moved = true;
+	};
+	
+	struct InputData {
+		int key, inputType;
+		std::function<void()> action;
+	} static const gameKeyFunctions[] = {
+	// Default controls
+	{ GLFW_KEY_SLASH, pressInput, [&]() { game.isChatCommand = true; BeginChat(); }},
+	{ GLFW_KEY_T, pressInput, [&]() { game.isChatCommand = false; game.ignoreChatStart = true; BeginChat(); }},
+	{ GLFW_KEY_ESCAPE, pressInput, [&]() { CloseCallback(); }},
+	
+	// Toggle inputs
+	{ GLFW_KEY_X, pressInput, [&]() { glfwSwapInterval(revBool(game.vsyncFPS)); }},
+	{ GLFW_KEY_E, pressInput, [&]() { ToggleInventory(); }},
+	{ GLFW_KEY_F, pressInput, [&]() { revBool(game.hideFog); }},
+	{ GLFW_KEY_C, pressInput, [&]() { revBool(m_app->player.doGravity); }},
+	{ GLFW_KEY_N, pressInput, [&]() { revBool(m_app->player.noclip); }},
+	{ GLFW_KEY_V, pressInput, [&]() { revBool(game.noGeneration); }},
+
+	// Value inputs
+	// Render distance
+	{ GLFW_KEY_LEFT_BRACKET, pressInput, [&]() { ChangeRender(1); }},
+	{ GLFW_KEY_RIGHT_BRACKET, pressInput, [&]() { ChangeRender(-1); }},
+	// Speed
+	{ GLFW_KEY_COMMA, repeatableInput, [&]() { m_app->player.defaultSpeed += 1.0f; }},
+	{ GLFW_KEY_PERIOD, repeatableInput, [&]() { m_app->player.defaultSpeed -= 1.0f; }},
+	// FOV
+	{ GLFW_KEY_I, repeatableInput, [&]() { ChangeFOV(glm::radians( 1.0)); }},
+	{ GLFW_KEY_O, repeatableInput, [&]() { ChangeFOV(glm::radians(-1.0)); }},
+
+	// Debug inputs
+	{ GLFW_KEY_Z, pressInput, [&]() { glPolygonMode(GL_FRONT_AND_BACK, revBool(game.wireframe) ? GL_LINE : GL_FILL); }},
+	{ GLFW_KEY_R, pressInput, [&]() {
+		game.shaders.InitShaders();
+		m_app->world.textRenderer.UpdateShaderUniform();
+		m_app->world.DebugChunkBorders(false);
+		TextFormat::log("Reloaded shaders");
+	}},
+	{ GLFW_KEY_J, pressInput, [&]() { revBool(game.chunkBorders); m_app->world.DebugChunkBorders(false); }},
+	{ GLFW_KEY_U, pressInput, [&]() { revBool(game.testbool); m_app->world.DebugReset(); }},
+
+	// Function inputs
+	{ GLFW_KEY_F1, pressInput, [&]() { revBool(game.showGUI); }},
+	{ GLFW_KEY_F2, pressInput | bypassChatInput, [&]() { TakeScreenshot(); }},
+	{ GLFW_KEY_F3, pressInput | bypassChatInput, [&]() { glfwSetInputMode(game.window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); game.focusChanged = true; }},
+	{ GLFW_KEY_F4, pressInput | bypassChatInput, [&]() { revBool(game.debugText); }},
+	{ GLFW_KEY_F11, pressInput | bypassChatInput, [&]() { ToggleFullscreen(); }},
+	};
+
+	// Check if any input struct uses the pressed key
+	const InputData *inputsEnd = gameKeyFunctions + Math::size(gameKeyFunctions);
+	const InputData *found = std::find_if(gameKeyFunctions, inputsEnd, [&](const InputData &id) { return id.key == key; });
+
+	if (found != inputsEnd) {
 		// Check if input action matches (or disallows certain modifier) and run the associated function if it is
-		if ((found->inputType & noCtrlInput) && game.holdingCtrl) return;
+		// Disallow modifiers CTRL, ALT and SHIFT
+		if ((found->inputType & noCtrlInput) && game.holdingCtrl) return; 
 		if ((found->inputType & noAltInput) && game.holdingAlt) return;
 		if ((found->inputType & noShiftInput) && game.holdingShift) return;
-		if (action & found->inputType) found->action();
+
+		// Disallow whilst chatting
+		if (!(found->inputType & bypassChatInput) && game.chatting) return;
+
+		if (action & found->inputType) found->action(); // Determine type of action
 	}
 }
 
-void GameObject::Callbacks::AddChatMessage(std::string message) noexcept
+void GameObject::Callbacks::AddChatMessage(std::string message, bool autonl) noexcept
 {
 	if (!message.size()) { TextFormat::log("Empty chat message"); return; }
 
@@ -399,7 +395,7 @@ void GameObject::Callbacks::AddChatMessage(std::string message) noexcept
 
 	// Append formatted text to current chat - assume previous text is formatted already
 	std::string chatText = m_app->m_chatText->GetText();
-	if (chatText.size()) chatText += '\n';
+	if (autonl && chatText.size()) chatText += '\n';
 	chatText += message;
 
 	// Remove previous lines if the whole text has too many lines
@@ -474,6 +470,10 @@ void GameObject::Callbacks::ApplyCommand()
 	static const std::string defQueryText = "*value";
 
 	const auto DisplayHelpCommand = [&](const Command* commands, std::size_t size, int page) {
+		// Instead of storing the entire command text, it can be constructed at run-time
+		// to avoid taking up too much memory passively. The unique command syntax information
+		// text below still needs to be stored, however.
+
 		// Page 1 is the first page - advance through help text depending on text lines limit and page
 		static const std::string infoTxt =
 			"A command starts with the character '/' and is formatted as such: '/name arg1 arg2'...\n"
@@ -483,29 +483,24 @@ void GameObject::Callbacks::ApplyCommand()
 			"A tilde (~) in some arguments is treated as the current value: /tp 0 ~ 0 -> the '~' is replaced with your Y position. "
 			"Numbers and negation can be included: /tp 0 -~5 0 -> tilde expression replaced with -(Y position + 5).\n";
 
-		std::string finalText;
+		std::string finalText = infoTxt;
 		page = glm::max(--page, 0); // Page 1 is the start, decrement for zero-indexing
 
 		// Add descriptions and arguments of all commands
 		while (size--) {
 			const Command *cmd = &commands[size];
 			if (cmd->description[0] == '_') continue; // Ignore debug commands
-			const char ending = size ? '\n' : '\0';
 			const std::string &argsText = cmd->argsListText.size() ? cmd->argsListText : (cmd->queryFunc == nullptr ? "(None)" : defQueryText);
-			finalText += fmt::format("/{} {} Arguments: {}{}", cmd->name, cmd->description, argsText, ending);
+			finalText += fmt::format("\n/{} {} -- Arguments: {}", cmd->name, cmd->description, argsText);
 		}
 		
 		// Determine section to show depending on the page using chat-formatted version of the help text
 		m_app->world.textRenderer.FormatChatText(finalText);
 		const std::size_t start = TextFormat::findNthOf(finalText, '\n', page * m_app->world.textRenderer.maxChatLines);
 		const std::size_t end = TextFormat::findNthOf(finalText, '\n', (page + 1) * m_app->world.textRenderer.maxChatLines);
-		finalText = finalText.substr(start, end - start);
-
-		// Replace possible trailing new line, adding an ellipsis if there is still more info
-		if (finalText.back() == '\n') finalText.pop_back();
-		if (end != std::string::npos) finalText = finalText.substr(std::size_t{}, finalText.find_last_of(" ")) + "...";
+		finalText = finalText.substr(start, end - start) + " ";
 		
-		AddChatMessage(finalText); // Add help message to chat
+		AddChatMessage(finalText, false); // Add help message to chat
 	};
 
 	// Shortcut variables
@@ -553,14 +548,14 @@ void GameObject::Callbacks::ApplyCommand()
 	{ "dcmp", "id", "_Creates a new file on the same directory with the ASM code for a given shader program ID", [&]() {
 		std::vector<char> binary(65535);
 		GLenum format{}; GLint length{};
-		glGetProgramBinary(IntArg<GLsizei>(0), static_cast<GLsizei>(65535), &length, &format, binary.data());
+		glGetProgramBinary(IntArg<GLsizei>(0), 65535, &length, &format, binary.data());
 		std::ofstream("shaderbinary.txt").write(binary.data(), length); 
 	}, [&]() {
 		noQueryConversion = true;
 		if (!queryChat) return;
 
 		std::string result = "Programs: ";
-		shader.EachProgram([&](Shader::Program &prog) { result += fmt::format("'{}': {}, ", prog.name, prog.program); });
+		game.shaders.EachProgram([&](ShadersObject::Program &prog) { result += fmt::format("'{}': {}, ", prog.name, prog.program); });
 		AddChatMessage(result.substr(std::size_t{}, result.size() - static_cast<std::size_t>(2u)));
 	}},
 	{ "test", "*x *y *z *w", "_Sets 4 values for run-time testing", [&]() {
@@ -579,21 +574,18 @@ void GameObject::Callbacks::ApplyCommand()
 		[&]() { game.tickSpeed = DblArg(0, -100.0, 100.0); }, [&]() { query("tick", game.tickSpeed); }
 	},
 	{ "rd", "", fmt::format("Changes the world's render distance [{}, {}]", renderLimit.min, renderLimit.max),
-		[&]() { world.UpdateRenderDistance(IntArg<int>(0, 4, 200)); }, [&]() { query("render distance", m_app->world.chunkRenderDistance); }
+		[&]() { world.UpdateRenderDistance(IntArg<int>(0, renderLimit.min, renderLimit.max)); }, [&]() { query("render distance", m_app->world.chunkRenderDistance); }
 	},
 	{ "fov", "", fmt::format("Sets the camera FOV. [{}, {}]", fovLimit.min, fovLimit.max),
-		[&]() { plr.fov = glm::radians(DblArg(0, 5.0, 160.0)); }, [&]() { query("FOV", glm::degrees(plr.fov)); }
+		[&]() { plr.fov = glm::radians(DblArg(0, fovLimit.min, fovLimit.max)); }, [&]() { query("FOV", glm::degrees(plr.fov)); }
 	},
 
 	// No argument commands
 
 	{ "clear", "", "Clears the chat.", [&]() { world.textRenderer.ChangeText(m_app->m_chatText, ""); }},
-	{ "trytxt", "", "_Used to test the text renderer.", [&]() { std::string msg; for (char x = '!'; x < 127; ++x) { msg += x; } AddChatMessage(msg); }},
-	{ "exit", "", "Exits the game.", [&]() { game.mainLoopActive = false; }},
-	{ "help", "*page", "Prints out some helpful text depending on the given page.",
-		[&]() { DisplayHelpCommand(allCommands, commandsSize, HasArgument(0) ? IntArg<int>(0) : 0); }
-	},
-	{ "none", "", "_", [&]() {}}
+	{ "trytxt", "", "_Used to test the text renderer.", [&]() { std::string msg; for (char x = '!'; x <= '~'; ++x) { msg += x; } AddChatMessage(msg); }},
+	{ "exit", "", "Exits the game.", [&]() { CloseCallback(); }},
+	{ "help", "*page", "Prints out some helpful text depending on the given page.", [&]() { DisplayHelpCommand(allCommands, commandsSize, HasArgument(0) ? IntArg<int>(0) : 0); }},
 	};
 
 	allCommands = commandsList;

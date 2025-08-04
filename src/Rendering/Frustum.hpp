@@ -17,7 +17,7 @@ struct CameraFrustum
 		FrustumPlane() noexcept = default;
 		FrustumPlane(const glm::dvec3 &distVec, const glm::dvec3 &norm) noexcept;
 
-		float DistToPlane(const glm::dvec3 &point) const noexcept;
+		float NDistToPlane(const glm::dvec3 &point) const noexcept;
 	};
 
 	void UpdateFrustum(const glm::dvec3 &position, const glm::dvec3 &cFront, const glm::dvec3 &cUp, const glm::dvec3 &cRight, double fov) noexcept;

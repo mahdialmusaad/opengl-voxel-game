@@ -1,0 +1,39 @@
+#version 430 core
+
+layout(local_size_x = 32) in;
+
+layout(std430, binding = 1) writeonly restrict buffer lookupComputeData {
+	uint results[];
+};
+
+uniform int chunkSize;
+uniform ivec3 directions[6];
+
+int loop(int x) { return (chunkSize + x) % chunkSize; }
+bool bound(int x) { return x < 0 || x >= chunkSize; }
+
+void main() {
+	const int index = int(gl_GlobalInvocationID.x);
+
+	const int sqr = chunkSize * chunkSize;
+	const ivec3 currentBlock = {
+		(index / sqr) % chunkSize,
+		(index / chunkSize) % chunkSize,
+		index % chunkSize
+	};
+
+	const int face = index / (sqr * chunkSize);
+	ivec3 nextBlock = currentBlock + directions[face];
+
+	const int resface = (
+		bound(nextBlock.x) ||
+		bound(nextBlock.y) ||
+		bound(nextBlock.z)
+	) ? face : 6;
+
+	results[index] =
+		(loop(nextBlock.x)) +
+		(loop(nextBlock.y) << 8) +
+		(loop(nextBlock.z) << 16) +
+		(resface << 24);
+}

@@ -56,6 +56,7 @@ private:
 	GLint m_borderUniformLocation;
 
 	GLuint m_worldVAO, m_worldInstancedVBO, m_worldPlaneVBO;
+	GLuint m_worldSSBO, m_worldIBO;
 	GLsizei m_indirectCalls;
 	bool canMap = false;
 
@@ -73,8 +74,7 @@ private:
 	struct ShaderChunkFace {
 		double worldPositionX;
 		double worldPositionZ;
-		float worldPositionY;
-		std::int32_t faceIndex;
+		std::uint32_t faceIndexAndY;
 	};
 
 	struct IndirectDrawCommand {
@@ -95,7 +95,7 @@ private:
 	ShaderChunkFace *worldOffsetData = nullptr;
 	WorldXZPosition *surroundingOffsets = nullptr;
 
-	struct ChunkThreadsData { std::thread thread; Chunk::BlockQueueMap map; } *calcThreadData = new ChunkThreadsData[game.threads];
+	Chunk::BlockQueueMap *threadMaps = new Chunk::BlockQueueMap[game.numThreads];
 };
 
 #endif

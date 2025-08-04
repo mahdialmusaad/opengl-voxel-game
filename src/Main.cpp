@@ -1,12 +1,11 @@
 #include "Application/Game.hpp"
 
-// Initialize globals from definitions header file
-Shader shader;
-GameGlobalsObject game{};
+// Define extern variables - in main.cpp to avoid redefinition errors
+GameGlobal game;
 ChunkLookupData chunkLookupData[ChunkValues::uniqueFaces];
 
 // Debug OpenGL functions for errors
-static void GLDebugOutput(
+static void GLDebugOutput( 
 	GLenum source, 
 	GLenum type, 
 	unsigned id, 
@@ -44,7 +43,7 @@ static void GLDebugOutput(
 		case GL_DEBUG_SEVERITY_NOTIFICATION:    severitystr = "[Notification]"; break;
 	}
 
-	TextFormat::log(fmt::format("{} - {}{}{} - ID {}", message, sourcestr, typestr, severitystr, id));
+	TextFormat::warn(fmt::format("{} - {}{}{} - ID {}", message, sourcestr, typestr, severitystr, id), "OGL debug message");
 }
 
 static void GLErrorCallback(int err, const char *description)
@@ -67,8 +66,11 @@ static void CloseCallback(GLFWwindow*) { callbacks->CloseCallback(); }
 static void Initialize()
 {
 	// Intialize GLFW library
-	if (!glfwInit()) throw std::runtime_error("GLFW failure");
+	if (!glfwInit()) throw std::runtime_error("GLFW initialization failure");
 
+	// GLFW error callback
+	glfwSetErrorCallback(GLErrorCallback);
+	
 	// Window hints (OGL core 4.6)
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
@@ -80,20 +82,14 @@ static void Initialize()
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 	#endif
 
-	// Get display information
-	GLFWmonitor *monitor = glfwGetPrimaryMonitor();
-	const GLFWvidmode *mode = glfwGetVideoMode(monitor);
-	
-	game.refreshRate = mode->refreshRate;
-	const int width = mode->width / 3, height = mode->height / 3;
-
-	// Create the game window
-	game.window = glfwCreateWindow(width, height, "Loading...", nullptr, nullptr);
+	// Init the game global and create the game window with default settings
+	game.Init();
+	game.window = glfwCreateWindow(game.width, game.height, "Loading...", nullptr, nullptr);
 
 	// Check if window failed to create
 	if (!game.window) {
 		glfwTerminate();
-		throw std::runtime_error("Window failure");
+		throw std::runtime_error("Window creation failure");
 	}
 
 	// Set GLFW functions to operate on the newly created window
@@ -103,8 +99,10 @@ static void Initialize()
 	if (!gladLoadGL(glfwGetProcAddress)) {
 		glfwDestroyWindow(game.window);
 		glfwTerminate();
-		throw std::runtime_error("GLAD failure");
+		throw std::runtime_error("GLAD load failure");
 	}
+
+	TextFormat::log("Library inits complete");
 }
 
 static void SetCallbacks(GameObject::Callbacks &callbacksObj) 
@@ -126,19 +124,21 @@ static void SetCallbacks(GameObject::Callbacks &callbacksObj)
 	glEnable(GL_DEBUG_OUTPUT);
 	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 	glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
-
-	// Error/debug callbacks
 	glDebugMessageCallback(GLDebugOutput, nullptr);
-	glfwSetErrorCallback(GLErrorCallback);
 }
 
 int main(int, char *argv[])
 {
 	Initialize(); // Initializes GLFW and GLAD
 	GameObject::InitGame(argv[0]); // Initializes game variables and textures
+	
+	{
+		GameObject gameObject{}; // Creates a main 'game' object
+		SetCallbacks(gameObject.callbacks); // Set all input and debug callbacks
+		gameObject.Main(); // Start main game loop
+	}
+	// Out of scope - destructors are called to delete created buffers and objects.
 
-	GameObject gameObject{}; // Creates a game object
-	SetCallbacks(gameObject.callbacks); // Set all input and debug callbacks
-
-	gameObject.Main(); // Start main game loop
+	game.Cleanup(); // Clean up some member variables and delete buffers defined in game global
+	glfwTerminate(); // Terminate GLFW - destroys game window as well
 }

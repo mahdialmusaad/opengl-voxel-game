@@ -62,8 +62,8 @@ void TextRenderer::UpdateShaderUniform() noexcept
 	textUniformPositions[positionDataAmnt - 1] = 1.0f; // Texture end coordinate
 
 	// Get location of positions array in shader and set uniform value
-	texturePositionsLocation = shader.GetLocation(shader.programs.text, "texturePositions");
-	glUniform1fv(texturePositionsLocation, static_cast<GLsizei>(positionDataAmnt), textUniformPositions);
+	texturePositionsLocation = game.shaders.programs.text.GetLocation("texturePositions");
+	glUniform1fv(texturePositionsLocation, positionDataAmnt, textUniformPositions);
 }
 
 void TextRenderer::RenderText(bool inventoryStatus) const noexcept
@@ -76,7 +76,7 @@ void TextRenderer::RenderText(ScreenText *screenText, bool useShader, bool inven
 {
 	// Setup shader if needed
 	if (useShader) {
-		shader.UseProgram(shader.programs.text);
+		game.shaders.programs.text.Use();
 		glBindVertexArray(m_textVAO);
 	}
 
@@ -341,6 +341,13 @@ void TextRenderer::UpdateText(ScreenText *screenText) const noexcept
 {
 	game.perfs.textUpdate.Start();
 
+	// Ensure no invalid characters are present
+	const std::string &text = screenText->GetText();
+	if (std::find_if(text.begin(), text.end(), [&](const char &c) { return (c < ' ' || c > '~') && c != '\n'; }) != text.end()) {
+		TextFormat::warn(fmt::format("Invalid text found in text object {}. Update cancelled.", screenText->GetVBO()), "Invalid text");
+		return;
+	}
+
 	// Bind buffers to update
 	glBindVertexArray(m_textVAO);
 	glBindBuffer(GL_ARRAY_BUFFER, screenText->GetVBO());
@@ -357,12 +364,6 @@ void TextRenderer::UpdateText(ScreenText *screenText) const noexcept
 	const int hasBackground = screenText->HasSettingEnabled(TS_Background);
 	const bool doShadowText = screenText->HasSettingEnabled(TS_Shadow);
 	const int displayLength = screenText->GetDisplayLength();
-
-	// Text data struct (vec3 + uvec2)
-	struct TextObjectCharData {
-		float x, y, w, h;
-		std::uint32_t charIndex, col;
-	} *textData = new TextObjectCharData[(doShadowText ? displayLength * 2 : displayLength) + hasBackground];
 
 	// Starting text position (top-left corner)
 	glm::vec2 pos = screenText->GetPosition();
@@ -381,12 +382,11 @@ void TextRenderer::UpdateText(ScreenText *screenText) const noexcept
 	const auto &UpdateMaxPosX = [&]() { if (pos.x > maxPos.x) maxPos.x = pos.x; };
 	const auto &UpdateMaxPos = [&]() { UpdateMaxPosX(); if (pos.y < maxPos.y) maxPos.y = pos.y; };
 
-	// Ensure no invalid characters are present
-	const std::string &text = screenText->GetText();
-	if (std::find_if(text.begin(), text.end(), [&](const char &c) { return (c < ' ' || c > '~') && c != '\n'; }) != text.end()) {
-		TextFormat::warn(fmt::format("Invalid text found in text object: '{}' (VBO {}). Update cancelled.", text.substr(0u, 50u) + "...", screenText->GetVBO()), "Invalid text");
-		return;
-	}
+	// Text data struct (vec3 + uvec2)
+	struct TextObjectCharData {
+		float x, y, w, h;
+		std::uint32_t charIndex, col;
+	} *textData = new TextObjectCharData[(doShadowText ? displayLength * 2 : displayLength) + hasBackground];
 
 	int dataIndex = hasBackground;
 	for (const char &currentChar : text) {
