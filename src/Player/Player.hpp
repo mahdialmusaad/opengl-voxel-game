@@ -4,93 +4,90 @@
 
 #include "World/World.hpp"
 
-// Full player class including 'player object' for world class
-class Player
+// Full player class including 'world-visible' player class
+class player_inst
 {
 private:
-	GLuint m_outlineVAO, m_inventoryVAO, m_raycastVAO;
-	GLuint m_inventoryIVBO, m_inventoryQuadVBO, m_outlineVBO, m_raycastVBO;
-	GLuint m_outlineEBO;
+	GLuint m_outline_vao, m_outline_vbo, m_outline_ebo;
+	GLuint m_inventory_vao, m_inventory_inst_vbo, m_inventory_quad_vbo;
 
-	std::uint8_t m_noInventoryInstances, m_totalInventoryInstances;
-	std::uint8_t selected{};
+	uint8_t m_hotbar_instances, m_inv_instances;
+	uint8_t m_selected = 0;
 
-	glm::i8vec3 placeBlockRelPosition;
+	vector3i8 place_rel_pos;
 
-	TextRenderer::ScreenText *m_blockText;
-	TextRenderer::ScreenText *m_inventoryHotbarText[9];
-
-	struct InventoryInstance {
-		InventoryInstance(
-			glm::vec4 dims, std::uint32_t texture, bool isBlockTexture = false
-		) noexcept : dims(dims), second(static_cast<int>(isBlockTexture) + (texture << 1)) {}
-		InventoryInstance() noexcept {}
-
-		glm::vec4 dims{};
-		std::uint32_t second{};
-	} *inventoryData = new InventoryInstance[3 + (9 * 5 * 2)];
+	text_renderer_obj::text_obj m_block_text;
+	text_renderer_obj::text_obj m_hotbar_text[9];
+	text_renderer_obj::text_obj m_slot_text[sizeof(world_acc_player::inventory) / sizeof(world_acc_player::inv_slot_obj)];
 public:
-	WorldPlayer player;
-	World *world;
-
-	enum class PlayerDirection : int { Forwards, Backwards, Left, Right, Fly_Up, Fly_Down, Jump };
-
-	Player() noexcept;
-	void WorldInitialize() noexcept;
-	void CheckInput() noexcept;
+	world_acc_player player;
+	world_obj *world;
 	
-	void RaycastDebugCheck() noexcept;
+	enum class player_movement_en { positive_z, negative_z, negative_x, positive_x, flying_up, flying_down, jumping };
 
-	void ApplyMovement() noexcept;
-	void SetPosition(const glm::dvec3 &newPos) noexcept;
-	const glm::dvec3 &GetVelocity() const noexcept;
+	player_inst() noexcept;
+	void init_text() noexcept;
+	void check_movement_input() noexcept;
 
-	void BreakBlock() noexcept;
-	void PlaceBlock() noexcept;
+	void apply_velocity() noexcept;
+	void set_new_position(const vector3d &new_pos) noexcept;
+	inline const vector3d &get_current_velocity() const noexcept { return m_velocity; }
 
-	void UpdateCameraDirection(double x = 0.0, double y = 0.0) noexcept;
-	void AddVelocity(PlayerDirection move) noexcept;
+	void break_selected() noexcept;
+	void place_selected() noexcept;
 
-	int SearchForItem(ObjectID item, bool includeFull) noexcept;
-	int SearchForFreeMatchingSlot(ObjectID item) noexcept;
+	void update_cam_dir_vars(double x = 0.0, double y = 0.0) noexcept;
+	void add_velocity(player_movement_en move) noexcept;
 
-	void RenderBlockOutline() const noexcept;
-	void RenderPlayerGUI() const noexcept;
+	int find_slot_with_item(block_id item, bool include_full_slots) noexcept;
+	int find_free_or_matching_slot(block_id item) noexcept;
+
+	void draw_selected_outline() const noexcept;
+	void draw_inventory_gui() noexcept;
 	
-	glm::mat4 GetZeroMatrix() const noexcept;
-	glm::mat4 GetYZeroMatrix() const noexcept;
+	inline matrixf4x4 get_zero_matrix() const noexcept {
+		return matrixf4x4::look_at({ 0.0, 0.0, 0.0 }, vector3f(m_cam_front), vector3f(m_cam_up));
+	}
 
-	void UpdateOffset() noexcept;
-	void UpdateFrustum() noexcept;
+	void update_plr_offset() noexcept;
+	inline void update_frustum_vals() noexcept {
+		player.frustum.update_frustum_vals(player.position, m_cam_front, m_cam_up, m_cam_right, player.fov);
+	}
 
-	void UpdateScroll(float yoffset) noexcept;
-	void UpdateScroll(int slotIndex) noexcept;
+	void upd_inv_scroll_relative(float y_offset) noexcept;
+	void upd_inv_selected(int slot_ind) noexcept;
 
-	void UpdateInventory() noexcept;
-	void UpdateInventoryTextPos() noexcept;
-	void UpdateSlot(int slotIndex, ObjectID object, std::uint8_t count);
+	void update_inventory_buffers() noexcept;
+	void update_item_text_pos() noexcept;
+	void update_slot(int slot_ind, block_id b_id, uint8_t count);
 	
-	void UpdateBlockInfoText() noexcept;
+	void update_selected_block_info_txt() noexcept;
 
-	~Player() noexcept;
+	~player_inst();
 private:
-	void PositionVariables() noexcept;
-	void UpdateCameraVectors() noexcept;
-	void RaycastBlock() noexcept;
+	void pos_changed_vars_upd() noexcept;
+	void upd_cam_vectors() noexcept;
+	void upd_raycast_selected() noexcept;
 
-	enum class SlotType : int { Hotbar, InvHotbar, Inventory, SlotSize, SlotBlockSize };
+	// 5 rows * 9 columns * 2 (either normal slot or block texture) + 2 (crosshair and background)
+	static constexpr int inventory_elems_count = (9 * 5 * 2) + 2;
+	struct inventory_inst {
+		inventory_inst(
+			vector4f dimensions = {}, uint32_t texture = 0u, bool is_block_tex = false
+		) noexcept : dims(dimensions), texid(static_cast<int>(is_block_tex) + (texture << 1)) {}
 
-	glm::vec2 GetSlotPos(SlotType stype, int id, bool isBlock) const noexcept;
-	glm::vec4 GetSlotDims(SlotType stype, int id, bool isBlock) const noexcept;
+		vector4f dims;
+		uint32_t texid;
+	} *inventory_data = new inventory_inst[inventory_elems_count];
 
-	glm::dvec3 m_camUp{};
-	glm::dvec3 m_camFront{};
-	glm::dvec3 m_camRight{};
+	enum class slot_type_en { hotbar, inventory, slot_size, slot_block_size };
 
-	glm::dvec3 m_NPcamFront{};
-	glm::dvec3 m_NPcamRight{};
-	
-	glm::dvec3 m_velocity{};
+	vector2f get_slot_pos(slot_type_en stype, int id, bool is_block) const noexcept;
+	vector4f get_slot_dims(slot_type_en stype, int id, bool is_block) const noexcept;
+
+	vector3d m_cam_up, m_cam_front, m_cam_right;
+	vector3d m_NY_cam_front, m_NY_cam_right;
+	vector3d m_velocity;
 };
 
 #endif

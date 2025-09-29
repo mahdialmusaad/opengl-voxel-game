@@ -1,246 +1,179 @@
 #include "Chunk.hpp"
 
-void Chunk::ConstructChunk(const WorldPerlin::NoiseResult *perlinResults, BlockQueueMap &blockQueue, WorldPosition offset) noexcept 
+void world_chunk::construct_blocks(const noise_object::block_noise *perlin_ptr, int y_offset)
 {
-	this->offset = &offset; // Set temporary offset pointer (actual is set after full chunks finish generating)
-	const int worldCornerY = static_cast<int>(offset.y) * ChunkValues::size;
+	// Determine the starting Y position of this chunk
+	const int world_y_pos = y_offset * chunk_vals::size;
 
 	// The chunk has not been created yet so initially use a full array
 	// and use an air chunk instead if no blocks are present after creation
-	AllocateChunkBlocks();
+	allocate_blocks();
 
-	// Counter of how many total blocks are air
-	std::int32_t airCounter{};
+	int32_t air_count = 0;
+	const noise_object::block_noise *current_noise = perlin_ptr;
 
-	for (int z = 0, perlin = 0; z < ChunkValues::size; ++z) {
-		for (int x = 0; x < ChunkValues::size; ++x) {
-			// Chunks with the same XZ offset will use the same positions for the perlin noise calculation
-			// and therefore will get the same result each time, so it's much better to reuse it
-			const WorldPerlin::NoiseResult &noise = perlinResults[perlin++];
-			// Calculated height at this XZ position using the precalculated noise value
-			const int terrainHeight = static_cast<int>(noise.landHeight);
+	block_id *const blocks_ptr = blocks[0][0][0];
 
-			// Loop through Y axis
-			for (int y = 0; y < ChunkValues::size; ++y) {
-				const int worldY = worldCornerY + y;
-				ObjectID finalBlock = ObjectID::Grass;
+	for (int ind = 0; ind < chunk_vals::squared; ++ind) {
+		const int xz_ind = (ind % chunk_vals::size) + ((ind / chunk_vals::size) * chunk_vals::squared);
+		// Chunks with the same XZ offset will use the same positions for the perlin noise calculation
+		// and therefore will get the same result each time, so it's much better to reuse it
+		const int terrain_height = static_cast<int>(current_noise++->height);
 
-				if (worldY == terrainHeight) { // Block is at the surface
-					// Blocks nearer to the water surface are sand whilst the rest are dirt, 
-					// else grass (default block) is placed on the surface
-					if (worldY <= ChunkValues::waterMaxHeight) {
-						bool closeToWater = terrainHeight - worldY < 2;
-						finalBlock = closeToWater ? ObjectID::Sand : ObjectID::Dirt;
-					} else AttemptGenerateTree(blockQueue, x, y, z, noise, ObjectID::Log, ObjectID::Leaves);
-				}
-				else if (worldY < terrainHeight) { // Block is under surface
-					// Blocks slightly under surface are dirt
-					if (terrainHeight - worldY <= ChunkValues::baseDirtHeight) finalBlock = ObjectID::Dirt;
-					// Blocks far enough underground are stone
-					else finalBlock = ObjectID::Stone;
-				}
-				else { // Block is above surface
-					// Fill low surfaces with water
-					if (worldY < ChunkValues::waterMaxHeight) finalBlock = ObjectID::Water;
-					// Rest of the blocks are air as this is above the 'height', add to air counter
-					else { airCounter += ChunkValues::size - y; break; }
-				}
+		// Loop through Y axis
+		for (int y = 0; y < chunk_vals::size; ++y) {
+			const int curr_world_y = world_y_pos + y;
+			block_id to_place = block_id::grass;
 
-				chunkBlocks->blocks[x][y][z] = finalBlock; // Set the block at the corresponding position
+			if (curr_world_y == terrain_height) { // Block is at the surface
+				// Blocks under or at the water level are sand otherwise the default ground block
+				to_place = curr_world_y <= chunk_vals::water_y ? block_id::sand : to_place;
+
+			} else if (curr_world_y < terrain_height) { // Block is under surface
+				// Blocks slightly under surface are dirt but otherwise stone
+				to_place = terrain_height - curr_world_y <= chunk_vals::base_dirt ? block_id::dirt : block_id::stone;
+			} else { // Block is above surface
+				// Fill low surfaces with water
+				if (curr_world_y < chunk_vals::water_y) to_place = block_id::water;
+				// Rest of the blocks are air as this is above the 'height', add to air counter
+				else { air_count += chunk_vals::size - y; break; }
 			}
+
+			blocks_ptr[xz_ind + (y * chunk_vals::size)] = to_place; // Set block using 1D index
 		}
 	}
 
 	// If the chunk is just air, there is no need to store every single block
-	if (airCounter == ChunkValues::blocksAmount) {
-		delete chunkBlocks;
-		chunkBlocks = nullptr;
+	if (air_count == chunk_vals::blocks_count) {
+		::free(blocks);
+		blocks = nullptr;
 	}
 }
 
-void Chunk::AttemptGenerateTree(BlockQueueMap &treeBlocksQueue, int x, int y, int z, const WorldPerlin::NoiseResult &noise, ObjectID logID, ObjectID leavesID) noexcept
-{
-	if (!NoiseValueRand(noise, ChunkValues::treeSpawnChance)) return;
+void world_chunk::mesh_faces(
+	const world_map &chunks_map,
+	const world_full_chunk *,
+	const world_xzpos *const xz_offset,
+	face_counts_obj *const result_counters,
+	int y_offset,
+	quad_data_t *const quads_results_ptr
+) {
+	if (!blocks) return; // Don't calculate air chunks
 
-	const int treeHeight = static_cast<int>(noise.flatness * 3.0f) + 5;
-	const WorldPosition above = *offset + game.constants.worldDirections[WldDir_Up];
-	const std::uint8_t leavesStrength = ChunkValues::GetBlockData(leavesID).strength;
-	const int csz = ChunkValues::size;
+	// Reset all quad data and counters
+	::memset(&quads_ptr, 0, sizeof quads_ptr);
+	::memset(&face_counters, 0, sizeof face_counters);
 
-	for (int logY = y + 1, logTop = logY + treeHeight; logY < logTop; ++logY) {
-		if (logY >= ChunkValues::size) AddBlockQueue(treeBlocksQueue, above, { {x, Math::loop(logY, 0, csz), z}, logID, true });
-		else chunkBlocks->blocks[x][logY][z] = logID;
-	}
-
-	// Use bitwise check to quickly determine if leaf position is inside chunk
-	const int allBitsExceptMax = ~ChunkValues::sizeLess;
-
-	// Leaf placing function (place in queue if the leaf is outside local chunk)
-	// Natural placement, so the leaf could be overriden by a 'stronger' block
-	const auto PossibleSpawnLeaf = [&](int leavesX, int leavesY, int leavesZ) {
-		if ((leavesX | leavesY | leavesZ) & allBitsExceptMax) {
-			glm::dvec3 leafPos = { leavesX, leavesY, leavesZ };
-			const WorldPosition outerOffset = *offset + ChunkValues::WorldToOffset(leafPos);
-			AddBlockQueue(treeBlocksQueue, outerOffset, { { Math::loop(leavesX, 0, csz), Math::loop(leavesY, 0, csz), Math::loop(leavesZ, 0, csz) }, leavesID, true });
-		} else if (ChunkValues::GetBlockData(chunkBlocks->blocks[leavesX][leavesY][leavesZ]).strength <= leavesStrength) chunkBlocks->blocks[leavesX][leavesY][leavesZ] = leavesID;
-	};
-	
-	// Place main leaves around log
-	bool isTopLeaf = true;
-	int leafChance = 4;
-
-	for (int endY = y + treeHeight - 3, leavesY = endY + 2; leavesY >= endY; --leavesY) {
-		for (int leavesZ = z - 2, endZ = leavesZ + 4; leavesZ <= endZ; ++leavesZ) {
-			const bool midZ = leavesZ == z;
-			const bool edgeZ = leavesZ == z - 2 || leavesZ == endZ;
-			for (int leavesX = x - 2, endX = leavesX + 4; leavesX <= endX; ++leavesX) {
-				const bool midX = leavesX == x;
-				const bool bothEdges = edgeZ && (leavesX == x - 2 || leavesX == endX);
-
-				if (midX && midZ) continue; // Don't attempt to place where logs are
-				if (isTopLeaf && bothEdges && NoiseValueRand(noise, leafChance)) continue; // Top corner leaves are not guaranteed
-
-				PossibleSpawnLeaf(leavesX, leavesY, leavesZ);
-				leafChance += 20; // Decrease chance for other corner leaves
-			}
-		}
-
-		isTopLeaf = false;
-	}
-
-	// Arrangement of top leaves
-	const int leavesSquares[17][3] = { 
-		{-1, 0, -1}, {-1, 0, 0}, {-1, 0, 1}, {0, 0, -1}, {0, 0, 1}, {1, 0, -1}, {1, 0, 0}, {1, 0, 1},
-		{-1, 1, 0}, {0, 1, -1}, {0, 1, 1}, {1, 1, 0}, {0, 1, 0}
-	};
-
-	for (const int (&leafPosition)[3] : leavesSquares) PossibleSpawnLeaf(x + leafPosition[0], y + treeHeight + leafPosition[1], z + leafPosition[2]);
-}
-
-void Chunk::AddBlockQueue(BlockQueueMap &map, const WorldPosition &offset, const BlockQueue &queue)
-{
-	// Each thread is given an individual map, so no need for a locking mechanism.
-	// Helper function to just add block queue to an offset in the map
-	map[offset].emplace_back(queue);
-}
-
-bool Chunk::NoiseValueRand(const WorldPerlin::NoiseResult &noise, int oneInX) noexcept
-{
-	// Large integer value for bitwise manipulation
-	std::int64_t mult = static_cast<std::int64_t>((noise.flatness * 8278555403.357f) - ((noise.temperature - noise.humidity) * 347894783.546f));
-	
-	// XOR and shift to get a hash of the noise value
-	mult ^= mult << 13;
-	mult ^= mult >> 17;
-	mult ^= mult << 5;
-	
-	return !(mult % oneInX);
-}
-
-void Chunk::CalculateTerrainData(WorldMapDef &chunksMap) noexcept
-{
-	// To improve performance, the quad data is defined beforehand during chunk generation.
-	// However, the chunk faces are calculated in other scenarios (e.g. breaking and placing blocks) where this is not done.
-	std::uint32_t *quadData = new std::uint32_t[ChunkValues::blocksAmount];
-	CalculateTerrainData(chunksMap, quadData);
-	delete[] quadData;
-}
-
-void Chunk::CalculateTerrainData(WorldMapDef &chunksMap, std::uint32_t *quadData) noexcept
-{
-	if (!chunkBlocks) return; // Don't calculate air chunks
+	const block_id *const block_start_ptr = blocks[0][0][0]; // Use 1D array access instead of 3D for speed
 
 	// Store nearby chunks in an array for easier access (last index is current chunk)
-	const ChunkValues::BlockArray *localNearby[7] {};
-	localNearby[6] = chunkBlocks; // Last one points to this chunk
+	const block_id *nearby_ptrs[7] {
+		nullptr, nullptr, nullptr,
+		nullptr, nullptr, nullptr,
+		block_start_ptr
+	};
 
-	for (int i = 0; i < 6; ++i) {
-		const auto &foundChunkIt = chunksMap.find(*offset + game.constants.worldDirections[i]); // Look for a chunk in each direction
-		Chunk *foundChunk = foundChunkIt == chunksMap.end() ? nullptr : foundChunkIt->second; // Pointer to chunk or nullptr if none exists
-		if (foundChunk && foundChunk->chunkBlocks) localNearby[i] = foundChunk->chunkBlocks; // Add blocks struct to nearby pointers if the chunk and its blocks exist
-		else localNearby[i] = &ChunkValues::emptyChunk;
+	// Determine above and below chunks from memory/'this' address
+	// since chunks are stored contiguously in the 'subchunk array'
+	if (y_offset && this[-1].blocks) nearby_ptrs[wdir_down] = this[-1].blocks[0][0][0];
+	if (y_offset != chunk_vals::top_y_ind && this[1].blocks) nearby_ptrs[wdir_up] = this[1].blocks[0][0][0];
+
+	// Get nearby chunks
+	for (int i = 0; i < 4; ++i) {
+		const world_xzpos new_offset = *xz_offset + chunk_vals::dirs_xz[i]; // Calculate nearby XZ offset
+ 		const auto it = chunks_map.find(new_offset); // Look for a full chunk struct with the calculate offset
+		// Add possible adjacent chunk if one is found with valid blocks
+		if (it != chunks_map.end() && it->second->subchunks[y_offset].blocks)
+		nearby_ptrs[i + ((i >= wdir_up) * 2)] = it != chunks_map.end() && it->second->subchunks[y_offset].blocks ?
+		                 it->second->subchunks[y_offset].blocks[0][0][0] :
+		                 nullptr;
 	}
 
-	// Loop through each array in the given face data array 
-	std::size_t lookupIndex{};
-	for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-		FaceAxisData &faceData = chunkFaceData[faceIndex];
-
-		// Reset any previous data
-		faceData.translucentFaceCount = std::uint16_t{};
-		faceData.faceCount = std::uint16_t{};
-
-		// Loop through all the chunk's blocks for each face direction
-		for (int x = 0; x < ChunkValues::size; ++x) {
-			const ObjectID (&outerBlockArray)[ChunkValues::size][ChunkValues::size] = chunkBlocks->blocks[x];
-			const std::int32_t xIndex = static_cast<std::int32_t>(x);
-			for (int y = 0; y < ChunkValues::size; ++y) {
-				const ObjectID (&innerBlockArray)[ChunkValues::size] = outerBlockArray[y];
-				const std::int32_t yIndex = static_cast<std::int32_t>(y << ChunkValues::sizeBits);
-				for (int z = 0; z < ChunkValues::size; ++z) {
-					const WorldBlockData &currentBlock = ChunkValues::GetBlockData(innerBlockArray[z]); // Get properties of the current block
-					const ChunkLookupData &nearbyData = chunkLookupData[lookupIndex++]; // Get precalculated results for the next block's position and face index
-					// Get the data of the block next to the current face, checking the correct chunk
-					const WorldBlockData &nextBlock =  ChunkValues::GetBlockData(localNearby[nearbyData.index]->at(nearbyData.pos));
-					
-					// Check if the face is not obscured by the block found to be next to it
-					if (!currentBlock.notObscuredBy(currentBlock, nextBlock)) continue;
-					
-					// Compress the position and texture data into one integer
-					// Layout: TTTT TTTT TTTT TTTT TZZZ ZZYY YYYX XXXX
-					const std::uint32_t newData = static_cast<std::uint32_t>(
-					    xIndex + yIndex + static_cast<int32_t>(z << (ChunkValues::sizeBits * 2)) + // Position in chunk
-					    static_cast<std::int32_t>(static_cast<int>(currentBlock.textures[faceIndex]) << (ChunkValues::sizeBits * 3)) // Texture
-					);
-
-					// Blocks with transparency need to be rendered last for them to be rendered
-					// correctly on top of existing terrain, so they can be placed starting from
-					// the end of the data array instead to be seperated from the opaque blocks
-
-					// Set the data in reverse order, starting from the end of the array 
-					// (pre-increment to avoid writing to out of bounds the first time)
-					// If it is a normal face however, just add to the array normally.
-					quadData[currentBlock.hasTransparency ? ChunkValues::blocksAmount - ++faceData.translucentFaceCount : faceData.faceCount++] = newData;
-				}
-			}
+	// Saved lookup data and chunk indexes
+	const uint32_t *curr_lookup_ptr = chunk_vals::faces_lookup;
+	for (uint32_t block_index = 0; block_index < chunk_vals::blocks_count; ++block_index) {
+		// Get block ID from current pointer index into blocks array
+		const block_id curr_block_id = block_start_ptr[block_index];
+		if (curr_block_id == block_id::air) { // Skip if air is found - never rendered
+			curr_lookup_ptr += 6;
+			continue;
 		}
 
-		// Compress the array as there is most likely a gap between the normal face data
-		// and the translucent faces as the total face count is known now
-		const std::size_t totalFaces = faceData.TotalFaces<std::size_t>();
-		if (!totalFaces) continue; // No need for compression if there is no data in the first place
+		// Get data on current block
+		const block_properties::block_attributes *const curr_attributes = block_properties::of_block(curr_block_id);
+		// Values used to determine visibility
+		const block_properties::mesh_attributes *const curr_mesh_data = &curr_attributes->mesh_info;
+		// Get specific visibility check function
+		const block_properties::render_check_t visible_with = curr_attributes->visible_with;
+
+		// Check for visibility against comparing block and add face if it can be seen for each face of the block
+		for (int i = 0; i < 6; ++i) {
+			const uint32_t lookup_int = *curr_lookup_ptr++;
+			const block_id *const block_ptr = nearby_ptrs[lookup_int & 7];
+			if (!visible_with(
+				curr_mesh_data,
+				block_properties::mesh_of_block(block_ptr ? block_ptr[lookup_int >> 3] : block_id::air)
+			)) continue;
+			// Compress the position and texture data into one integer
+			// Layout: TTTT TTTT TTTT TTTT TZZZ ZZYY YYYX XXXX
+			const uint32_t z_pos = block_index % chunk_vals::size;
+			const uint32_t x_pos = (block_index / chunk_vals::squared);
+			const uint32_t y_pos = (block_index / chunk_vals::size) % chunk_vals::size;
+
+			const quad_data_t quad_data = 
+			    x_pos + (y_pos << chunk_vals::size_bits) + (z_pos << (chunk_vals::size_bits * 2)) + // Position in chunk
+			    (static_cast<uint32_t>(curr_attributes->textures[i]) << (chunk_vals::size_bits * 3)); // Texture
+
+			// Blocks with transparency need to be rendered last for them to be rendered
+			// correctly on top of existing terrain, so they can be placed starting from
+			// the end of the data array instead to be separated from the opaque blocks.
+			
+			// For translucent faces, set the data in reverse order, starting from the end of
+			// the array (pre-increment to avoid writing to out of bounds the first time).
+			// If it is a normal face however, just add to the array normally.
+			face_counts_obj *const face_dir_counter = result_counters + i;
+			quads_results_ptr[(curr_mesh_data->has_trnsp ?
+				chunk_vals::blocks_count - ++face_dir_counter->translucent_count :
+				face_dir_counter->opaque_count++) + (i * chunk_vals::blocks_count)
+			] = quad_data;
+		}
+	}
+
+	// Remove possible gap between the two face counters for each 'chunk face'
+	for (int face_ind = 0; face_ind < 6; ++face_ind) {
+		const face_counts_obj *const face_dir_counter = result_counters + face_ind;
+		const uint32_t total_faces_count = face_dir_counter->total_faces();
+		if (!total_faces_count) continue;
 
 		// Allocate the exact amount of data needed to store all the faces
-		faceData.instancesData = new std::uint32_t[totalFaces];
-
+		quad_data_t *const compressed_quads = new quad_data_t[total_faces_count];
+		
+		// Below data probably looks like this:
+		// [(opaque data)(  gap  )(translucent data)]
+		const uint32_t *const face_quads_ptr = quads_results_ptr + (face_ind * chunk_vals::blocks_count);
+		
 		// Copy the opaque and translucent sections of the face data to be 
 		// next to each other in the new compressed array
 
 		// Opaque face data
-		std::memcpy(faceData.instancesData, quadData, sizeof(std::uint32_t) * faceData.faceCount);
-		
-		// Translucent face data
-		std::memcpy(
-			faceData.instancesData + faceData.faceCount,
-			quadData + (ChunkValues::blocksAmount - faceData.translucentFaceCount),
-			sizeof(std::uint32_t) * faceData.translucentFaceCount
+		::memcpy(compressed_quads, face_quads_ptr, sizeof(quad_data_t) * face_dir_counter->opaque_count);
+		::memcpy(compressed_quads + face_dir_counter->opaque_count,
+		       face_quads_ptr + (chunk_vals::blocks_count - face_dir_counter->translucent_count),
+		       sizeof(quad_data_t) * face_dir_counter->translucent_count
 		);
 
 		// The data now is stored as such (assuming no bugs):
-		// [(opaque data)(translucent data)] <--- No gaps, exact size is allocated
+		// [(opaque data)(translucent data)] - No gaps: exact size is allocated
+		quads_ptr[face_ind] = compressed_quads;
 	}
 }
 
-void Chunk::AllocateChunkBlocks() noexcept
+chunk_vals::blocks_array *world_chunk::allocate_blocks()
 {
-	// Allocate memory for chunk blocks array if it does not already exist and set it to all 0's
-	if (chunkBlocks) return;
-	chunkBlocks = new ChunkValues::BlockArray;
-	std::memset(chunkBlocks->blocks, static_cast<int>(ObjectID::Air), sizeof(ChunkValues::BlockArray));
+	// Allocate memory for chunk blocks array if it does not already exist
+	if (blocks) return blocks;
+	return blocks = static_cast<chunk_vals::blocks_array*>(::calloc(1, sizeof *blocks));
 }
 
-Chunk::~Chunk()
-{
-	for (FaceAxisData &fd : chunkFaceData) if (fd.instancesData) delete[] fd.instancesData; // Remove instance face data (if any)
-	if (chunkBlocks) delete chunkBlocks; // Delete chunk block data
-}
+// Delete block array in all chunks
+world_full_chunk::~world_full_chunk() { for (world_chunk &chunk : subchunks) if (chunk.blocks) ::free(chunk.blocks); }

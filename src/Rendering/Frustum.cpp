@@ -4,34 +4,45 @@
 // For now, only a sphere bounding box is used to simplify calculations done to determine visible chunks
 // Original source can be found in https://learnopengl.com/Guest-Articles/2021/Scene/Frustum-Culling
 
-// Frustum plane
-
-CameraFrustum::FrustumPlane::FrustumPlane(const glm::dvec3 &distVec, const glm::dvec3 &norm) noexcept : normal(glm::normalize(norm)), distance(glm::dot(normal, distVec)) {}
-float CameraFrustum::FrustumPlane::NDistToPlane(const glm::dvec3 &point) const noexcept { return distance - glm::dot(normal, point); }
-void CameraFrustum::UpdateFrustum(const glm::dvec3 &position, const glm::dvec3 &cFront, const glm::dvec3 &cUp, const glm::dvec3 &cRight, double fov) noexcept
-{
+camera_frustum::plane::plane(const vector3d &distance_vec, const vector3d &norm) noexcept
+  : normal(norm.c_unit()), distance(normal.dot(distance_vec)) {}
+void camera_frustum::update_frustum_vals(
+	const vector3d &position,
+	const vector3d &cam_front,
+	const vector3d &cam_up,
+	const vector3d &cam_right,
+	double fov_y
+) noexcept {
 	// Calculate frustum values
-	const double halfVside = farPlaneDistance * glm::tan(fov * 0.5);
-	const double halfHside = halfVside * game.aspect;
-	const glm::dvec3 frontMultFar = farPlaneDistance * cFront;
+	const double half_v_side = far_plane * tan(fov_y * 0.5);
+	const double half_h_side = half_v_side * static_cast<double>(game.window_wh_aspect);
+	const vector3d front_end = cam_front * far_plane;
 
 	// Set each plane's values
-	right = { position, glm::cross(frontMultFar - cRight * halfHside, cUp) };
-	left = { position, glm::cross(cUp, frontMultFar + cRight * halfHside) };
+	right = { position, (front_end - cam_right * half_h_side).c_cross(cam_up) };
+	left = { position, cam_up.c_cross(front_end + cam_right * half_h_side) };
 	
-	top = { position, glm::cross(cRight, frontMultFar - cUp * halfVside) };
-	bottom = { position, glm::cross(frontMultFar + cUp * halfVside, cRight) };
+	top = { position, cam_right.c_cross(front_end - cam_up * half_v_side) };
+	bottom = { position, (front_end + cam_up * half_v_side).c_cross(cam_right) };
 
-	near = { position + nearPlaneDistance * cFront, cFront };
+	near = { position + cam_front * near_plane, cam_front };
 }
 
-// Sphere culling check
-
-bool CameraFrustum::SphereInFrustum(const glm::dvec3 &center, double radius) const noexcept
+bool camera_frustum::is_chunk_visible(const vector3d &corner) const noexcept
 {
-	return top   .NDistToPlane(center) <= radius &&
-	       near  .NDistToPlane(center) <= radius &&
-	       left  .NDistToPlane(center) <= radius &&
-	       right .NDistToPlane(center) <= radius &&
-	       bottom.NDistToPlane(center) <= radius;
+	// Radius of a sphere that would encapsulate an entire chunk - calculated
+	// by half the distance from two opposing corners of a cube (side length = chunk size)
+	// (Using simple radius check for frustum culling to save on performance)
+	constexpr float size_dbl = static_cast<double>(chunk_vals::size);
+	constexpr float chunk_spherical_radius = math::cxpythagoras(math::cxpythagoras(size_dbl, size_dbl), size_dbl) * 0.5f;
+
+	// Get the center of the chunk from given corner
+	constexpr vector3d center_offset = vector3d(0.5 * chunk_vals::size);
+	const vector3d center = corner + center_offset;
+	
+	return top   .neg_dist_to_plane(center) <= chunk_spherical_radius &&
+	       near  .neg_dist_to_plane(center) <= chunk_spherical_radius &&
+	       left  .neg_dist_to_plane(center) <= chunk_spherical_radius &&
+	       right .neg_dist_to_plane(center) <= chunk_spherical_radius &&
+	       bottom.neg_dist_to_plane(center) <= chunk_spherical_radius;
 }

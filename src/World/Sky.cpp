@@ -1,49 +1,50 @@
 #include "Sky.hpp"
 
-Skybox::Skybox() noexcept
+skybox_elems_obj::skybox_elems_obj() noexcept
 {
-	CreateClouds();
-	CreateStars();
-	CreateSkybox();
-	CreatePlanets();
+	// Random float generator in range [0.0f, 1.0f)
+	std::mt19937 gen(std::random_device{}());
+	std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+	generate_clouds(&gen, &dist);
+	generate_stars((dist(gen) * 0.2f) + 0.4f);
+	generate_skybox();
+	generate_planets();
 }
 
-void Skybox::RenderSkyboxElements() noexcept
+void skybox_elems_obj::draw_skybox_elements() noexcept
 {
-	// Sky (orange section at sunrise/set)
-	glDepthRange(1.0, 1.0); // Force the sky to render at the back
-
-	game.shaders.programs.sky.Use();
-	glBindVertexArray(m_skyboxVAO);
-	glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_BYTE, nullptr);
-
-	glDepthRange(0.0, 1.0); // Normal depth range
+	// Transition skybox (orange section at sunrise/set)
+	/* TODO: Sky shape
+	if (game.twilight_colour_trnsp > 0.0f) {
+		game.shaders.programs.sky.bind_and_use(m_skybox_vao);
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 0);
+	}*/
 
 	// Stars
-	game.shaders.programs.stars.Use();
-	glBindVertexArray(m_starsVAO);
-	glDrawArrays(GL_POINTS, 0, numStars);
+	if (game.shaders.times.vals.stars > 0.0f) {
+		game.shaders.programs.stars.bind_and_use(m_stars_vao);
+		glDrawArrays(GL_POINTS, 0, stars_count);
+	}
 
 	// Planets (sun and moon)
-	game.shaders.programs.planets.Use();
-	glBindVertexArray(m_planetsVAO);
-	glDrawElements(GL_TRIANGLES, 24, GL_UNSIGNED_BYTE, nullptr);
+	game.shaders.programs.planets.bind_and_use(m_planets_vao);
+	glDrawElements(GL_TRIANGLES, 48, GL_UNSIGNED_BYTE, nullptr);
 	
 	// Clouds
-	game.shaders.programs.clouds.Use();
-	glBindVertexArray(m_cloudsVAO);
-	glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_BYTE, nullptr, numClouds);
+	game.shaders.programs.clouds.bind_and_use(m_clouds_vao);
+	glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_BYTE, nullptr, clouds_count);
 }
 
-void Skybox::CreateClouds() noexcept
+void skybox_elems_obj::generate_clouds(std::mt19937 *gen, std::uniform_real_distribution<float> *dist) noexcept
 {
-	m_cloudsVAO = OGL::CreateVAO();
-	glEnableVertexAttribArray(0u);
-	glEnableVertexAttribArray(1u);
-	glVertexAttribDivisor(1u, 1u); // Instanced rendering
+	m_clouds_vao = ogl::new_vao();
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribDivisor(1, 1); // Instanced rendering
 
 	// Cloud shape data
-	const float cloudVertices[24] =  {
+	const float cloud_verts_def[24] =  {
 		2.5f, 1.0f, 2.5f,  // Front-top-right     0
 		0.0f, 1.0f, 2.5f,  // Front-top-left      1
 		2.5f, 0.0f, 2.5f,  // Front-bottom-right  2
@@ -55,252 +56,224 @@ void Skybox::CreateClouds() noexcept
 	};
 
 	// Buffer for cloud vertices
-	m_cloudsVBO = OGL::CreateBuffer(GL_ARRAY_BUFFER);
-	glVertexAttribPointer(0u, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
-	glBufferStorage(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(sizeof(cloudVertices)), cloudVertices, GLbitfield{});
+	m_clouds_vbo = ogl::new_buf(GL_ARRAY_BUFFER);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof cloud_verts_def, cloud_verts_def, 0);
 	
 	// Buffer for indexes into cloud vertices
-	const GLubyte cloudIndices[36] = {
-		0u, 1u, 2u,  1u, 3u, 2u, 
-		3u, 5u, 7u,  5u, 3u, 1u, 
-		4u, 6u, 7u,  5u, 4u, 7u, 
-		5u, 1u, 4u,  0u, 4u, 1u, 
-		4u, 0u, 6u,  6u, 0u, 2u, 
-		2u, 3u, 6u,  3u, 7u, 6u
+	const GLubyte cloud_inds[36] = {
+		0, 1, 2,  1, 3, 2, 
+		3, 5, 7,  5, 3, 1, 
+		4, 6, 7,  5, 4, 7, 
+		5, 1, 4,  0, 4, 1, 
+		4, 0, 6,  6, 0, 2, 
+		2, 3, 6,  3, 7, 6
 	};
-	m_cloudsEBO = OGL::CreateBuffer(GL_ELEMENT_ARRAY_BUFFER);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(cloudIndices), cloudIndices, GL_STATIC_DRAW);
-	glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(sizeof(cloudIndices)), cloudIndices, GLbitfield{});
+	m_clouds_ebo = ogl::new_buf(GL_ELEMENT_ARRAY_BUFFER);
+	glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, sizeof cloud_inds, cloud_inds, 0);
 	
 	// Setup instanced cloud buffer
-	m_cloudsInstVBO = OGL::CreateBuffer(GL_ARRAY_BUFFER);
-	glVertexAttribPointer(1u, 4, GL_FLOAT, GL_FALSE, 0, nullptr);
-	
-	// Random float generator in range [0.0f, 1.0f) for cloud positions and sizes
-	std::mt19937 gen(std::random_device{}());
-	std::uniform_real_distribution<float> dist;
+	m_clouds_inst_vbo = ogl::new_buf(GL_ARRAY_BUFFER);
+	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, nullptr);
 
 	// Cloud generation
-	glm::vec4 *cloudData = new glm::vec4[numClouds]; // Cloud data
-	const float XZmultiplier = 2000.0f, XZhalf = XZmultiplier * 0.5f, sizeMult = 30.0f;
-	
-	for (int i = 0; i < numClouds; ++i) {
-		// Add new cloud properties to the cloud data
-		cloudData[i] = {
-			(dist(gen) * XZmultiplier) - XZhalf,       // X position
-			198.7f + (static_cast<float>(i) * 0.07f),  // Y position
-			(dist(gen) * XZmultiplier) - XZhalf,       // Z position
-			glm::max(dist(gen), 0.02f) * sizeMult      // Size
+	vector4f *const cloud_data = new vector4f[clouds_count]; // Cloud data
+	constexpr float xz_mult = 2000.0f, xz_half = xz_mult * 0.5f, sz_mult = 30.0f;
+
+	for (int ind = 0; ind < clouds_count; ++ind) {
+		cloud_data[ind] = {
+			((*dist)(*gen) * xz_mult) - xz_half,       // X position
+			198.7f + (static_cast<float>(ind) * 0.07f),  // Y position
+			((*dist)(*gen) * xz_mult) - xz_half,       // Z position
+			math::max((*dist)(*gen), 0.02f) * sz_mult     // Size
 		};
 	}
 
 	// Buffer the float data into the GPU (in instanced buffer)
-	glBufferStorage(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(sizeof(glm::vec4) * static_cast<std::size_t>(numClouds)), cloudData, GLbitfield{});
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof(vector4f[clouds_count]), cloud_data, 0);
 
 	// Free memory used by cloud data
-	delete[] cloudData;
+	delete[] cloud_data;
 }
 
-void Skybox::CreateSkybox() noexcept
+void skybox_elems_obj::generate_skybox() noexcept
 {
 	// Create skybox buffers
-	m_skyboxVAO = OGL::CreateVAO();
-	glEnableVertexAttribArray(0u);
+	m_skybox_vao = ogl::new_vao();
+	glEnableVertexAttribArray(0);
 
 	/* 
-	    Since the sky is just a single colour (glClearColor), a specific 
-	    part of it can have triangles covering that changes colour and fade 
-	    to the 'cleared' sky colour to imitate a sunrise/set. This saves on 
-	    fragment shader calculations for the rest of the sky.
+	   Since the sky is just a single colour (from glClearColor), a specific 
+	   part of it can have triangles covering that changes colour and fade 
+	   to the 'cleared' sky colour to imitate a sunrise/set. This saves on 
+	   fragment shader calculations for the rest of the sky.
 	*/
 
 	// Skybox vertex data
-	const float triDist = static_cast<float>(Math::sqrt(0.75));
-	const float skyboxVertices[27] = {
-		-triDist, -0.1f, -0.5f, // 0
-		 triDist, -0.1f, -0.5f, // 1  Lower triangle
-		 0.0f,    -0.1f,  1.0f, // 2
-
-		-triDist,  0.0f, -0.5f, // 3
-		 triDist,  0.0f, -0.5f, // 4  Middle triangle
-		 0.0f,     0.0f,  1.0f, // 5
-
-		-triDist,  0.1f, -0.5f, // 6
-		 triDist,  0.1f, -0.5f, // 7  Upper triangle
-		 0.0f,     0.1f,  1.0f, // 8
+	const float skybox_vertex_def[] = {
+		0.2f, 0.0f, 1.0f,
+		0.2f, 0.2f, 0.8f,
+		0.4f, 0.2f, 1.0f,
+		0.4f, 0.2f, 0.8f
 	};
 
 	// Setup sky vertices buffer
-	m_skyboxVBO = OGL::CreateBuffer(GL_ARRAY_BUFFER);
-	glVertexAttribPointer(0u, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
-	glBufferStorage(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(sizeof(skyboxVertices)), skyboxVertices, GLbitfield{});
-
-	// Indices for vertex data
-	const GLubyte skyboxIndices[] = {
-		0u, 1u, 3u, 3u, 1u, 4u, 3u, 4u, 6u, 6u, 4u, 7u,
-		0u, 3u, 2u, 2u, 3u, 5u, 3u, 8u, 5u, 8u, 3u, 6u,
-		2u, 4u, 1u, 4u, 2u, 5u, 4u, 5u, 7u, 7u, 5u, 8u
-	};
-
-	// Setup sky vertices indexes
-	m_skyboxEBO = OGL::CreateBuffer(GL_ELEMENT_ARRAY_BUFFER);
-	glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(sizeof(skyboxIndices)), skyboxIndices, GLbitfield{});
+	m_skybox_vbo = ogl::new_buf(GL_ARRAY_BUFFER);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof skybox_vertex_def, skybox_vertex_def, 0);
 }
 
-void Skybox::CreateStars() noexcept
+void skybox_elems_obj::generate_stars(float init_random) noexcept
 {
 	/* 
-	    Using the Fibonnaci sphere algorithm gives evenly distributed positions
-	    on a sphere rather than a large proportion being at the top and bottom. 
-	    Random samples are taken so the stars do not appear in a pattern.
-	    
-	    phi = pi * (sqrt(5) - 1) = 3.883222077...
-	    i = [0, max)
-	    
-	    theta = phi * i
+	   Using the Fibonnaci sphere algorithm gives evenly distributed positions
+	   on a sphere rather than a large proportion being at the top and bottom. 
+	   Random samples are taken so the stars do not appear in a pattern.
+	   
+	   phi = pi * (sqrt(5) - 1) = 3.883222077...
+	   i = [0, max)
 
-	    y = 1 - (i / max) * 2
-	    radius = sqrt(1 - y * y)
-	    
-	    x = cos(theta) * radius
-	    z = sin(theta) * radius
+	   theta = phi * i
+	   y = 1 - (i / max) * 2
+	   radius = sqrt(1 - y * y)
+	   
+	   x = cos(theta) * radius
+	   z = sin(theta) * radius
 
-	    This algorithm is executed in a compute shader, where the GPU will
-	    create large numbers of stars in parallel.
+	   This algorithm is executed in a compute shader, where the GPU will
+	   create large numbers of stars in parallel.
 	*/
-	
-	// Create and use the compute shader
-	ShadersObject::Program compShader("Stars.comp");
-	compShader.Use();
 
 	// Create SSBO for star data results
-	const GLuint ssbo = OGL::CreateBuffer(GL_SHADER_STORAGE_BUFFER);
-	const GLsizeiptr ssboBytesSize = static_cast<GLsizeiptr>(sizeof(glm::vec4) * static_cast<std::size_t>(numStars));
-	glBufferStorage(GL_SHADER_STORAGE_BUFFER, ssboBytesSize, nullptr, GLbitfield{});
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1u, ssbo);
-
-	std::mt19937 gen(std::random_device{}());
-	std::uniform_real_distribution<float> dist(0.4f, 0.6f);
+	const GLuint ssbo = ogl::new_buf(GL_SHADER_STORAGE_BUFFER);
+	const GLsizeiptr stars_bytes = sizeof(vector3f[stars_count]);
+	glBufferStorage(GL_SHADER_STORAGE_BUFFER, stars_bytes, nullptr, GL_CLIENT_STORAGE_BIT);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo);
 
 	// Set uniform variables required in compute shader
-	glUniform1ui(compShader.GetLocation("numStarsUI"), static_cast<GLuint>(numStars)); // (for invocation bounds checking)
-	glUniform1f(compShader.GetLocation("initRandom"), dist(gen)); // (to avoid getting the same star patterns every launch)
+	game.shaders.computes.stars.set_uint("SC", static_cast<GLuint>(stars_count));
+	game.shaders.computes.stars.set_flt("I", init_random);
 	
-	// Execute compute shader
-	glDispatchCompute(static_cast<GLuint>(Math::roundUpX(numStars / 32, 32)), 1u, 1u);
-
+	glDispatchCompute(static_cast<GLuint>(math::round_up_to_x(stars_count / 32, 32)), 1, 1); // Execute compute shader
 	// Whilst it is executing...
 
-	// Create stars VAO
-	m_starsVAO = OGL::CreateVAO();
-	glEnableVertexAttribArray(0u);
+	m_stars_vao = ogl::new_vao(); // Create stars VAO
+	glEnableVertexAttribArray(0); // Attribute 0 for vec3
 
-	// Create buffer for star data and allocate enough memory for it
-	m_starsVBO = OGL::CreateBuffer(GL_ARRAY_BUFFER);
-	glVertexAttribPointer(0u, 3, GL_FLOAT, GL_FALSE, 0, nullptr); // Vec3 on attribute 0
+	m_stars_vbo = ogl::new_buf(GL_ARRAY_BUFFER); // Create array buffer for vec3 data
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr); // Vec3 on attribute 0
+	glBufferStorage(GL_ARRAY_BUFFER, stars_bytes, nullptr, GL_CLIENT_STORAGE_BIT); // Buffer calculated data
 	
-	// Create vec4 array for star data (not a vec3 array for reasons explained below,
-	// using a float array to access each individual element)
-	float *ssboData = new float[static_cast<std::size_t>(numStars) * static_cast<std::size_t>(4u)];
-	
-	// Wait for compute shader to finish all execution
-	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-	
-	// Copy final results from SSBO to stars VBO through vec4 array -
-	// Vec3s have the same alignment as vec4, so just copy without
-	// including the last (.w/4th) member.
-	glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, GLintptr{}, ssboBytesSize, ssboData);
-
-	// Move each adjacent 'vec4' to overlap the last member of current 'vec4' to essentially turn it into an array of vec3s.
-	for (int i = 1; i < numStars; ++i) std::memmove(ssboData + (i * 3), ssboData + (i * 4), sizeof(glm::vec3));
-
-	// Buffer new vec3 data into actual star shader data (only the vec3 section)
-	glBufferStorage(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(sizeof(glm::vec3) * static_cast<std::size_t>(numStars)), ssboData, GLbitfield{});
-
-	// Delete created SSBO and float array, compute shader is destroyed on scope leave
-	glDeleteBuffers(1, &ssbo);
-	delete[] ssboData;
+	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT); // Wait for compute shader to finish all execution
+	glCopyBufferSubData(GL_SHADER_STORAGE_BUFFER, GL_ARRAY_BUFFER, 0, 0, stars_bytes); // Copy SSBO data to buffer data
+	glDeleteBuffers(1, &ssbo); // Delete created SSBO
 }
 
-void Skybox::CreatePlanets() noexcept
+void skybox_elems_obj::generate_planets() noexcept
 {
 	// Planets buffers
-	m_planetsVAO = OGL::CreateVAO();
-	glEnableVertexAttribArray(0u);
+	m_planets_vao = ogl::new_vao();
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
 
 	// Place sun and moon directly opposite each other with same positioning as stars as seen above
-	// Both the sun and moon (for now) are two squares: a larger, dark one and a smaller, lighter one on top;
-	// Data is laid out as such: { Xpos, Zpos, Rcol, Bcol }
-
-	m_planetsVBO = OGL::CreateBuffer(GL_ARRAY_BUFFER);
-	glVertexAttribPointer(0u, 4, GL_FLOAT, false, 0, nullptr); // Using vec4
+	// Both the sun and moon (for now) are three squares: a larger, dark one, a smaller, lighter one on top,
+	// and an 'outer' even larger matching square to imitate intense light from the sun/moon that transitions into the bg.
 
 	// Positions at 0 seconds of in-game day time
-	const float sunSizeBig = 0.2f, sunSizeLow = sunSizeBig * 0.8f, moonSizeBig = 0.05f, moonSizeLow = moonSizeBig * 0.8f;
-	const glm::vec4 planetsData[] = {
-		             // Large sun square
-		{ -sunSizeBig,  -sunSizeBig,   0.92f, 0.43f }, // TL 0
-		{  sunSizeBig,  -sunSizeBig,   0.92f, 0.43f }, // BL 1
-		{ -sunSizeBig,   sunSizeBig,   0.92f, 0.43f }, // TR 2
-		{  sunSizeBig,   sunSizeBig,   0.92f, 0.43f }, // BR 3
-		             // Small sun square
-		{ -sunSizeLow,  -sunSizeLow,   0.89f, 0.77f }, // TL 4
-		{  sunSizeLow,  -sunSizeLow,   0.89f, 0.77f }, // BL 5
-		{ -sunSizeLow,   sunSizeLow,   0.89f, 0.77f }, // TR 6
-		{  sunSizeLow,   sunSizeLow,   0.89f, 0.77f }, // BR 7
-		             // Large moon square
-		{ -moonSizeBig,  moonSizeBig, -0.59f, 0.94f }, // TR 8
-		{  moonSizeBig,  moonSizeBig, -0.59f, 0.94f }, // BR 9
-		{ -moonSizeBig, -moonSizeBig, -0.59f, 0.94f }, // TL 10
-		{  moonSizeBig, -moonSizeBig, -0.59f, 0.94f }, // BL 11
-		             // Small moon square
-		{ -moonSizeLow,  moonSizeLow, -0.78f, 1.00f }, // TR 12
-		{  moonSizeLow,  moonSizeLow, -0.78f, 1.00f }, // BR 13
-		{ -moonSizeLow, -moonSizeLow, -0.78f, 1.00f }, // TL 14
-		{  moonSizeLow, -moonSizeLow, -0.78f, 1.00f }, // BL 15
-	}; // (Use 'Rcol' sign to determine Y position instead of using another attribute)
+	const float large_sun = 0.2f, inner_sun = large_sun * 0.8f, outer_sun = large_sun * 1.4f;
+	const float large_moon = 0.05f, inner_moon = large_moon * 0.8f, outer_moon = large_moon * 1.3f;
+	
+	// Planets use a 'zero' matrix, where only the camera's rotation is taken into
+	// account, so they always appear around the camera without having to change position.
+	// TODO: instancing? somehow?
+	const vector4f planets_verts_def[] = {
+		//     X        Y         Z       1.0f        R      G      B      A
+		// Outer sun square
+		{ -outer_sun,   1.0f, -outer_sun,  1.0f }, { 0.93f, 0.89f, 0.84f, 0.00f }, // TL 0
+		{  outer_sun,   1.0f, -outer_sun,  1.0f }, { 0.93f, 0.89f, 0.84f, 0.00f }, // BL 1
+		{  0.0f,        1.0f,  0.0f,       1.0f }, { 0.93f, 0.89f, 0.84f, 1.00f }, // CN 2 - center used for vertex colour blending
+		{ -outer_sun,   1.0f,  outer_sun,  1.0f }, { 0.93f, 0.89f, 0.84f, 0.00f }, // TR 3
+		{  outer_sun,   1.0f,  outer_sun,  1.0f }, { 0.93f, 0.89f, 0.84f, 0.00f }, // BR 4
+		// Large sun square
+		{ -large_sun,   1.0f, -large_sun,  1.0f }, { 0.96f, 0.79f, 0.32f, 1.00f }, // TL 5
+		{  large_sun,   1.0f, -large_sun,  1.0f }, { 0.96f, 0.79f, 0.32f, 1.00f }, // BL 6
+		{ -large_sun,   1.0f,  large_sun,  1.0f }, { 0.96f, 0.79f, 0.32f, 1.00f }, // TR 7
+		{  large_sun,   1.0f,  large_sun,  1.0f }, { 0.96f, 0.79f, 0.32f, 1.00f }, // BR 8
+		// Inner sun square
+		{ -inner_sun,   1.0f, -inner_sun,  1.0f }, { 0.92f, 0.85f, 0.74f, 1.00f }, // TL 9
+		{  inner_sun,   1.0f, -inner_sun,  1.0f }, { 0.92f, 0.85f, 0.74f, 1.00f }, // BL 10
+		{ -inner_sun,   1.0f,  inner_sun,  1.0f }, { 0.92f, 0.85f, 0.74f, 1.00f }, // TR 11
+		{  inner_sun,   1.0f,  inner_sun,  1.0f }, { 0.92f, 0.85f, 0.74f, 1.00f }, // BR 12
+		// Outer moon square - square order is reversed as it is on the opposite side
+		{ -outer_moon, -1.0f,  outer_moon, 1.0f }, { 0.87f, 0.92f, 0.97f, 0.00f }, // TR 16
+		{  outer_moon, -1.0f,  outer_moon, 1.0f }, { 0.87f, 0.92f, 0.97f, 0.00f }, // BR 17
+		{  0.0f,       -1.0f,  0.0f,       1.0f }, { 0.87f, 0.92f, 0.97f, 1.00f }, // CN 15
+		{ -outer_moon, -1.0f, -outer_moon, 1.0f }, { 0.87f, 0.92f, 0.97f, 0.00f }, // TL 13
+		{  outer_moon, -1.0f, -outer_moon, 1.0f }, { 0.87f, 0.92f, 0.97f, 0.00f }, // BL 14
+		// Large moon square
+		{ -large_moon, -1.0f,  large_moon, 1.0f }, { 0.56f, 0.68f, 0.95f, 1.00f }, // TR 18
+		{  large_moon, -1.0f,  large_moon, 1.0f }, { 0.56f, 0.68f, 0.95f, 1.00f }, // BR 19
+		{ -large_moon, -1.0f, -large_moon, 1.0f }, { 0.56f, 0.68f, 0.95f, 1.00f }, // TL 20
+		{  large_moon, -1.0f, -large_moon, 1.0f }, { 0.56f, 0.68f, 0.95f, 1.00f }, // BL 21
+		// Inner moon square
+		{ -inner_moon, -1.0f,  inner_moon, 1.0f }, { 0.78f, 0.85f, 0.91f, 1.00f }, // TR 22
+		{  inner_moon, -1.0f,  inner_moon, 1.0f }, { 0.78f, 0.85f, 0.91f, 1.00f }, // BR 23
+		{ -inner_moon, -1.0f, -inner_moon, 1.0f }, { 0.78f, 0.85f, 0.91f, 1.00f }, // TL 24
+		{  inner_moon, -1.0f, -inner_moon, 1.0f }, { 0.78f, 0.85f, 0.91f, 1.00f }, // BL 25
+	};
+
+	// Create VBO and buffer above vertex data
+	m_planets_vbo = ogl::new_buf(GL_ARRAY_BUFFER);
+	glVertexAttribPointer(0, 4, GL_FLOAT, false, sizeof(float[8]), nullptr); // Using mat2x4 - 8 floats, 4 floats per attribute
+	glVertexAttribPointer(1, 4, GL_FLOAT, false, sizeof(float[8]), reinterpret_cast<const void*>(sizeof(float[4])));
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof planets_verts_def, planets_verts_def, 0);
 
 	// An EBO (indexes into above vertices) needs to be used with GL_TRIANGLES as the sun and
-	// moon are seperate objects and using GL_TRIANGLE_STRIPS would join them together.
-	// Using plain glDrawArrays means some vertices will need to be redefined - save memory with EBO.
+	// moon are separate objects and using GL_TRIANGLE_STRIPS would join them together.
+	// Using plain glDrawArrays means some vertices will need to be redefined - save memory
+	// by using glDrawElements alongside an index list.
 
-	const GLubyte planetsIndices[] = {
-		/* Large sun indices  */ 0u,  1u,  3u,  3u,  2u,  0u,
-		/* Small sun indices  */ 4u,  5u,  7u,  7u,  6u,  4u,
-		/* Large moon indices */ 8u,  9u,  11u, 11u, 10u, 8u,
-		/* Small moon indices */ 12u, 13u, 15u, 15u, 14u, 12u
+	// Every trio of u. bytes is a triangle 
+	const GLubyte planets_inds[] = {
+		/* Outer sun indexes  */ 0,  1,  2,  4,  3,  2, 
+		                         3,  0,  2,  1,  4,  2,
+		/* Large sun indexes  */ 5,  6,  8,  8,  7,  5,
+		/* Inner sun indexes  */ 9,  10, 12, 12, 11, 9,
+	
+		/* Outer moon indexes */ 13, 14, 15, 17, 16, 15,
+		                         16, 13, 15, 14, 17, 15,
+		/* Large moon indexes */ 18, 19, 21, 21, 20, 18,
+		/* Inner moon indexes */ 22, 23, 25, 25, 24, 22
 	};
 
-	m_planetsEBO = OGL::CreateBuffer(GL_ELEMENT_ARRAY_BUFFER);
-	glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(sizeof(planetsIndices)), planetsIndices, GLbitfield{});
-
-	// Buffer sun and moon data to array buffer
-	glBufferStorage(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(sizeof(planetsData)), planetsData, GLbitfield{});
+	// Create EBO and buffer above indices - use GLubyte in glDrawElements for correct data interpreting
+	m_planets_ebo = ogl::new_buf(GL_ELEMENT_ARRAY_BUFFER);
+	glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, sizeof planets_inds, planets_inds, 0);
 }
 
-Skybox::~Skybox() noexcept
+skybox_elems_obj::~skybox_elems_obj()
 {
 	// Delete all created buffers (VBOs, EBOs)
-	const GLuint deleteBuffers[] = {
-		m_cloudsInstVBO,
-		m_cloudsVBO,
-		m_cloudsEBO,
-		m_skyboxVBO,
-		m_skyboxEBO,
-		m_starsVBO,
-		m_planetsVBO,
-		m_planetsEBO
+	const GLuint delete_bufs[] = {
+		m_clouds_inst_vbo,
+		m_clouds_vbo,
+		m_clouds_ebo,
+		m_skybox_vbo,
+		m_stars_vbo,
+		m_planets_vbo,
+		m_planets_ebo
 	};
 
-	glDeleteBuffers(static_cast<GLsizei>(Math::size(deleteBuffers)), deleteBuffers);
+	glDeleteBuffers(static_cast<GLsizei>(math::size(delete_bufs)), delete_bufs);
 
 	// Delete all created VAOs
-	const GLuint deleteVAOs[] = {
-		m_cloudsVAO,
-		m_skyboxVAO,
-		m_starsVAO,
-		m_planetsVAO
+	const GLuint delete_vaos[] = {
+		m_clouds_vao,
+		m_skybox_vao,
+		m_stars_vao,
+		m_planets_vao
 	};
 
-	glDeleteVertexArrays(static_cast<GLsizei>(Math::size(deleteVAOs)), deleteVAOs);
+	glDeleteVertexArrays(static_cast<GLsizei>(math::size(delete_vaos)), delete_vaos);
 }

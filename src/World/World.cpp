@@ -1,14 +1,18 @@
 #include "World.hpp"
 
-World::World(WorldPlayer &player) noexcept : player(player)
+world_obj::world_obj(world_acc_player *player) noexcept :
+    world_noise_objs({1337, 1338, 1339, 1340, 1341}),
+    world_plr(player)
 {
+	m_generator.world = this; // Set world pointer for nested generator struct
+
 	// VAO and VBO for debug chunk borders
-	m_bordersVAO = OGL::CreateVAO();
-	glEnableVertexAttribArray(0u);
+	m_borders_vao = ogl::new_vao();
+	glEnableVertexAttribArray(0);
 
 	// Coordinates of cube edges
-	const float cszf = static_cast<float>(ChunkValues::size);
-	const float cubeLineCoordinates[] = {
+	const float cszf = static_cast<float>(chunk_vals::size);
+	const float border_cube_line_pos[] = {
 		0.0f, 0.0f, 0.0f, // Bottom left back
 		cszf, 0.0f, 0.0f, // Bottom right back
 		0.0f, 0.0f, cszf, // Bottom left front
@@ -19,726 +23,699 @@ World::World(WorldPlayer &player) noexcept : player(player)
 		cszf, cszf, cszf, // Top right front
 	};
 
-	m_bordersVBO = OGL::CreateBuffer(GL_ARRAY_BUFFER);
-	glVertexAttribPointer(0u, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
-	glBufferStorage(GL_ARRAY_BUFFER, sizeof(cubeLineCoordinates), cubeLineCoordinates, 0u);
+	m_borders_vbo = ogl::new_buf(GL_ARRAY_BUFFER);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof border_cube_line_pos, border_cube_line_pos, 0);
 
-	// Chunk outline line indices
-	const std::uint8_t cubeLineIndices[] = {
-		0u, 1u,  0u, 2u,  1u, 3u,  2u, 3u,
-		0u, 4u,  1u, 5u,  2u, 6u,  3u, 7u,
-		4u, 5u,  4u, 6u,  5u, 7u,  6u, 7u
+	// Borders outline line indexes (each pair is a line's start+end vertex index from the above array)
+	const uint8_t border_cube_line_inds[] = {
+		0, 1,  0, 2,  1, 3,  2, 3,
+		0, 4,  1, 5,  2, 6,  3, 7,
+		4, 5,  4, 6,  5, 7,  6, 7
 	};
-	m_bordersEBO = OGL::CreateBuffer(GL_ELEMENT_ARRAY_BUFFER);
-	glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, sizeof(cubeLineIndices), cubeLineIndices, 0u);
-
-	// Get location of shader chunk position uniform variable
-	m_borderUniformLocation = game.shaders.programs.border.GetLocation("chunkPos");
+	m_borders_ebo = ogl::new_buf(GL_ELEMENT_ARRAY_BUFFER);
+	glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, sizeof border_cube_line_inds, border_cube_line_inds, 0);
 
 	// Create VAO for the world buffers to store buffer settings
-	m_worldVAO = OGL::CreateVAO();
-	glEnableVertexAttribArray(0u);
-	glVertexAttribDivisor(0u, 1u);
+	m_world_vao = ogl::new_vao();
+	glEnableVertexAttribArray(0);
+	glVertexAttribDivisor(0, 1);
 
-	glEnableVertexAttribArray(1u);
-	glEnableVertexAttribArray(2u);
-	glEnableVertexAttribArray(3u);
-
-	// World data buffer for instanced compressed face data
-	m_worldInstancedVBO = OGL::CreateBuffer(GL_ARRAY_BUFFER);
-	glVertexAttribIPointer(0u, 1, GL_UNSIGNED_INT, 0, nullptr);
+	glEnableVertexAttribArray(1);
+	glEnableVertexAttribArray(2);
+	glEnableVertexAttribArray(3);
 
 	// Very important definition of a plane/quad for block rendering
-	// Laid out like this to allow for swizzling (e.g. verticesXZ.xyz) which is "essentially free" in shaders
+	// Laid out like this to allow for swizzling (e.g. vector.xyz) which is "essentially free" in shaders
 	// See https://www.khronos.org/opengl/wiki/GLSL_Optimizations for more information
 
-	const float planeVertices[] = {
-	//	        vec4 0		                 vec4 1		                vec4 2
-		1.0f, 1.0f, 0.0f, 1.0f, 	0.0f, 1.0f, 0.0f, 1.0f,		0.0f, 0.0f, 0.0f, 0.0f,	 // Vertex 1
-		1.0f, 0.0f, 0.0f, 1.0f, 	0.0f, 0.0f, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f, 0.0f,	 // Vertex 2
-		0.0f, 1.0f, 0.0f, 1.0f, 	1.0f, 1.0f, 0.0f, 1.0f,		1.0f, 0.0f, 0.0f, 0.0f,	 // Vertex 3
-		0.0f, 0.0f, 0.0f, 1.0f, 	1.0f, 0.0f, 0.0f, 1.0f,		1.0f, 1.0f, 0.0f, 0.0f,	 // Vertex 4
-	//	 x     z     0     1         y     z     0     1         y     w     0     0
+	const float plane_verts[] = {
+	//              vec4 0                    vec4 1                    vec4 2
+		1.0f, 1.0f, 0.0f, 1.0f,   0.0f, 1.0f, 0.0f, 1.0f,   0.0f, 0.0f, 0.0f, 0.0f,  // Vertex 1
+		1.0f, 0.0f, 0.0f, 1.0f,   0.0f, 0.0f, 0.0f, 1.0f,   0.0f, 1.0f, 0.0f, 0.0f,  // Vertex 2
+		0.0f, 1.0f, 0.0f, 1.0f,   1.0f, 1.0f, 0.0f, 1.0f,   1.0f, 0.0f, 0.0f, 0.0f,  // Vertex 3
+		0.0f, 0.0f, 0.0f, 1.0f,   1.0f, 0.0f, 0.0f, 1.0f,   1.0f, 1.0f, 0.0f, 0.0f,  // Vertex 4
+	//        x     z     0     1       y     z     0     1       y     w     0     0
 	};
 
 	// Instanced VBO that contains plane data, 12 floats per vertex
-	m_worldPlaneVBO = OGL::CreateBuffer(GL_ARRAY_BUFFER);
-	glVertexAttribPointer(1u, 4, GL_FLOAT, GL_FALSE, sizeof(float[12]), nullptr);
-	glVertexAttribPointer(2u, 4, GL_FLOAT, GL_FALSE, sizeof(float[12]), reinterpret_cast<const void*>(sizeof(float[4])));
-	glVertexAttribPointer(3u, 4, GL_FLOAT, GL_FALSE, sizeof(float[12]), reinterpret_cast<const void*>(sizeof(float[8])));
-	glBufferStorage(GL_ARRAY_BUFFER, sizeof(planeVertices), planeVertices, 0u);
+	m_world_plane_vbo = ogl::new_buf(GL_ARRAY_BUFFER);
+	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(float[12]), nullptr);
+	glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(float[12]), reinterpret_cast<const void*>(sizeof(float[4])));
+	glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(float[12]), reinterpret_cast<const void*>(sizeof(float[8])));
+	glBufferStorage(GL_ARRAY_BUFFER, sizeof plane_verts, plane_verts, 0);
+
+	// World data buffer for instanced face data
+	m_world_inst_vbo = ogl::new_buf(GL_ARRAY_BUFFER);
+	glVertexAttribIPointer(0, 1, GL_UNSIGNED_INT, 0, nullptr);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(GLuint), nullptr, GL_DYNAMIC_DRAW); // Buffer to allow mapping (size 0 is invalid)
 
 	// Shader storage buffer object (SSBO) to store chunk positions and face indexes for each chunk face (location = 0)
-	m_worldSSBO = OGL::CreateBuffer(GL_SHADER_STORAGE_BUFFER);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0u, m_worldSSBO);
-	// Buffer which holds the indexes into the world data for each 'instanced draw call' in indirect draw call
-	m_worldIBO = OGL::CreateBuffer(GL_DRAW_INDIRECT_BUFFER);
+	m_world_ssbo = ogl::new_buf(GL_SHADER_STORAGE_BUFFER);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_world_ssbo);
+	m_world_dib = ogl::new_buf(GL_DRAW_INDIRECT_BUFFER); // Buffer for indirect draw commands (4 GLuints per command)
 
-	// TODO (possible): noise splines for more varied terrain generation
-	game.noiseGenerators = WorldNoise(nullptr);
+	update_render_distance(m_render_distance); // Initial update and buffer sizing
 
-	// Initial update and buffer sizing
-	UpdateRenderDistance(chunkRenderDistance);
+	// Chunk creation loop on a separate thread to avoid blocking main game loop
+	if (!game.DB_exit_on_loaded) m_generation_thread = std::thread(&world_obj::generation_loop, this, false);
 }
 
-void World::DrawWorld() const noexcept
+void world_obj::draw_entire_world() noexcept
 {
-	// Use correct VAO and shader program
-	game.shaders.programs.blocks.Use();
-	glBindVertexArray(m_worldVAO);
+	game.shaders.programs.blocks.bind_and_use(m_world_vao); // Use correct VAO and shader program
+	if (m_do_buffers_update) update_inst_buffer_data(); // Update buffers if needed
 
 	// Draw the entire world in a single draw call using the indirect buffer, essentially
 	// doing an instanced draw call (glDrawArraysInstancedBaseInstance) for each 'chunk face'.
 	// See https://registry.khronos.org/OpenGL-Refpages/gl4/html/glMultiDrawArraysIndirect.xhtml for more information.
 
-	glMultiDrawArraysIndirect(GL_TRIANGLE_STRIP, nullptr, m_indirectCalls, 0);
+	glMultiDrawArraysIndirect(GL_TRIANGLE_STRIP, nullptr, m_indirect_calls, 0);
 }
 
-void World::DebugChunkBorders(bool drawing) noexcept
+void world_obj::draw_enabled_borders() noexcept
 {
-	if (!game.chunkBorders) return; // Only render/update if enabled
-
-	// Use borders VAO and shader for correct data editing/usage
-	game.shaders.programs.border.Use();
-	glBindVertexArray(m_bordersVAO);
-	
-	// Draw lines using indexed line data
-	if (drawing) glDrawElements(GL_LINES, 24, GL_UNSIGNED_BYTE, nullptr);
-	else {
-		// Update chunk position in shader
-		const glm::dvec3 chunkPos = player.offset * static_cast<PosType>(ChunkValues::size);
-		glUniform3dv(m_borderUniformLocation, 1, &chunkPos[0]);
-	}
+	if (!game.display_chunk_borders) return; // Only render if enabled
+	game.shaders.programs.border.bind_and_use(m_borders_vao); // Switch to borders VAO and shader
+	glDepthFunc(GL_ALWAYS); // Always draw on top
+	glDrawElements(GL_LINES, 24, GL_UNSIGNED_BYTE, nullptr); // Draw using indexed line data
+	glDepthFunc(GL_LEQUAL); // Default render depth function
 }
 
-void World::DebugReset() noexcept
+world_chunk *world_obj::world_pos_to_chunk(const world_pos *pos) const noexcept
 {
-	// For debugging purposes - regenerate all nearby chunks
-	for (auto it = allchunks.cbegin(); it != allchunks.cend();) { delete it->second; allchunks.erase(it++); }
-	OffsetUpdate();
+	const world_pos chunk_offset = chunk_vals::world_to_offset(pos); // Get offset of position
+	return find_chunk_at(&chunk_offset); // Find chunk at the calculated offset
 }
 
-Chunk *World::WorldPositionToChunk(const WorldPosition &pos) const noexcept
+block_id world_obj::block_at(const world_pos *pos) const noexcept
 {
-	// Gets the chunk that contains the given world position
-	return GetChunk(ChunkValues::WorldToOffset(pos));
+	world_chunk *const chunk = world_pos_to_chunk(pos); // Get the chunk that contains the given position
+	if (chunk && chunk->blocks) {
+		const vector3i in_pos = chunk_vals::world_to_local(pos);
+		return (*chunk->blocks)[in_pos.x][in_pos.y][in_pos.z]; // Get block at the local pos in the chunk
+	} else return block_id::air; // If no chunk is found, assume air
 }
 
-ObjectID World::GetBlock(const WorldPosition &pos) const noexcept
- {
-	Chunk *chunk = WorldPositionToChunk(pos); // Get the chunk that contains the given position
-	if (chunk && chunk->chunkBlocks) return chunk->chunkBlocks->at(ChunkValues::WorldToLocal(pos)); // Returns the block at the local position in the chunk
-	else return ObjectID::Air; // If no chunk is found, return an air block
-}
-
-void World::SetBlock(const WorldPosition &pos, ObjectID block, bool updateChunk) noexcept
+void world_obj::set_block_at_to(const world_pos *pos, block_id block) noexcept
 {
-	// Get chunk that contains the given position
-	const WorldPosition offset = ChunkValues::WorldToOffset(pos);
-	Chunk *chunk = GetChunk(offset);
+	if (chunk_vals::is_y_outside_bounds(pos->y)) return; // Validate position
 
-	// Get local chunk position of the block
-	const glm::ivec3 localPos = ChunkValues::WorldToLocal(pos);
+	// Get the full chunk that contains the given position
+	const world_pos offset = chunk_vals::world_to_offset(pos);
+	const world_xzpos xz_offset = offset.xz();
+	world_full_chunk *full_chunk = find_full_chunk_at(&xz_offset);
+	if (!full_chunk) return; // Ignore blocks outside render distance or in invalid chunks
 
-	// Add to queue if the chunk does not exist, no need to check for bordering chunks
-	// as they will be updated later on when the chunk is created
-	if (!chunk) {
-		m_blockQueue[offset].emplace_back(Chunk::BlockQueue(localPos, block, false));
-		return;
+	world_chunk *chunk = full_chunk->subchunks + offset.y; // Get the inner chunk
+	const vector3i in_pos = chunk_vals::world_to_local(pos); // Get local chunk position of the block
+
+	// Check if the inner chunk has a null block array
+	if (!chunk->blocks) {
+		if (block == block_id::air) return; // Ignore uneccessary changes (air to empty chunk)
+		else chunk->allocate_blocks(); // Use normal block storage
 	}
 
-	// If it exists, change the block and possibly update chunk + bordering chunks
-	if (!chunk->chunkBlocks) {
-		if (block == ObjectID::Air) return; // Ignore uneccessary changes (air to 'air chunk')
-		else chunk->AllocateChunkBlocks(); // Use normal block storage
-	}
+	(*(chunk->blocks))[in_pos.x][in_pos.y][in_pos.z] = block; // Change block at local position
+	quad_data_t *const mesh_data = update_chunk_immediate(full_chunk, chunk, &xz_offset, offset.y, nullptr);
 
-	chunk->chunkBlocks->atref(localPos) = block; // Change block at local position
-
-	// Update bordering chunks if changed block was on a corner
-	NearbyChunkData nearbyData[6];
-	const int count = GetNearbyChunks(offset, nearbyData, true);
+	// Update bordering chunks if changed block was on the chunk's corner
+	nearby_data_obj nearby_data[6];
+	const int count = fill_nearby_data(&offset, nearby_data, true);
 	for (int i = 0; i < count; ++i) {
-		const NearbyChunkData &nearby = nearbyData[i];
-		if (!ChunkValues::IsOnCorner(localPos, nearby.direction)) continue;
-		if (updateChunk) nearby.nearbyChunk->CalculateTerrainData(allchunks);
-		else nearby.nearbyChunk->gameState = Chunk::ChunkState::UpdateRequest;
+		const nearby_data_obj *nearby = nearby_data + i;
+		if (!chunk_vals::is_bordering(in_pos, nearby->dir_index)) continue;
+		const world_xzpos nearby_xz_offset = nearby->offset.xz();
+		update_chunk_immediate(nearby->full_chunk, nearby->chunk, &nearby_xz_offset, nearby->offset.y, mesh_data);
 	}
-	
-	if (updateChunk) { chunk->CalculateTerrainData(allchunks); UpdateWorldBuffers(); }
-	else chunk->gameState = Chunk::ChunkState::UpdateRequest;
+
+	delete[] mesh_data;
 }
 
-std::uintmax_t World::FillBlocks(WorldPosition from, WorldPosition to, ObjectID objectID) noexcept
+quad_data_t *world_obj::update_chunk_immediate(
+	const world_full_chunk *const full_chunk,
+	world_chunk *const updating_chunk,
+	const world_xzpos *const xz_offset,
+	pos_t y_offset,
+	quad_data_t *mesh_data_array
+) {
+	if (!mesh_data_array) mesh_data_array = new quad_data_t[chunk_vals::total_faces];
+
+	updating_chunk->mesh_faces(
+		rendered_map,
+		full_chunk,
+		xz_offset,
+		updating_chunk->face_counters,
+		y_offset,
+		mesh_data_array
+	);
+	m_do_buffers_update = true;
+	return mesh_data_array;
+}
+
+uintmax_t world_obj::fill_blocks(world_pos from, world_pos to, block_id b_id) noexcept
 {
 	// Force valid position - ensure Y position is in range
-	from.y = glm::clamp(from.y, PosType{}, static_cast<PosType>(ChunkValues::maxHeight));
-	to.y = glm::clamp(to.y, PosType{}, static_cast<PosType>(ChunkValues::maxHeight));
+	from.y = math::clamp(from.y, pos_t{}, static_cast<pos_t>(chunk_vals::world_height));
+	to.y = math::clamp(to.y, pos_t{}, static_cast<pos_t>(chunk_vals::world_height));
 
 	// Determine direction to move in each axis
-	const WorldPosition step = {
-		static_cast<PosType>(from.x > to.x ? -1 : 1),
-		static_cast<PosType>(from.y > to.y ? -1 : 1),
-		static_cast<PosType>(from.z > to.z ? -1 : 1)
-	};
+	const world_pos step = chunk_vals::step_dir_to(&from, &to);
 	
-	// Prevent extremely large changes
-	const std::uintmax_t totalSets = glm::abs(to.x - from.x) * glm::abs(to.y - from.y) * glm::abs(to.z - from.z);
-	if (totalSets > static_cast<std::uintmax_t>(32768)) return totalSets;
+	// Deny any extremely large changes
+	const uintmax_t total_sets = static_cast<uintmax_t>(
+		math::abs(to.x - from.x) *
+		math::abs(to.y - from.y) *
+		math::abs(to.z - from.z)
+	);
+	if (total_sets > 0xFFFF) return total_sets;
 
-	// Ensure a block is still placed if any value is equal
+	// Ensure a block is still placed if any to-from values are equal
 	for (int i = 0; i < 3; ++i) {
-		PosType &toAxis = to[i];
-		if (toAxis == from[i]) toAxis += step[i];
+		pos_t &to_axis = to[i];
+		if (to_axis == from[i]) to_axis += step[i];
 	}
 
 	// Set all of the valid blocks from fx, fy, fz to tx, ty, tz (inclusive) as the given block ID
-	WorldPosition set{};
+	// TODO: Mesh queue
+	world_pos set{};
 	for (set.x = from.x; set.x != to.x; set.x += step.x) {
 		for (set.y = from.y; set.y != to.y; set.y += step.y) {
-			for (set.z = from.z; set.z != to.z; set.z += step.z) SetBlock(set, objectID, false);
+			for (set.z = from.z; set.z != to.z; set.z += step.z) set_block_at_to(&set, b_id);
 		}
 	}
 
-	// Update all affected chunks
-	for (const auto &it : m_blockQueue) ApplyQueue(it.second, it.first, true);
-	ApplyUpdateRequest();
-	UpdateWorldBuffers();
-
-	return std::uintmax_t{};
+	return 0; // Signal success
 }
 
-Chunk *World::GetChunk(const WorldPosition &chunkOffset) const noexcept
+world_chunk *world_obj::find_chunk_at(const world_pos *chunk_offset) const noexcept
 {
-	const auto it = allchunks.find(chunkOffset); // Find chunk with given offset key
-	return it != allchunks.end() ? it->second : nullptr; // Return chunk if it was found
+	// Check if the given Y offset is in range
+	if (chunk_offset->y >= chunk_vals::y_count || chunk_offset->y < 0) return nullptr;
+	const world_xzpos xz_offset = chunk_offset->xz();
+	world_full_chunk *full_chunk = find_full_chunk_at(&xz_offset);  // Find full chunk at given XZ offset
+	return full_chunk ? full_chunk->subchunks + chunk_offset->y : nullptr; // Return chunk if the full chunk exists
 }
 
-PosType World::HighestBlockPosition(PosType x, PosType z) const noexcept
+world_full_chunk *world_obj::find_full_chunk_at(const world_xzpos *offset) const noexcept
 {
-	const PosType offsetX = ChunkValues::WorldToOffset(x), offsetZ = ChunkValues::WorldToOffset(z); // Get chunk offsets containing XZ position
-	glm::ivec3 chunkPos = { ChunkValues::WorldToLocal(x), 0, ChunkValues::WorldToLocal(z) }; // Get the local chunk position from the world position
+	const auto it = rendered_map.find(*offset); // Find full chunk at given XZ offset
+	return it != rendered_map.end() ? it->second : nullptr; // Return full chunk if it was found
+}
 
-	for (int y = ChunkValues::heightCount - 1; y >= 0; --y) {
-		Chunk *chunk = GetChunk({ offsetX, y, offsetZ });
-		if (!chunk || !chunk->chunkBlocks) continue; // Check if it is a valid chunk with blocks
+pos_t world_obj::highest_solid_y_at(world_xzpos *xz_position) const noexcept
+{
+	// Get chunk offsets containing the given XZ position
+	const world_xzpos xz_offset = chunk_vals::world_to_offset(xz_position);
+	const world_full_chunk *const containing_full_chunk = find_full_chunk_at(&xz_offset);
+
+	// Get the local chunk position (pos. of block inside a chunk) from the world position
+	vector3i chunk_pos = {
+		chunk_vals::world_to_local_one(xz_position->x), 0,
+		chunk_vals::world_to_local_one(xz_position->y)
+	};
+
+	for (int y = chunk_vals::y_count - 1; y >= 0; --y) {
+		const world_chunk *const chunk = containing_full_chunk->subchunks + y;
+		if (!chunk || !chunk->blocks) continue; // Check if it is a valid chunk with blocks
 		
 		// Search the local XZ coordinate inside found chunk from top to bottom
-		const PosType worldY = y * ChunkValues::size;
-		for (chunkPos.y = ChunkValues::sizeLess; chunkPos.y >= 0; --chunkPos.y) {
-			if (chunk->chunkBlocks->at(chunkPos) != ObjectID::Air) return worldY + static_cast<PosType>(chunkPos.y);
+		const pos_t world_y_pos = y * chunk_vals::size;
+		for (chunk_pos.y = chunk_vals::less; chunk_pos.y >= 0; --chunk_pos.y) {
+			if ((*(chunk->blocks))[chunk_pos.x][chunk_pos.y][chunk_pos.z] != block_id::air)
+				return world_y_pos + static_cast<pos_t>(chunk_pos.y);
 		}
 	}
 
 	// Fallback to bottom position
-	return PosType{};
+	return 0;
 }
 
-PosType World::PlayerChunkDistance(const WorldPosition &chunkOffset) const noexcept
+bool world_obj::xz_in_rnd_dist(const world_xzpos *chunk_offset) const noexcept
 {
-	// Returns how many chunks are in between the player and the given chunk offset
-	return glm::abs(player.offset.x - chunkOffset.x) + glm::abs(player.offset.z - chunkOffset.z);
+	// Check if the XZ offset between the given and player together are less than the render distance
+	const world_xzpos plr_xz_offset = world_plr->offset.xz();
+	return chunk_vals::offsets_dist(chunk_offset, &plr_xz_offset) <= static_cast<pos_t>(m_render_distance);
 }
 
-bool World::InRenderDistance(const WorldPosition &chunkOffset) const noexcept
-{
-	// Check if distance from each X + Z positions in both values together are less than the render distance
-	return PlayerChunkDistance(chunkOffset) <= static_cast<PosType>(chunkRenderDistance);
-}
-
-void World::UpdateRenderDistance(int newRenderDistance) noexcept
+void world_obj::update_render_distance(int32_t new_rnd_dist) noexcept
 {
 	// Render distance determines how many chunks in a 'star' pattern will be generated
 	// from the initial player chunk (e.g. a render distance of 0 has only the player's chunk,
-	// whereas a render distance of 1 has 4 extra chunks surrounding it - 5 in total).
+	// whereas a render distance of 1 has 4 extra chunks surrounding it = 5 in total).
 
-	// Ensure render distance is within bounds
-	if (newRenderDistance < ValueLimits::renderLimit.min) return;
-	chunkRenderDistance = static_cast<std::int32_t>(newRenderDistance);
-	
-	// Maximum amount of chunk faces, calculated as ( (2 * n * n) + (2 * n) + 1 ) * h, 
-	// where n is the render distance and h is the number of chunk *faces* in a full chunk -> HEIGHT_COUNT * 6
-	const int surroundingOffsetsAmount = GetNumChunks(false);
-	const std::size_t maxChunkFaces = surroundingOffsetsAmount * ChunkValues::heightCount * 6u;
+	// Ensure render distance is within bounds, otherwise still allow if it is increasing (for debug purposes)
+	if (game.is_loop_active && (
+		new_rnd_dist < val_limits::render_limits.min ?
+		new_rnd_dist <= m_render_distance :
+		false)
+	) return;
+	m_render_distance = new_rnd_dist;
 
-	// Delete any existing arrays
-	if (surroundingOffsets) delete[] surroundingOffsets;
-	if (translucentChunks) delete[] translucentChunks;
-	if (worldIndirectData) delete[] worldIndirectData;
-	if (faceDataPointers) delete[] faceDataPointers;
-	if (worldOffsetData) delete[] worldOffsetData;
-	
-	// Create arrays for face data and chunk sorting with new sizes
-	faceDataPointers = new Chunk::FaceAxisData*[maxChunkFaces];
-	translucentChunks = new ChunkTranslucentData[maxChunkFaces];
-	
-	// Arrays for indirect and chunk offset data
-	// Multiply size by 2 due to chunk faces with transparency needing to be rendered seperately
-	const std::size_t maxChunkFacesTransparency = maxChunkFaces * 2u;
-	worldIndirectData = new IndirectDrawCommand[maxChunkFacesTransparency];
-	worldOffsetData = new ShaderChunkFace[maxChunkFacesTransparency];
-
-	// Determine surrounding relative chunk offsets for generation
-	surroundingOffsets = new WorldXZPosition[surroundingOffsetsAmount];
-	int crd = static_cast<int>(chunkRenderDistance), sInd = 0;
-	for (int x = -crd; x <= crd; ++x) for (int z = -crd; z <= crd; ++z) if (glm::abs(x) + glm::abs(z) <= crd) surroundingOffsets[sInd++] = { x, z };
-
-	// Ensure correct buffers are updated
-	glBindVertexArray(m_worldVAO);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_worldSSBO);
-
-	// Storage for draw commands
-	glBufferData(GL_DRAW_INDIRECT_BUFFER, static_cast<GLsizeiptr>(sizeof(IndirectDrawCommand) * maxChunkFacesTransparency), nullptr, GL_STATIC_DRAW);
-	// Shader data storage (chunk position and face index)
-	glBufferData(GL_SHADER_STORAGE_BUFFER, static_cast<GLsizeiptr>(sizeof(ShaderChunkFace) * maxChunkFacesTransparency), nullptr, GL_STATIC_COPY);
-
-	TextFormat::log(fmt::format("Render distance changed ({})", chunkRenderDistance));
-
-	// Update chunks to use new offset radius (generate or delete)
-	OffsetUpdate();
-}
-
-void World::SetPerlinValues(WorldPerlin::NoiseResult *results, WorldXZPosition chunkPos) noexcept
-{
-	// Used per full chunk, each chunk would have the same results as they have 
-	// the same XZ coordinates so no calculation is needed for each individual chunk
-	constexpr float defVal = NoiseValues::defaultZ;
-
-	// Loop through X and Z axis
-	for (int i = 0; i < ChunkValues::sizeSquared; ++i) {
-		const int indZ = i / ChunkValues::size, indX = i % ChunkValues::size; // Get the X and Z position
-		// Get noise coordinates from XZ positions with given offsets
-		const double posX = static_cast<double>(chunkPos.x + static_cast<PosType>(indX)) * NoiseValues::noiseStep;
-		const double posZ = static_cast<double>(chunkPos.y + static_cast<PosType>(indZ)) * NoiseValues::noiseStep;
-
-		// Store the noise results for each of the terrain noise generators
-		results[i] = WorldPerlin::NoiseResult(
-			posX, posZ,
-			(game.noiseGenerators.elevation.GetOctave(posX, defVal, posZ, 3) * NoiseValues::terrainRange) + NoiseValues::minSurface,
-			game.noiseGenerators.flatness.GetNoise(posX, defVal, posZ),
-			game.noiseGenerators.temperature.GetNoise(posX, defVal, posZ),
-			game.noiseGenerators.humidity.GetNoise(posX, defVal, posZ)
-		);
-	}
-}
-
-void World::ApplyQueue(Chunk *chunk, const BlockQueueVector &blockQueue, bool calculate) noexcept
-{
-	// Ignore empty vectors
-	if (!blockQueue.size()) return;
-
-	// Convert air chunk to normal per-block storage if needed
-	chunk->AllocateChunkBlocks();
-
-	// Apply queue whilst checking if certain blocks are replaceable depending on strength
-	// (only if the change is considered 'natural', such as trees)
-	for (const Chunk::BlockQueue &qBlock : blockQueue) {
-		ObjectID &currentBlock = chunk->chunkBlocks->atref(qBlock.pos);
-		if (!qBlock.natural) {
-			const WorldBlockData &currentBlockData = ChunkValues::GetBlockData(currentBlock);
-			const WorldBlockData &replaceBlockData = ChunkValues::GetBlockData(qBlock.blockID);
-			if (currentBlockData.strength > replaceBlockData.strength) continue;
-		}
-		currentBlock = qBlock.blockID;
+	// Signal generation thread to run if it is waiting for an event
+	if (game.is_loop_active) {
+		signal_generation_thread();
+		formatter::log(fmt::format("Render distance changed ({})", m_render_distance));
 	}
 
-	// Remove block queue for this chunk
-	m_blockQueue.erase(*chunk->offset);
-
-	// Calculate chunk terrain if requested
-	if (calculate) chunk->CalculateTerrainData(allchunks);
+	m_do_arrays_update = true; // Update indirect, translucent and ssbo arrays
 }
 
-bool World::ApplyQueue(const BlockQueueVector &blockQueue, const WorldPosition &offset, bool calculate) noexcept
+void world_obj::generation_loop(bool ismain) noexcept
 {
-	Chunk *chunk = GetChunk(offset); // Get chunk from given offset
-	if (!chunk) return false; // Check if it exists
-	ApplyQueue(chunk, blockQueue, calculate); // Change chunk blocks using given queue vector
-	return true;
-}
+	typedef world_chunk::world_map::value_type w_val_t;
+	struct meshing_data {
+		world_xzpos full_offset;
+		world_full_chunk *full_chunk;
+		world_chunk::face_counts_obj meshed_counters[chunk_vals::y_count][6];
+	};
 
-bool World::ApplyQueue(Chunk *chunk, bool calculate) noexcept
-{
-	const auto &foundQueue = m_blockQueue.find(*chunk->offset); // Find queue vector from chunk offset
-	if (foundQueue == m_blockQueue.end()) return false; // Check if it exists
-	ApplyQueue(chunk, foundQueue->second, calculate); // Change chunk blocks using queue vector
-	return true;
-}
+	static std::vector<meshing_data> to_mesh;
+	static std::vector<decltype(to_mesh)::iterator> remove_mesh_state;
 
-void World::ApplyUpdateRequest() noexcept
-{
-	bool updated = false;
+	if (!ismain) goto generation_thread_entry; // Thread section
 
-	// Calculate any marked chunks
-	for (const auto &it : allchunks) {
-		if (it.second->gameState != Chunk::ChunkState::UpdateRequest) continue;
-		it.second->CalculateTerrainData(allchunks);
-		updated = true;
-	}
-
-	// Update buffers to show changes
-	if (updated) UpdateWorldBuffers();
-}
-
-void World::AddSurrounding(Chunk::WorldMapDef &chunksMap, NearbyChunkData *nearbyData, const WorldPosition &offset, bool inclY) const noexcept
-{
-	const int numSurrounding = GetNearbyChunks(offset, nearbyData, inclY); // Get number of chunks surrounding given offset
-	// Add chunks surrounding given offset to given map
-	for (int j = 0; j < numSurrounding; ++j) {
-		Chunk *nearbyChunk = nearbyData[j].nearbyChunk;
-		chunksMap[*nearbyChunk->offset] = nearbyChunk;
-	}
-}
-
-void World::OffsetUpdate() noexcept
-{
-	Chunk::WorldMapDef affectedChunks; // Store unique affected chunks requiring calculation
-	NearbyChunkData nearbyData[4]; // Store direction and pointer to nearby chunks
-
-	for (auto it = allchunks.cbegin(); it != allchunks.cend();) {
-		WorldPosition offset = it->first;
-		if (InRenderDistance(offset)) { ++it; continue; }; // Check if it is further than the render distance
-		delete it->second;
-		allchunks.erase(it++);
-	}
-	
-	const int numFullChunks = GetNumChunks(false);
-	int newOffsetsCount = 0;
-
-	// Player X and Z offset - use to determine new chunk offsets
-	const WorldXZPosition playerOffset = { player.offset.x, player.offset.z };
-	WorldXZPosition *newOffsets = new WorldXZPosition[numFullChunks]; // XZ offsets of chunks that need creating
-	
-	// Create a full chunk around the player if one doesn't exist already
-	for (int offsetInd = 0; offsetInd < numFullChunks; ++offsetInd) {
-		const WorldXZPosition newXZOffset = playerOffset + surroundingOffsets[offsetInd]; // Get XZ offset of possible chunk
-		if (GetChunk({ newXZOffset.x, PosType{}, newXZOffset.y })) continue; // Check if it already exists
-		newOffsets[newOffsetsCount++] = newXZOffset; // Chunks need to be created at this offset
-	}
-
-	// Number of full chunks per thread
-	const int numFullChunksEach = newOffsetsCount / game.numThreads;
-	int numFullChunksLeft = newOffsetsCount - (numFullChunksEach * game.numThreads); // Size may not be a multiple of threads count
-	const int chunkArrayLen = newOffsetsCount * ChunkValues::heightCount;
-
-	Chunk **chunkArray = new Chunk*[chunkArrayLen]; // Array of newly created chunks
-
-	for (int thread = 0, threadIndex = 0; thread < game.numThreads; ++thread) {
-		const int start = threadIndex;
-		threadIndex += numFullChunksEach + (numFullChunksLeft-- > 0 ? 1 : 0); // Spread leftover offsets over threads
-
-		// Create the full chunks in parallel
-		game.genThreads[thread] = std::thread([&](int mapInd, int offsetStart, int offsetsEnd) {
-			Chunk::BlockQueueMap &threadMap = threadMaps[mapInd];
-			int chunksStart = offsetStart * ChunkValues::heightCount;
-			WorldPerlin::NoiseResult* noiseResults = new WorldPerlin::NoiseResult[ChunkValues::sizeSquared];
-			
-			for (int i = offsetStart; i < offsetsEnd; ++i) {
-				const WorldXZPosition &fullChunkOffset = newOffsets[i]; // Get the full chunk offset
-				// Calculate the noise values for terrain generation
-				SetPerlinValues(noiseResults, fullChunkOffset * static_cast<PosType>(ChunkValues::size));
-				
-				// Create each chunk of the full chunk
-				WorldPosition offset = { fullChunkOffset.x, PosType{}, fullChunkOffset.y };
-				do {
-					Chunk *newChunk = new Chunk();
-					chunkArray[chunksStart++] = newChunk;
-					newChunk->ConstructChunk(noiseResults, threadMap, offset);
-				} while (++offset.y < static_cast<PosType>(ChunkValues::heightCount));
+	switch (m_gen_thread_state)
+	{
+	case gen_state_en::active:  // Generation thread still working, do nothing
+		break;
+	case gen_state_en::both_finish: // No work currently, main and generation finished
+		if (m_do_gen_update) goto gen_update; // Start thread and set state to active if an update is requested
+		break;
+	case gen_state_en::await_confirm: // Commit given chunks from generation thread for meshing
+		// Remove chunks outside render distance from main map as well as their mesh data
+		for (auto it = rendered_map.begin(); it != rendered_map.end();) {
+			if (xz_in_rnd_dist(&it->first)) { ++it; continue; }
+			for (int y = 0; y < chunk_vals::y_count; ++y) {
+				world_chunk *const chunk = it->second->subchunks + y;
+				::memset(chunk->quads_ptr, 0, sizeof chunk->quads_ptr);
+				chunk->state = 0u;
 			}
 
-			delete[] noiseResults; // Ensure noise array is deleted
-		}, thread, start, threadIndex);
-	}
-
-	// Wait for all threads to finish and set the offset pointers of each chunk
-	for (int threadInd = 0; threadInd < game.numThreads; ++threadInd) {
-		game.genThreads[threadInd].join(); // Wait for the thread to finish
-		
-		// Merge the thread queue map with the main one
-		Chunk::BlockQueueMap &threadMap = threadMaps[threadInd];
-		for (const auto &it : threadMap) {
-			Chunk::BlockQueueVector &main = m_blockQueue[it.first];
-			const Chunk::BlockQueueVector threadVec = it.second;
-			main.insert(main.end(), threadVec.begin(), threadVec.end());
+			m_generator.reserved_map.insert(*it);
+			it = rendered_map.erase(it);
 		}
+
+		// Add any chunks from the generation map that entered render distance to the render map
+		for (auto it = to_mesh.begin(); it != to_mesh.end();) {
+			if (!xz_in_rnd_dist(&it->full_offset)) { ++it; continue; }
+			if (!find_full_chunk_at(&it->full_offset)) rendered_map.insert(std::make_pair(it->full_offset, it->full_chunk ));
+			remove_mesh_state.emplace_back(it); // Save iterator
+			++it;
+		}
+
+		m_gen_thread_state = gen_state_en::active; // Set active state for thread conditional
+		m_gen_conditional.notify_one(); // Notify generation thread so it can begin generating
+		m_do_buffers_update = true; // Update which chunks can be rendered
+		break;
+	case gen_state_en::gen_finished: // Generation thread finished
+		// Remove 'meshing' state from affected chunks
+		for (auto &it : remove_mesh_state) it->full_chunk->full_state &= ~world_full_chunk::state_en::generation_mark;
+
+		// Copy thread face counters result into chunks to use new data
+		for (auto &it : to_mesh) {
+			for (int i = 0; i < chunk_vals::y_count; ++i) {
+				::memcpy(it.full_chunk->subchunks[i].face_counters, it.meshed_counters[i], sizeof *it.meshed_counters);
+				it.full_chunk->subchunks[i].state &= ~world_chunk::states_en::use_tmp_data;
+			}
+		}
+
+		to_mesh.clear();
+
+		remove_mesh_state.clear();
+		m_do_buffers_update = true; // Update world buffers on next draw
+		// Wait until the next 'generate' signal unless one was given whilst the thread was active
+		if (m_do_gen_update) {
+		gen_update:
+			m_gen_thread_state = gen_state_en::active;
+			m_gen_conditional.notify_one();
+			m_do_gen_update = false;
+		} else m_gen_thread_state = gen_state_en::both_finish;
+		break;
+	default:
+		break;
 	}
 
-	for (int i = 0; i < chunkArrayLen; ++i) {
-		// Offsets are in a specific order so they can be calculated instead of stored
-		const WorldXZPosition &fullOffset = newOffsets[i / ChunkValues::heightCount];
-		const WorldPosition offset = { fullOffset.x, static_cast<PosType>(i % ChunkValues::heightCount), fullOffset.y };
+	return;
+generation_thread_entry:
+	to_mesh.clear(); // Clear for multiple world entries
+	game.generation_thread_count = math::max(1, game.available_threads - 1);
+	nearby_full_data_obj nb_full_data[4];
 
-		Chunk *chunk = chunkArray[i];
-		// Add surrounding chunks to 'affected' map
-		affectedChunks[offset] = chunk; // Add current chunk
-		chunk->offset = &allchunks.insert({ offset, chunk }).first->first; // Set offset pointer
-		AddSurrounding(affectedChunks, nearbyData, offset, false); // Add surrounding chunks to affected map
+do { // I'd prefer if I didn't have to indent the whole generation logic for this
+	const world_xzpos curr_plr_xz_offset = world_plr->offset.xz(); // Generator-local player offset
+	const int32_t curr_rnd_dist = m_render_distance; // Generator-local render distance
+
+	// Calculate all surrounding chunks as well as those further than the render distance to determine structure placement
+	m_generator.generate_surrounding(&curr_plr_xz_offset, curr_rnd_dist);
+	if (!game.is_active) return;
+
+	// Determine chunks that need deletion and add those that are going to become visible
+	// and the ones near the visible ones to the meshing list
+	for (auto it = m_generator.reserved_map.begin(); it != m_generator.reserved_map.end();) {
+		const pos_t total_offset_dist = chunk_vals::offsets_dist(&it->first, &curr_plr_xz_offset);
+		if (total_offset_dist > curr_rnd_dist) {
+			const bool is_deleting = m_generator.can_del_full_chunk(it->second, &it->first, &curr_plr_xz_offset, curr_rnd_dist);
+			if (is_deleting) { delete it->second; it = m_generator.reserved_map.erase(it); } else ++it;
+			continue;
+		}
+
+		to_mesh.emplace_back(meshing_data{ it->first, it->second, {} }); // Add current full chunk (in render distance) to meshing list
+		it->second->full_state |= world_full_chunk::state_en::generation_mark; // Mark as being modified
+
+		// Do the same for those adjacent to the current full chunk (that hasnt been added already)
+		const nearby_full_data_obj *const nb_end_ptr = nb_full_data + fill_nearby_full_data(&it->first, nb_full_data);
+		for (const nearby_full_data_obj *curr_nb = nb_full_data; curr_nb != nb_end_ptr; ++curr_nb) {
+			if ((curr_nb->full_chunk->full_state & world_full_chunk::state_en::generation_mark) ||
+			    chunk_vals::offsets_dist(&it->first, &curr_nb->xz_offset) > curr_rnd_dist) continue;
+			curr_nb->full_chunk->full_state |= world_full_chunk::state_en::generation_mark;
+			to_mesh.emplace_back(meshing_data{ curr_nb->xz_offset, curr_nb->full_chunk, {} });
+		}
+
+		it = m_generator.reserved_map.erase(it);
 	}
 
-	// Offsets and chunk array no longer needed - use affected map
-	delete[] chunkArray;
-	delete[] newOffsets;
+	// Wait for main thread to confirm the ability to mesh to avoid conflicts when editing
+	if (!gen_thread_conditional_wait(gen_state_en::await_confirm)) return;
 
-	// Apply any block queue present
-	std::vector<Chunk::BlockQueuePair> vecVals;
-	std::transform(m_blockQueue.begin(), m_blockQueue.end(), std::back_inserter(vecVals), [&](Chunk::BlockQueuePair &p) { return p; });
-	for (const auto &pair : vecVals) ApplyQueue(pair.second, pair.first, false);
+	// Mesh all affected chunks in parallel
+	meshing_data *const affected_ptr = to_mesh.data();
+	thread_ops::split(game.generation_thread_count, to_mesh.size(), [&](int, size_t index, size_t end) {
+		quad_data_t *const full_quad_data = new quad_data_t[chunk_vals::total_faces];
+		meshing_data *local_mesh_ptr = affected_ptr + index;
+		const meshing_data *const local_end_ptr = affected_ptr + end;
+	mesh_subchunks_loop:
+		for (int y_offset = 0; y_offset < chunk_vals::y_count; ++y_offset) {
+			if (!game.is_active) goto immediate_end;
+			local_mesh_ptr->full_chunk->subchunks[y_offset].mesh_faces(
+				rendered_map,
+				local_mesh_ptr->full_chunk,
+				&local_mesh_ptr->full_offset,
+				local_mesh_ptr->meshed_counters[y_offset],
+				y_offset,
+				full_quad_data
+			);
+		}
+		if (++local_mesh_ptr != local_end_ptr) goto mesh_subchunks_loop;
+	immediate_end:
+		delete[] full_quad_data;
+	});
 
-	// Calculate chunks in the 'affected' map in parallel
-	const int affectedSize = static_cast<int>(affectedChunks.size()), numChunksEach = affectedSize / static_cast<std::size_t>(game.numThreads);
-	int numChunksLast = affectedSize - static_cast<std::size_t>(numChunksEach * game.numThreads);
-
-	// Put map values into array for non-linear access
-	int chunkCalcArrayIndex = 0;
-	Chunk **chunkCalcArray = new Chunk*[affectedSize];
-	for (const auto &it : affectedChunks) chunkCalcArray[chunkCalcArrayIndex++] = it.second;
-
-	// Split chunk calculation amongst multiple threads
-	for (int thread = 0, threadStartIndex = 0; thread < game.numThreads; ++thread) {
-		const int arrayStart = threadStartIndex; // Starting index
-		threadStartIndex += numChunksEach + (numChunksLast-- > 0 ? 1 : 0); // Spread the excess chunks across threads
-		
-		// Calculate in parallel
-		game.genThreads[thread] = std::thread([&](int start, int end) {
-			std::uint32_t *quadData = new std::uint32_t[ChunkValues::blocksAmount];
-			for (int i = start; i < end; ++i) chunkCalcArray[i]->CalculateTerrainData(allchunks, quadData);
-			delete[] quadData;
-		}, arrayStart, threadStartIndex);
-	}
-
-	// Wait for all threads to finish and delete them
-	for (int t = 0; t < game.numThreads; ++t) game.genThreads[t].join();
-
-	delete[] chunkCalcArray; // Clear chunk array
-
-	// Remove block queues in far chunks (could keep, but would stay forever even if the player moved far away)
-	for (auto it = m_blockQueue.cbegin(); it != m_blockQueue.cend();) { 
-		if (PlayerChunkDistance(it->first) >= static_cast<PosType>(static_cast<int>(chunkRenderDistance) + 2)) m_blockQueue.erase(it++); else ++it;
-	}
-	
-	UpdateWorldBuffers(); // Update world buffers to use new chunk data
+	gen_thread_conditional_wait(gen_state_en::gen_finished); // Wait for a game exit or a generation event
+} while (game.is_active);
 }
 
-void World::UpdateWorldBuffers() noexcept
+bool world_obj::gen_thread_conditional_wait(gen_state_en new_state)
 {
-	// Counters for faces and face data pointer
-	int faceDataPointersCount = 0;
-	squaresCount = std::uint32_t{};
-
-	// Loop through all of the chunks and each of their 6 face data to determine how much memory is needed
-	// overall and accumulate all the valid pointer data into the array, as well as preparing to delete any far away chunks
-	for (const auto &it : allchunks) {
-		// Loop through all of the chunk's face data
-		for (Chunk::FaceAxisData &faceData : it.second->chunkFaceData) {
-			const std::uint32_t totalFaces = faceData.TotalFaces<std::uint32_t>();
-			if (!totalFaces) continue; // This chunk has no faces, so no need to do anything
-			faceDataPointers[faceDataPointersCount++] = &faceData;
-			squaresCount += totalFaces;
-		}
-	}
-
-	// Bind world vertex array and instanced buffer
-	glBindVertexArray(m_worldVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, m_worldInstancedVBO);
-
-	// World data buffer (on initial update, the world data is uninitialized so do not access)
-	std::uint32_t *activeWorldData = nullptr;
-	if (canMap) activeWorldData = static_cast<std::uint32_t*>(glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY));
-
-	// Create new int array for all chunk data and index value
-	std::uint32_t *newWorldData = new std::uint32_t[squaresCount];
-	std::uint32_t newIndex{};
-
-	// If a chunk face's instance data does not exist, it has been deleted and buffered before so the data can instead
-	// be retrieved from the current world buffer (glMapBuffer). Otherwise, buffer the new data into the world array. 
-	for (int i = 0; i < faceDataPointersCount; ++i) {
-		Chunk::FaceAxisData *faceData = faceDataPointers[i];
-		const std::uint32_t totalFaces = faceData->TotalFaces<std::uint32_t>();
-		const std::size_t totalFacesBytes = sizeof(std::uint32_t) * static_cast<std::size_t>(totalFaces);
-
-		if (!faceData->instancesData) std::memcpy(newWorldData + newIndex, activeWorldData + faceData->dataIndex, totalFacesBytes);
-		else {
-			std::memcpy(newWorldData + newIndex, faceData->instancesData, totalFacesBytes);
-			delete[] faceData->instancesData;
-			faceData->instancesData = nullptr;
-		}
-		
-		faceData->dataIndex = newIndex;
-		newIndex += totalFaces;
-	}
-
-	// Unmap array buffer only if it was mapped in the first place
-	if (canMap) glUnmapBuffer(GL_ARRAY_BUFFER);
-
-	// Buffer accumulated block data into instanced world VBO
-	glVertexAttribIPointer(0u, 1, GL_UNSIGNED_INT, 0, nullptr);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(std::uint32_t) * squaresCount, newWorldData, GL_STATIC_DRAW);
-
-	// Free memory from world data array
-	delete[] newWorldData;
-
-	// Ensure new chunk data is used in indirect data and SSBO
-	SortWorldBuffers();
-	canMap = true;
+	static std::mutex generation_thread_mutex;
+	std::unique_lock<std::mutex> lock(generation_thread_mutex);
+	m_gen_thread_state = new_state;
+	m_gen_conditional.wait(lock, [&]{ return m_gen_thread_state == gen_state_en::active || !game.is_active; });
+	return game.is_active;
 }
 
-void World::SortWorldBuffers() noexcept
+void world_obj::update_inst_buffer_data() noexcept
 {
-	game.perfs.renderSort.Start();
+	game.perfs.buf_update.start_timer();
+	existing_quads_count = 0;
+	active_chunks.clear();
+
+	// Determine total number of quads and which chunks are valid for rendering
+	for (const auto &it : rendered_map) {
+		const bool is_full_meshing = it.second->full_state & world_full_chunk::state_en::generation_mark;
+		for (pos_t y_offset = 0; y_offset < chunk_vals::y_count; ++y_offset) {
+			world_chunk *const chunk = it.second->subchunks + y_offset;
+			if (!chunk->blocks) continue; // Ignore air chunks
+			
+			// Ignore chunks being meshed that do not have any previous data to use in the meantime
+			if (is_full_meshing) {
+				if (!(chunk->state & world_chunk::states_en::has_data_before)) continue;
+				else chunk->state |= world_chunk::states_en::use_tmp_data;
+			}
+			chunk->state |= world_chunk::states_en::has_data_before; // Mark as 'has been updated before'
+
+			// Accumulate counters from each chunk face
+			const uint32_t prev_existing_count = existing_quads_count;
+			for (int i = 0; i < 6; ++i) existing_quads_count += chunk->face_counters[i].total_faces();
+			if (prev_existing_count == existing_quads_count) continue; // No faces present, ignore this chunk
+			active_chunks.emplace_back(active_chunk_obj{ chunk, &it.first, y_offset }); // Add to active list
+		}
+	}
+
+	// Bind world vertex array and instanced buffer and map instanced quad data buffer
+	glBindVertexArray(m_world_vao);
+	glBindBuffer(GL_ARRAY_BUFFER, m_world_inst_vbo);
+	const uint32_t *const curr_inst_buffer = static_cast<uint32_t*>(glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY));
+
+	// Allocate the exact amount of data needed
+	// TODO: realloc
+	uint32_t *const new_data_ptr = new uint32_t[existing_quads_count];
+	uint32_t new_index = 0;
+
+	// Add all quad data to the above pointer from each valid chunk or its previously stored data
+	for (auto &it : active_chunks) {
+		const bool use_temp = it.chunk->state & world_chunk::states_en::use_tmp_data;
+		for (int i = 0; i < 6; ++i) {
+			const uint32_t dir_faces = it.chunk->face_counters[i].total_faces();
+			const size_t dir_faces_bytes = sizeof(uint32_t) * dir_faces;
+			const uint32_t *const curr_quad_ptr = it.chunk->quads_ptr[i];
+			uint32_t *const quad_data_dst = new_data_ptr + new_index;
+			uint32_t *const saved_data_index = it.chunk->glob_data_inds + i;
+
+			if (!curr_quad_ptr || use_temp) { // No new data or being edited, use stored data from buffer
+				::memcpy(quad_data_dst, curr_inst_buffer + *saved_data_index, dir_faces_bytes);
+			} else { // New data available, use it instead and then clear
+				::memcpy(quad_data_dst, curr_quad_ptr, dir_faces_bytes);
+				delete[] curr_quad_ptr;
+				it.chunk->quads_ptr[i] = nullptr;
+			}
+
+			*saved_data_index = new_index; // Set index for used data
+			new_index += dir_faces;
+		}
+	}
+
+	// Unmap instanced quad data buffer then buffer in the new data
+	glUnmapBuffer(GL_ARRAY_BUFFER);
+	if (!existing_quads_count) glBufferData(GL_ARRAY_BUFFER, sizeof(GLuint), nullptr, GL_DYNAMIC_DRAW);
+	else glBufferData(GL_ARRAY_BUFFER, sizeof(uint32_t) * existing_quads_count, new_data_ptr, GL_DYNAMIC_DRAW);
+
+	delete[] new_data_ptr; // Delete created global quad array
+	m_do_buffers_update = false;
+
+	if (m_do_arrays_update) update_world_arrays(); // Update arrays if requested as well
+	sort_world_render(); // Update rendered chunks and faces
+
+	game.perfs.buf_update.end_timer();
+}
+
+void world_obj::update_world_arrays() noexcept
+{
+	// Total number of (sub)chunk faces (6 for each face of a cube)
+	const size_t total_chunk_faces = get_chunks_count(true) * 6;
+
+	// Delete any existing arrays (not UB deleting nullptr initially)
+	// TODO: realloc
+	delete[] m_translucent_faces;
+	delete[] m_indirect_array;
+	delete[] m_shader_offset_array;
+
+	m_translucent_faces = new translucent_render_data[total_chunk_faces]; // Create array for chunk sorting with new size
+
+	// Need double size as transparency needs to be rendered separately
+	const size_t total_chunk_faces_w_trnsp = total_chunk_faces * 2;
+	m_indirect_array = new indirect_cmd[total_chunk_faces_w_trnsp]; // Array for indirect command data (4 GLuints)
+	m_shader_offset_array = new ssbo_offset_data[total_chunk_faces_w_trnsp]; // Array for offest SSBO data in shader
+
+	// Ensure correct buffers are updated
+	glBindVertexArray(m_world_vao);
+	glBindBuffer(GL_DRAW_INDIRECT_BUFFER, m_world_dib);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_world_ssbo);
+
+	// Storage for draw commands and SSBO data
+	glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(indirect_cmd) * total_chunk_faces_w_trnsp, nullptr, GL_DYNAMIC_DRAW);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ssbo_offset_data) * total_chunk_faces_w_trnsp, nullptr, GL_DYNAMIC_COPY);
+
+	m_do_arrays_update = false;
+}
+
+void world_obj::sort_world_render() noexcept
+{
+	game.perfs.render_sort.start_timer();
 
 	// Offset value data
-	ShaderChunkFace offsetData;
-	m_indirectCalls = 0;
+	ssbo_offset_data curr_offset_data;
+	m_indirect_calls = 0;
 
 	// Counter variables
-	std::size_t translucentChunksCount{};
-	renderSquaresCount = std::uint32_t{};
-	renderChunksCount = renderSquaresCount;
-
-	// Radius of a sphere that would encapsulate an entire chunk - calculated
-	// by half the distance from two opposing corners of a cube (side length = chunk size)
-	// (Using simple radius check for frustum culling to save on performance)
-	const double dblSize = static_cast<double>(ChunkValues::size);
-	const double chunkSphereRadius = Math::pythagoras(Math::pythagoras(dblSize, dblSize), dblSize) * 0.5;
-	const glm::dvec3 centerOffset = glm::dvec3(dblSize * 0.5); // Offset from chunk corner to center
+	size_t translucent_count = 0;
+	rendered_squares_count = 0;
+	rendered_chunks_count = 0;
 
 	// After storing the normal face data for every chunk, loop through the individual chunk faces
 	// that have translucent faces, giving the offset and chunk data for each
-	for (const auto &it : allchunks) {
-		Chunk *chunk = it.second;
-		if (!chunk->chunkBlocks) continue; // Ignore 'air' (empty) chunks
-
-		const WorldPosition &offset = it.first;
-
+	for (const auto &it : active_chunks) {
+		const world_pos curr_offset = { it.xz_offset->x, it.y_offset, it.xz_offset->y };
 		// Use frustum culling to determine if the chunk is on-screen
-		const glm::dvec3 corner = offset * static_cast<PosType>(ChunkValues::size); // Get chunk corner
-		if (!player.frustum.SphereInFrustum(corner + centerOffset, chunkSphereRadius)) continue;
-		++renderChunksCount;
+		const vector3d corner = curr_offset * chunk_vals::size; // Get chunk corner
+		if (!world_plr->frustum.is_chunk_visible(corner)) continue;
+		++rendered_chunks_count;
 		
 		// Set offset data for shader
-		offsetData.worldPositionX = corner.x;
-		offsetData.worldPositionZ = corner.z;
-
-		for (std::uint32_t faceIndex{}; faceIndex < static_cast<std::uint32_t>(6); ++faceIndex) {
-			const Chunk::FaceAxisData &faceData = chunk->chunkFaceData[faceIndex];
-			if (!faceData.TotalFaces<std::uint32_t>()) continue; // No faces present
-
-			// Store world Y position and face index in a single variable (last 3 bits = index, rest are Y position)
-			offsetData.faceIndexAndY = static_cast<std::uint32_t>(corner.y) + (faceIndex << static_cast<std::uint32_t>(29));
+		curr_offset_data.wrld_x = corner.x;
+		curr_offset_data.wrld_z = corner.z;
+		curr_offset_data.wrld_y = static_cast<float>(corner.y);
+		
+		for (curr_offset_data.face_ind = 0; curr_offset_data.face_ind < 6; ++curr_offset_data.face_ind) {
+			const world_chunk::face_counts_obj *const face_counts = it.chunk->face_counters + curr_offset_data.face_ind;
 			
-			// Add to vector if transparency is present
-			if (faceData.translucentFaceCount) {
-				ChunkTranslucentData &translucentData = translucentChunks[translucentChunksCount++];
-				translucentData.chunk = chunk;
-				translucentData.offsetData = offsetData;
-			}
+			// Add transparent part of face at the end if any
+			if (face_counts->translucent_count) m_translucent_faces[translucent_count++] = { curr_offset_data, it.chunk };
+			if (!face_counts->opaque_count) continue; // Ignore if there are no normal faces
 
 			// Check if it would even be possible to see this (opaque) face of the chunk
-			// e.g. you can't see forward faces when looking north at a chunk
+			// e.g. you can't see (relatively) forward faces in a chunk in front of you
 			
-			switch (faceIndex) {
-				case WldDir_Right:
-					if (player.offset.x < offset.x) continue;
-					break;
-				case WldDir_Left:
-					if (player.offset.x > offset.x) continue;
-					break;
-				case WldDir_Up:
-					if (player.offset.y < offset.y) continue;
-					break;
-				case WldDir_Down:
-					if (player.offset.y > offset.y) continue;
-					break;
-				case WldDir_Front:
-					if (player.offset.z < offset.z) continue;
-					break;
-				case WldDir_Back:
-					if (player.offset.z > offset.z) continue;
-					break;
-				default:
-					break;
+			switch (curr_offset_data.face_ind) {
+			case wdir_right:
+				if (world_plr->offset.x < curr_offset.x) continue;
+				break;
+			case wdir_left:
+				if (world_plr->offset.x > curr_offset.x) continue;
+				break;
+			case wdir_up:
+				if (world_plr->offset.y < curr_offset.y) continue;
+				break;
+			case wdir_down:
+				if (world_plr->offset.y > curr_offset.y) continue;
+				break;
+			case wdir_front:
+				if (world_plr->offset.z < curr_offset.z) continue;
+				break;
+			case wdir_back:
+				if (world_plr->offset.z > curr_offset.z) continue;
+				break;
+			default:
+				break;
 			}
 
 			// Set indirect and offset data at the same indexes in both buffers
-			worldIndirectData[m_indirectCalls] = { 4u, faceData.faceCount, 0u, faceData.dataIndex };
-			worldOffsetData[m_indirectCalls++] = offsetData; // Advance to next indirect call
-			renderSquaresCount += faceData.TotalFaces<std::uint32_t>();
+			m_indirect_array[m_indirect_calls] = {
+				4, face_counts->opaque_count, 0,
+				it.chunk->glob_data_inds[curr_offset_data.face_ind]
+			};
+			m_shader_offset_array[m_indirect_calls++] = curr_offset_data; // Advance to next indirect call
+			rendered_squares_count += face_counts->opaque_count;
 		}
 	}
 
 	// Loop through all of the sorted chunk faces with translucent faces and save the specific data
-	for (std::size_t i{}; i < translucentChunksCount; ++i) {
+	for (size_t i = 0; i < translucent_count; ++i) {
 		// Get chunk face data
-		const ChunkTranslucentData &data = translucentChunks[i];
-		const Chunk::FaceAxisData &faceData = data.chunk->chunkFaceData[data.offsetData.faceIndexAndY >> static_cast<std::uint32_t>(29u)];
+		const translucent_render_data *const translucent_ptr = m_translucent_faces + i;
+		const uint32_t face_ind = translucent_ptr->ssbo_data.face_ind;
+		const world_chunk::face_counts_obj *const face_counters = translucent_ptr->chunk->face_counters + face_ind;
 
-		// Create indirect command with offset using the translucent face data
-		worldIndirectData[m_indirectCalls] = { 4u, faceData.translucentFaceCount, 0u, faceData.dataIndex + faceData.faceCount };
-		worldOffsetData[m_indirectCalls++] = data.offsetData;
+		// Same as above but with translucent data
+		m_indirect_array[m_indirect_calls] = {
+			4, face_counters->translucent_count,
+			0, translucent_ptr->chunk->glob_data_inds[face_ind] + face_counters->opaque_count,
+		};
+		m_shader_offset_array[m_indirect_calls++] = translucent_ptr->ssbo_data;
+		rendered_squares_count += face_counters->translucent_count;
 	}
 
-	// Bind world vertex array and SSBO to edit correct buffers
-	glBindVertexArray(m_worldVAO);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_worldSSBO);
-
+	// Bind buffers to edit
+	glBindVertexArray(m_world_vao); 
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_world_ssbo);
+	glBindBuffer(GL_DRAW_INDIRECT_BUFFER, m_world_dib);
+	
 	// Update SSBO and indirect buffer with their respective data and sizes
-	glBufferSubData(GL_DRAW_INDIRECT_BUFFER, GLintptr{}, static_cast<GLsizeiptr>(sizeof(IndirectDrawCommand) * static_cast<std::size_t>(m_indirectCalls)), worldIndirectData);
-	glBufferSubData(GL_SHADER_STORAGE_BUFFER, GLintptr{}, static_cast<GLsizeiptr>(sizeof(ShaderChunkFace) * static_cast<std::size_t>(m_indirectCalls)), worldOffsetData);
+	glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(indirect_cmd) * m_indirect_calls, m_indirect_array);
+	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(ssbo_offset_data) * m_indirect_calls, m_shader_offset_array);
 
-	game.perfs.renderSort.End();
+	game.perfs.render_sort.end_timer();
 }
 
-int World::GetNearbyChunks(const WorldPosition &offset, NearbyChunkData *nearbyData, bool includeY) const noexcept
+int world_obj::fill_nearby_data(const world_pos *offset, nearby_data_obj *nearby_data, bool include_y) const noexcept
 {
-	int found = 0, dirIndex = -1;
-
-	for (const WorldPosition &dir : game.constants.worldDirections) {
-		++dirIndex; // Advance to next 'direction'
-		if (!includeY && (dir.y != 0)) continue; // Ignore 'Y' offsets when choosing not to include them
+	int found = 0, dir_ind = -1;
+	for (const world_pos &dir : chunk_vals::dirs_xyz) {
+		++dir_ind; // Advance to next 'direction'
+		if (!include_y && (dir.y != 0)) continue; // Ignore 'Y' offsets when choosing not to include them
 
 		// Find chunk and check if it exists
-		const auto &foundChunk = allchunks.find(offset + dir);
-		if (foundChunk == allchunks.end()) continue;
+		const world_pos curr_nearby_offset = *offset + dir;
+		const world_xzpos curr_nearby_xz_offset = curr_nearby_offset.xz();
+		world_full_chunk *full_chunk = find_full_chunk_at(&curr_nearby_xz_offset);
+		if (!full_chunk) continue;
 
 		// Add to nearby data
-		nearbyData[found++] = { foundChunk->second, static_cast<WorldDirection>(dirIndex) };
+		nearby_data[found++] = {
+			full_chunk->subchunks + curr_nearby_offset.y, full_chunk,
+			static_cast<world_dir_en>(dir_ind), curr_nearby_offset
+		};
 	}
 
-	return found; // Only loop thru valid parts of nearby data array
+	return found; // Only loop through valid parts of the nearby data array
 }
 
-int World::GetIndirectCalls() const noexcept { return static_cast<int>(m_indirectCalls); }
-
-int World::GetNumChunks(bool includeHeight) const noexcept
+int world_obj::fill_nearby_full_data(const world_xzpos *offset, nearby_full_data_obj *nearby_full_data) const noexcept
 {
-	const int crd = static_cast<int>(chunkRenderDistance);
-	const int patternChunks = (2 * crd * crd) + (2 * crd) + 1;
-	return patternChunks * (includeHeight ? ChunkValues::heightCount : 1);
+	int found = 0, dir_ind = -1;
+	for (const world_xzpos &dir : chunk_vals::dirs_xz) {
+		++dir_ind; // Advance to next 'direction'
+
+		// Find chunk and check if it exists
+		const world_xzpos curr_nearby_offset = *offset + dir;
+		world_full_chunk *full_chunk = find_full_chunk_at(&curr_nearby_offset);
+		if (!full_chunk) continue;
+
+		// Add to nearby data
+		nearby_full_data[found++] = { full_chunk, static_cast<world_dir_en>(dir_ind), curr_nearby_offset };
+	}
+
+	return found; // Only loop through valid parts of the nearby data array
 }
 
-World::~World() noexcept
+size_t world_obj::get_chunks_count(bool include_subchunks) const noexcept
 {
-	// Delete all chunks
-	for (const auto &it : allchunks) delete it.second;
+	// Number of total chunks in render distance, calculated as (2 * n * (n + 1) + 1) * h
+	// where n is the render distance and h is the number of (sub)chunks in a full chunk.
+	// Only including subchunks if requested.
+	const size_t crd = static_cast<size_t>(m_render_distance);
+	const size_t pattern_count = (2 * crd * (crd + 1)) + 1;
+	if (include_subchunks) return pattern_count * chunk_vals::y_count;
+	else return pattern_count;
+}
 
+world_obj::~world_obj()
+{
+	// Stop generation thread
+	m_gen_conditional.notify_all();
+	m_generation_thread.join();
+
+	// Delete all created chunks
+	for (const auto &it : rendered_map) delete it.second;
+	for (const auto &it : m_generator.reserved_map) delete it.second;
+	
 	// Delete created buffer objects
-	const GLuint deleteBuffers[] = { 
-		m_worldSSBO, 
-		m_worldIBO, 
-		m_worldInstancedVBO, 
-		m_worldPlaneVBO,
+	const GLuint delete_buffers[] = { 
+		m_world_ssbo, 
+		m_world_dib, 
+		m_world_inst_vbo, 
+		m_world_plane_vbo,
+		m_borders_ebo,
+		m_borders_vbo,
 	};
-	glDeleteBuffers(static_cast<GLsizei>(Math::size(deleteBuffers)), deleteBuffers);
+	glDeleteBuffers(static_cast<GLsizei>(math::size(delete_buffers)), delete_buffers);
 
-	// Delete world VAO
-	glDeleteVertexArrays(1, &m_worldVAO);
+	// Delete created VAOs
+	const GLuint delete_vaos[] = { m_world_vao, m_borders_vao };
+	glDeleteVertexArrays(static_cast<GLsizei>(math::size(delete_vaos)), delete_vaos);
 
 	// Delete stored arrays
-	delete[] faceDataPointers;
-	delete[] surroundingOffsets;
-	delete[] translucentChunks;
-	delete[] worldIndirectData;
-	delete[] worldOffsetData;
-	delete[] threadMaps;
+	delete[] m_translucent_faces;
+	delete[] m_indirect_array;
+	delete[] m_shader_offset_array;
 }

@@ -1,3 +1,5 @@
 /.vscode
-/Screenshots
+/game
+/libraries/*
+!/libraries/glad
 /build

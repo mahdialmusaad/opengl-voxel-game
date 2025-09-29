@@ -4,119 +4,115 @@
 
 #include "Application/Definitions.hpp"
 
-class TextRenderer
+class text_renderer_obj
 {
 public:
-	typedef glm::vec<4, std::uint8_t> ColourData;
-
-	enum TextSettings : std::uint8_t {
-		TS_Background = static_cast<std::uint8_t>(1u),
-		TS_BackgroundFullX = static_cast<std::uint8_t>(2u),
-		TS_BackgroundFullY = static_cast<std::uint8_t>(4u),
-		TS_Shadow = static_cast<std::uint8_t>(8u),
-		TS_InventoryVisible = static_cast<std::uint8_t>(16u),
-		TS_DebugText = static_cast<std::uint8_t>(32u)
+	enum text_sets_en : uint8_t {
+		ts_bg = 1,
+		ts_bg_full_width = 2,
+		ts_bg_full_height = 4,
+		ts_shadow = 8,
+		ts_in_inv = 16,
+		ts_is_debug = 32,
+		ts_dirty = 128
 	};
 
-	enum class TextType : std::uint8_t {
-		Default,
-		Temporary,
-		TemporaryShow,
-		Hidden
-	};
+	float text_width, text_height = 0.05f;
+	int chat_line_char_limit = 60, chat_lines_limit = 11;
 
-	struct ScreenText
+	struct text_obj
 	{
-		ScreenText(glm::vec2 pos, std::string text, TextType type, std::uint8_t settings, std::uint8_t unitSize) noexcept;
-		GLuint GetVBO() const noexcept;
-		void ResetTextTime() noexcept;
+		static constexpr float default_text_size = 0.005f;
+		static constexpr float default_font_size = 12.0f;
+
+		void init_vbo();
+		void mark_needs_update() noexcept;
 		
-		void _ChangeInternalText(std::string newText) noexcept;
-		void _ChangeInternalPosition(glm::vec2 newPos) noexcept;
-		void _ChangeInternalColour(ColourData newColour) noexcept;
-		void _ChangeInternalSettings(std::uint8_t settings) noexcept;
-		void _ChangeInternalUnitSize(std::uint8_t unitSize) noexcept;
+		inline const std::string &get_text() const noexcept { return m_text; }
+		inline const vector2f &get_pos() const noexcept { return m_position; }
+		inline GLuint get_vbo() const noexcept { return m_vbo; }
+		inline float get_font_sz() const noexcept { return m_font_size; }
+
+		void set_text(const std::string &new_txt) noexcept;
+		void set_pos(const vector2f &new_pos) noexcept;
+		void set_font_sz(float new_font_sz) noexcept;
+		void set_ex_line_spacing(float new_ex_line_spc) noexcept;
+		void set_ex_char_spacing(float new_ex_char_spc) noexcept;
+
+		inline void remove_settings(uint8_t settings) noexcept { m_settings &= ~settings; }
+		inline bool has_settings(uint8_t settings) const noexcept { return m_settings & settings; }
+		inline void add_settings(uint8_t settings) noexcept { m_settings |= settings; }
+		inline uint8_t get_settings() const noexcept { return m_settings; }
+
+		int get_visible_chars() const noexcept { return m_displayed_chars; }
+		int get_data_count() const noexcept;
+		void update_visible_chars_count() noexcept;
+
+		float get_transparency() const noexcept;
+		bool is_visible() const noexcept;
+		void set_visibility(bool visible) noexcept;
+		void fade_after_time(double seconds = 5.0) noexcept;
 		
-		const std::string &GetText() const noexcept;
-		ColourData GetColour() const noexcept;
-		glm::vec2 GetPosition() const noexcept;
-		std::uint8_t GetUnitSize() const noexcept;
-		std::uint8_t GetSettings() const noexcept;
+		float get_sz_mult() const noexcept;
+		float get_char_spacing() const noexcept;
+		float get_line_spacing() const noexcept;
+		float get_spc_sz() const noexcept;
 		
-		float GetTime() const noexcept;
-		int GetDisplayLength() const noexcept;
-		int HasSettingEnabled(TextSettings setting) const noexcept;
+		float get_char_displ_height() const noexcept;
+		float get_char_displ_width(int char_ind) const noexcept;
+
+		float get_width() const noexcept;
+		float get_height() const noexcept;
+		
+		void set_position_y_relativeto(const text_renderer_obj::text_obj *rel_to, float offset = 0.01f) noexcept;
+		void set_position_x_relativeto(const text_renderer_obj::text_obj *rel_to, float offset = 0.01f) noexcept;
+
+		void upd_text_buf() noexcept;
+		~text_obj() noexcept;
 	private:
+		float get_noclamp_transparency() const noexcept;
+
 		std::string m_text;
-		glm::vec2 m_pos = { 0.0f, 0.0f };
-		float m_textTime = 0.0f;
+		vector2f m_position;
+		
+		float m_font_size ;
+		float m_extra_char_spacing = 0.0f;
+		float m_extra_line_spacing = 0.0f;
 
-		std::uint16_t m_displayLength{};
-		std::uint8_t m_settings{};
-		std::uint8_t m_unitSize = static_cast<std::uint8_t>(16u);
+		float m_fade_secs = 3.0f;
+		float m_displayed_transparency = 1.0f;
 
-		ColourData m_RGBColour = ColourData(static_cast<std::uint8_t>(255u));
-		GLuint m_vbo;
-	public:
-		TextType textType;
-		~ScreenText() noexcept;
+		double m_hide_time;
+		GLuint m_vbo = 0;
+		int m_displayed_chars = 0;
+
+		uint8_t m_settings = 0;
 	};
 
-	const float defTextWidth = 0.006f;
-	
-	float spaceCharacterSize = 0.04f, characterSpacingSize = 0.009f, textWidth = defTextWidth, textHeight = 0.06f;
-	int maxChatLineChars = 60, maxChatLines = 11;
+	void init_renderer() noexcept;
+	void upd_shader_uniform_vals() noexcept;
 
-	static constexpr unsigned defaultUnitSize = 10u;
+	void draw_all_texts(bool inv_is_open) const noexcept;
+	void render_single(text_obj *text_object, bool switch_shader, bool inv_is_open) const noexcept;
 
-	TextRenderer() noexcept;
-	void UpdateShaderUniform() noexcept;
+	void mark_all_textobjs() noexcept;
+	void update_marked_texts() noexcept;
 
-	void RenderText(bool inventoryStatus) const noexcept;
-	void RenderText(ScreenText *screenText, bool shader, bool inventoryStatus) const noexcept;
-
-	ScreenText *CreateText(
-		glm::vec2 pos, 
+	void init_text_obj(
+		text_obj *to_init,
+		vector2f pos, 
 		std::string text, 
-		unsigned settings = 0,
-		unsigned unitSize = defaultUnitSize,
-		TextType textType = TextType::Default,
-		bool update = true
+		uint8_t settings = 0,
+		float font_size = text_obj::default_font_size,
+		bool is_visible = true
 	) noexcept;
-	ScreenText *CreateText(ScreenText *original, bool update = true);
+	void init_text_obj(text_obj *to_init, const text_obj *original);
 
-	void RecalculateAllText() noexcept;
-
-	ScreenText *GetTextFromID(std::uint16_t id) noexcept;
-	std::uint16_t GetIDFromText(ScreenText *screenText) const noexcept;
-
-	void ChangeText(ScreenText *screenText, std::string newText, bool update = true) noexcept;
-	void ChangePosition(ScreenText *screenText, glm::vec2 newPos, bool update = true) noexcept;
-	void ChangeUnitSize(ScreenText *screenText, std::uint8_t newUnitSize, bool update = true) noexcept;
-	void ChangeColour(ScreenText *screenText, ColourData newColour, bool update = true) noexcept;
-	void ChangeSettings(ScreenText *screenText, std::uint8_t settings, bool update = true) noexcept;
-
-	float GetUnitSizeMultiplier(std::uint8_t unitSize) const noexcept;
-	float GetCharScreenWidth(int charIndex, float unitMultiplier) const noexcept;
-	float GetTextWidth(const std::string &text, std::uint8_t unit) const noexcept;
-
-	float GetTextHeight(ScreenText *screenText) const noexcept;
-	float GetTextHeight(std::uint8_t fontSize, int lines) const noexcept;
-	float GetRelativeTextYPos(TextRenderer::ScreenText *sct, int linesOverride = -1) noexcept;
-
-	void FormatChatText(std::string &text) const noexcept;
-
-	void CheckTextStatus() noexcept;
-	void RemoveText(std::uint16_t id) noexcept;
-
-	~TextRenderer() noexcept;
+	~text_renderer_obj();
 private:
-	std::unordered_map<std::uint16_t, ScreenText*> m_screenTexts;
-	GLint texturePositionsLocation;
-	std::uint16_t m_textVAO, m_textVBO;
+	std::vector<text_obj*> m_text_objects;
+	GLint m_textpos_uniform_loc;
+	GLuint m_text_vao, m_text_quad_vbo;
+} extern *glob_txt_rndr;
 
-	void UpdateText(ScreenText *screenText) const noexcept;
-	std::uint16_t GetNewID() noexcept;
-};
-
-#endif // _TEXTRENDERER_HEADER_
+#endif // _SOURCE_RENDERING_TEXTRENDERER_HDR_

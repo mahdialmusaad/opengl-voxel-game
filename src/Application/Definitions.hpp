@@ -2,380 +2,487 @@
 #ifndef _SOURCE_APPLICATION_DEFS_HDR_
 #define _SOURCE_APPLICATION_DEFS_HDR_
 
-// glad - OpenGL loader/generator
-#include "glad/gladh.h"
+#if !defined(NDEBUG)
+#define VOXEL_DEBUG
+#endif
+
+#if defined(__cplusplus)
+#define VOXEL_CPP
+#else
+#define VOXEL_RESTRICT restrict
+#endif
+
+// Compiler directives
+#if defined(__MINGW32__)
+#define VOXEL_MINGW
+#endif
+#if defined(__clang__)
+#define VOXEL_CLANG
+#elif defined(VOXEL_MINGW) || defined(__GNUC__) || defined(__GNUG__)
+#define VOXEL_GCC
+#  if !defined(VOXEL_RESTRICT)
+#  define VOXEL_RESTRICT __restrict__
+#  endif
+#endif
+#if defined(_MSC_VER)
+#define VOXEL_MSVC
+#  if !defined(VOXEL_RESTRICT)
+#  define VOXEL_RESTRICT __restrict
+#  endif
+#endif
+
+// OS directives
+#if defined(__linux__)
+#define VOXEL_LINUX
+#endif
+#if defined(__APPLE__) && defined(__MACH__)
+#define VOXEL_APPLE
+#include <mach-o/dyld.h>
+#endif
+#if defined(__unix__) || defined(unix) || defined(__unix) || defined(VOXEL_APPLE)
+#define VOXEL_UNIX
+#include <unistd.h>
+#endif
+#if defined(sun) || defined(__sun)
+#  if defined(__SVR4) || defined(__svr4__)
+#  define VOXEL_SOLARIS
+#  else
+#  define VOXEL_SUNOS
+#  endif
+#endif
+#if defined(__FreeBSD__)
+#define VOXEL_FREEBSD
+#endif
+#if defined(__ANDROID__)
+#define VOXEL_ANDROID
+#endif
+#if defined(__CYGWIN__)
+#define VOXEL_CYGWIN
+#endif
+#if defined(_WIN32) || defined(VOXEL_MINGW) || defined(VOXEL_CYGWIN)
+#define VOXEL_WINDOWS
+#define WIN32_LEAN_AND_MEAN
+// Thanks, Microsoft. (#1)
+#define getcwd _getcwd
+#include <windows.h>
+#  if defined(_WIN64) || defined(VOXEL_CYGWIN)
+#  define VOXEL_WIN64
+#  endif
+#endif
+
+#define VOXEL_UNUSED(value) do { (void)(value); } while (0)
+
+#define VOXEL_ERR_GLFW_INIT -1
+#define VOXEL_ERR_WINDOW_INIT -2
+#define VOXEL_ERR_LOADER -3
+#define VOXEL_ERR_CUSTOM -4
+
+// glad - OpenGL API function loader
+#include "glad/voxel_glad.h"
 
 // GLFW - Window and input library
 #include "glfw/include/GLFW/glfw3.h"
 
 // lodepng - PNG encoder and decoder
+#if defined(VOXEL_CPP)
+#define LODEPNG_NO_COMPILE_CPP
+extern "C" {
+#endif
+
 #include "lodepng/lodepng.h"
 
-// glm - OpenGL maths library
-#define GLM_FORCE_XYZW_ONLY
-#include "glm/glm/glm.hpp"
-#include "glm/glm/ext/matrix_transform.hpp"
-#include "glm/glm/ext/matrix_clip_space.hpp"
+#if defined(VOXEL_CPP)
+}
+#endif
 
-// fmt - text formatting library
-#define FMT_HEADER_ONLY
-#include "fmt/include/fmt/base.h"
+// fmt - Text formatting library
+// TODO: rem
 #include "fmt/include/fmt/format.h"
 #include "fmt/include/fmt/chrono.h"
 
-// Perlin noise generator
-#include "World/Generation/Perlin.hpp"
+// Local vector header
+#include "World/Generation/Vector.hpp"
 
 // C libraries
-#include <sys/types.h>
+#include <time.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
 // C++ libraries
 #include <mutex>
 #include <thread>
+#include <condition_variable>
 
-#include <ctime>
 #include <string>
-#include <cstring>
 #include <sstream>
 #include <fstream>
-#include <iostream>
+#include <ostream>
 
-#include <iterator>
+#include <random>
+#include <memory>
+#include <utility>
 #include <algorithm>
 #include <functional>
 #include <unordered_map>
 
-typedef std::int64_t PosType; // Switch between 32-bit and 64-bit positioning
-typedef glm::vec<3, PosType> WorldPosition;
-typedef glm::vec<2, PosType> WorldXZPosition;
+#ifndef PATH_MAX
+#define PATH_MAX 0x1000
+#endif
+#if defined(MAX_PATH)
+// Thanks, Microsoft. (#2)
+#define PATH_MAX MAX_PATH
+#endif
+
+typedef int64_t pos_t; // Type used for positioning
+typedef vector<pos_t, 3> world_pos; // 3D position
+typedef vector<pos_t, 2> world_xzpos; // 2D position
+
+typedef uint32_t quad_data_t; // Data per world quad
 
 // OpenGL function shorcuts
-namespace OGL 
+namespace ogl 
 {
-	GLuint CreateBuffer(GLenum type) noexcept;
-	GLuint CreateVAO(bool bind = true) noexcept;
+	GLuint new_buf(GLenum type) noexcept;
+	GLuint new_vao() noexcept;
 	
-	void SetupUBO(GLuint &ubo, GLuint index, std::size_t uboSize) noexcept;
-	inline void UpdateUBO(GLuint &ubo, const void *data, std::size_t bytes, std::size_t offset = std::size_t{}) noexcept
-	{
-		glBindBuffer(GL_UNIFORM_BUFFER, ubo);
-		glBufferSubData(GL_UNIFORM_BUFFER, static_cast<GLintptr>(offset), static_cast<GLsizeiptr>(bytes), data);
-	}
+	const char *get_str(GLenum string_identifier) noexcept;
+	const char *get_shader_str(GLenum shader_type) noexcept;
 	
-	std::string GetString(GLenum stringID) noexcept;
-};
-// Image information
-struct ImageInfo
-{
-	std::uint32_t width{}, height{};
-	std::vector<unsigned char> data;
-
-	struct Mipmap {
-		Mipmap(GLint mipParam = 0, float bias = 0.0f) noexcept : mipmapParam(mipParam), bias(bias) {}
-		GLint mipmapParam; float bias;
-	};
-	struct Format {
-		Format(GLint OGLformat = GL_RGBA, LodePNGColorType imgFormat = LodePNGColorType::LCT_RGBA, unsigned bitdepth = 8u, GLint wrap = GL_REPEAT) noexcept
-			: wrapParam(wrap), OGLFormat(OGLformat), imgFormat(imgFormat), bitDepth(bitdepth) {}
-		GLint wrapParam, OGLFormat;
-		LodePNGColorType imgFormat;
-		unsigned bitDepth;
-	};
+	const char *err_svt_str(GLenum severity) noexcept;
+	const char *err_src_str(GLenum source) noexcept;
+	const char *err_typ_str(GLenum type) noexcept;
 };
 
-// Mathematical functions
-struct Math
-{
-	struct WPHash { 
-		std::size_t operator()(const WorldPosition &vec) const noexcept { 
-			constexpr PosType one = static_cast<PosType>(1);
-			return vec.x ^ ( ( (vec.y << one) ^ (vec.z << one) ) >> one);
-		}
-	};
-
-	template<typename T, std::size_t N> static constexpr std::size_t size(T(&)[N]) { return N; }
-	template<typename T, typename D> static constexpr std::size_t size() { return sizeof(T) / sizeof(D); }
-	
-	static int loop(int x, int minInc, int maxExcl) noexcept {
-		return minInc + ((maxExcl + x) % maxExcl);
-	}
-	
-	template<typename T> static T lerp(T a, T b, T t) noexcept { return a + (b - a) * t; }
-	template<typename T, glm::qualifier Q> glm::vec<3, T, Q> static lerp(const glm::vec<3, T, Q> &a, const glm::vec<3, T, Q> &b, T t) { 
-		return glm::vec<3, T, Q>(lerp(a.x, b.x, t), lerp(a.y, b.y, t), lerp(a.z, b.z, t)); 
-	}
-	
-	template<typename T, glm::qualifier Q> static T largestUnsignedAxis(const glm::vec<3, T, Q> &vec) noexcept {
-		return glm::max(glm::max(glm::abs(vec.x), glm::abs(vec.y)), glm::abs(vec.z));
-	}
-	static bool isLargeOffset(const WorldPosition &off, PosType threshold = static_cast<PosType>(1000)) noexcept {
-		return largestUnsignedAxis(off) >= threshold;
-	}
-
-	template<typename T> static constexpr T pow(T value, int exp) noexcept { return exp == 1 ? value : Math::pow(value, --exp) * value; }
-	template<typename T> static constexpr T fract(T floatval) noexcept { return floatval - glm::floor(floatval); }
-	template<typename T> static constexpr T roundUpX(T value, T x) noexcept { return value + (value % x); }
-	template<typename T> static constexpr T roundDownX(T value, T x) noexcept { return value - (value % x); }
-
-	static constexpr double sqrtImpl(double x, double c, double p = 0.0) noexcept { return c == p ? c : sqrtImpl(x, 0.5 * (c + x / c), c); }
-	static constexpr double sqrt(double x) noexcept { return sqrtImpl(x, x); }
-	static constexpr double pythagoras(double a, double b) noexcept { return sqrt(a * a + b * b); }
-};
+// Thread-related functions
+namespace thread_ops {
+	typedef std::function<void(int, size_t, size_t)> thread_function_t;
+	void split(int thread_count, size_t work_array_size, thread_function_t individual_work_func);
+	void wait_avg_frame() noexcept;
+}
 
 // Logging and text formatting
-namespace TextFormat
+namespace formatter
 {
-	void warn(std::string t, std::string ttl) noexcept;
-	void log(std::string t) noexcept;
+	template<typename T>
+	struct auto_delete { T *data = nullptr; ~auto_delete() { if (data) delete[] data; } };
 
-	std::tm getTime() noexcept;
+	enum warn_bits_en : unsigned {
+		WARN_FILE
+	};
 
-	int numChar(const std::string &str, const char c) noexcept;
-	bool stringEndsWith(const std::string &str, const std::string &ending) noexcept;
-	void strsplit(std::vector<std::string> &vec, const std::string &str, const char sp) noexcept;
-	std::size_t findNthOf(const std::string &str, const char find, int nth) noexcept;
-	std::intmax_t strtoimax(const std::string &numText);
+	void warn(const std::string &t, unsigned warn_bits = 0u) noexcept;
+	void log(const std::string &t) noexcept;
+	void _fmt_abort() noexcept;
+	void init_abort(int code) noexcept;
+	void custom_abort(const std::string &err) noexcept;
+
+	int get_cur_msecs() noexcept;
+	tm get_cur_time() noexcept;
+
+	int count_char(const std::string &str, const char c) noexcept;
+	bool str_ends_with(const std::string &str, const std::string &ending) noexcept;
+	void split_str(std::vector<std::string> &vec, const std::string &str, const char sp) noexcept;
+	size_t get_nth_found(const std::string &str, const char find, int nth) noexcept;
+	intmax_t strtoimax(const std::string &num_as_text);
 	
-	template <typename T> std::string groupDecimal(T val) noexcept
+	template <typename T> std::string group_flt(T val, unsigned decimals = 3) noexcept
 	{
-		std::string decimalText = fmt::format("{:.3f}", val);
-		const int decimalPointIndex = static_cast<int>(decimalText.find('.'));
-		for (int i = decimalPointIndex, n = 0, m = val < T{}; i > m; --i) if (!(++n % 4)) { decimalText.insert(i, 1, ','); n = 1; }
-		return decimalText;
+		const std::string as_str = fmt::to_string(val);
+		if (!std::is_floating_point<T>::value || as_str.size() <= decimals + 2) return as_str;
+		const std::string integer_part = as_str.substr(0, as_str.find('.', 1));
+		return integer_part + (as_str.substr(integer_part.size(), decimals + 1));
 	}
 };
 
-// Vertex and fragment shader loader
-struct ShadersObject
+// Shader loader and manager
+struct shaders_obj
 {
-	struct Program
-	{
-		Program(const char* shaderName) noexcept;
+private:
+	struct shader_types_data { std::string name; int bytes; };
+	enum ubo_glob_types_en : int { U_float, U_double, U_vec4, U_dvec4, U_mat4, U_MAX };
+	const shader_types_data glob_types_data[ubo_glob_types_en::U_MAX] = {
+		{ "float", sizeof(GLfloat) }, { "double", sizeof(GLdouble) },
+		{ "vec4", sizeof(GLfloat[4]) }, { "dvec4", sizeof(GLdouble[4]) },
+		{ "mat4", sizeof(GLfloat[4][4]) }
+	};
+	typedef matrixf4x4 mat4;
+	typedef vector4d dvec4;
+	typedef vector4f vec4;
 
-		// Compute shaders should include file extension ".comp" within name for identification
-		union { GLuint vertex, compute; };
-		GLuint program{}, fragment;
+public:
+	// Textures list
+	struct shader_texture_list {
+	struct texture_obj {
+		texture_obj(
+			std::string file_name, LodePNGColorType stored_col_type, unsigned stored_bit_depth,
+			GLint displayed_col_type, GLint wrap_parameter, GLint mipmap_parameter, float mip_lod_bias
+		) noexcept :
+			filename(file_name), stored_col_fmt(stored_col_type), bit_depth(stored_bit_depth),
+			ogl_display_fmt(displayed_col_type), wrap_param(wrap_parameter), mipmap_param(mipmap_parameter),
+			lod_bias(mip_lod_bias)
+		{};
 
-		std::string name;
+		void add_ogl_img() noexcept;
 
-		void Use() const noexcept;
-		bool IsCompute() const noexcept;
-		GLint GetLocation(const char* name) const noexcept;
+		const std::string filename;
+		GLuint bind_id = 0;
+		unsigned char *pixels = nullptr;
+		const LodePNGColorType stored_col_fmt;
+		unsigned width, height, bit_depth;
+		const GLint ogl_display_fmt;
+		const GLint wrap_param;
+		const GLint mipmap_param;
+		const float lod_bias;
 
-		~Program() noexcept;
+		~texture_obj();
+	} blocks    = { "blocks",    LodePNGColorType::LCT_RGBA, 8u, GL_RGBA, GL_REPEAT, GL_DONT_CARE, 1.0f }, // Blocks atlas texture
+	  inventory = { "inventory", LodePNGColorType::LCT_RGBA, 8u, GL_RGBA, GL_REPEAT, GL_DONT_CARE, 1.0f }, // Inventory elements texture
+	  text      = { "text",      LodePNGColorType::LCT_RGBA, 8u, GL_RGBA, GL_REPEAT, GL_DONT_CARE, 1.0f }; // ASCII text list texture
+	// TODO: text 1bpp, inv 8bpp
+	} textures;
+	enum tex_incl_en : int { tex_none = 0, tex_blocks = 1, tex_inventory = 2, tex_text = 4 };
+
+	struct shader_ubo_base;
+	std::vector<shader_ubo_base*> all_ubos; // List of all base UBOs
+
+	struct shader_ubo_base {
+		shader_ubo_base(char prefix, ubo_glob_types_en val_type, const std::string &shader_sepd_names) noexcept;
+		void init(std::string *const ubo_list);
+
+		char start_char;
+		int bytes_type;
+		std::string starting_vals;
+		GLuint ubo = 0;
+		int defined_id = 0;
+
+		virtual const void *get_data_ptr() const noexcept { return nullptr; }
+		virtual size_t get_data_size() const noexcept { return 0; }
+		void update_all() const noexcept;
+		void update_specific(size_t bytes, size_t offset) const noexcept;
+		~shader_ubo_base();
 	};
 
-	// Use a struct to store all programs in one object to easily obtain each
-	// individual program without having to write out each one
-	struct ShaderPrograms
-	{
-		Program blocks    = "Blocks",
-		        clouds    = "Clouds",
-		        inventory = "Inventory",
-		        outline   = "Outline",
-		        sky       = "Sky",
-		        stars     = "Stars",
-		        text      = "Text",
-		        planets   = "Planets",
-		        test      = "Test",
-		        border    = "Border";
-	} programs;
+	// This allows parity between shader and CPU code variable names whilst using struct
+	// members instead of relying on remembering the order of variable declarations.
+	// It also means the string and member version of a value are defined together so they
+	// can be changed easily without having to make any changes to the source file.
+
+	// Each UBO, as part of the base constructor, is initialized automatically
+	// during shader loading to construct the shader code from the given information - adding
+	// a new UBO only requires a new entry below.
 	
-	void InitShaders();
-	void EachProgram(std::function<void(Program&)> each);
-	static void InitProgram(Program &prog);
+	#define UBO_DEF(name, prefix, type, ...) enum UBO_##name##_en { ubo_##name = math::bitwise_ind(__LINE__ - UBO_IND_SUB - 1) };\
+	struct UBO_##name : public shader_ubo_base {\
+		UBO_##name(const std::string &shader_sepd_names) : shader_ubo_base(prefix, U_##type, shader_sepd_names) {}\
+		struct { type __VA_ARGS__; } vals;\
+		const void *get_data_ptr() const noexcept override { return &vals; };\
+		size_t get_data_size() const noexcept override { return sizeof(vals); }\
+	} name{#__VA_ARGS__};\
 
-	static bool CheckStatus(GLuint id, const std::string &name, bool isShader) noexcept;
-	static GLuint CreateShader(const std::string& fileData, const std::string &name, GLenum type);
+	// UBO definitions
+	// Does not work if you space out the variable names due to string interpretation
+	// Using __LINE__ macro to create enum counter for each UBO (bitwise or),
+	// so keep them next to each other with no spacing to work properly
+	enum ubo_sub_en { ubo_none = 0, UBO_IND_SUB = __LINE__ };
+	UBO_DEF(matrices, 'M', mat4, origin,stars,planets);
+	UBO_DEF(times, 'T', float, cycle,f_end,f_range,stars,global,clouds);
+	UBO_DEF(colours, 'C', vec4, main,evening,light); 
+	UBO_DEF(positions, 'P', dvec4, raycast,player,chunk,offset);
+	UBO_DEF(sizes, 'S', float, blocks,inventory,stars);
+	#undef UBO_DEF
 
-	void DestroyAll() noexcept;
+	struct base_prog {
+		base_prog() noexcept = default;
+
+		struct texture_res_obj { GLint texture_id; std::string texture_name; };
+		typedef std::vector<texture_res_obj> texture_res;
+
+		void create_shader(
+			texture_res *tex_res, GLuint &shader_id, GLenum type, const std::string *const ubo_list,
+			unsigned version, unsigned incl_ubos, unsigned incl_texs,
+			const std::string &outer_code, const std::string &inner_code
+		);
+
+		bool shaderorprog_has_error(GLuint id, GLenum type) noexcept;
+		void bind_and_use(GLuint vao) noexcept;
+
+		GLuint program = 0;
+		std::string base_name;
+
+		void use() const noexcept;
+		GLint get_loc(const char *name) const noexcept;
+
+		void set_flt(const char *name, GLfloat val) const noexcept;
+		void set_uint(const char *name, GLuint val) const noexcept;
+		void set_int(const char *name, GLint val) const noexcept;
+		
+		void destroy_now() noexcept;
+		~base_prog();
+	};
+
+	struct shader_prog : base_prog
+	{
+		void init(
+			const std::string &given_name, const std::string *const ubo_list,
+			unsigned version, unsigned incl_ubos, unsigned incl_texs,
+			const std::string &vertex_code,
+			unsigned frag_version, unsigned frag_incl_ubos, unsigned frag_incl_texs,
+			const std::string &fragment_code
+		);
+		GLuint vertex = 0, fragment = 0;
+	};
+	struct compute_prog : base_prog
+	{
+		void init(const std::string &given_name, const std::string &compute_code);
+		GLuint compute = 0;
+	};
+
+	struct shader_progs_list { shader_prog blocks, clouds, inventory, outline, sky, stars, text, planets, border; } programs;
+	struct compute_progs_list { compute_prog faces, stars; } computes;
+
+	void init_shader_data();
 };
 
 // File system functions
-namespace FileManager
+namespace file_sys
 {
-	void ReadFile(const std::string &filename, std::string &contents, bool log, bool throwing);
-	void LoadImage(ImageInfo &info, const std::string &filename, const ImageInfo::Format &formatInfo = {}, const ImageInfo::Mipmap &mipmapInfo = {});
+	void read(const std::string &filename, std::string &contents, bool log);
 
-	bool DirectoryExists(std::string path);
-	void GetParentDirectory(std::string &directory) noexcept;
+	bool check_dir_exists(std::string path);
+	bool check_file_exists(std::string path);
 
-	bool FileExists(std::string path);
-	bool Exists(std::string path);
+	void get_exec_path(std::string *result, const char *const argv_first);
+	void to_parent_dir(std::string &directory) noexcept;
 
-	void DeletePath(std::string path);
-	void CreatePath(std::string path);
+	void delete_path(std::string path);
+	void create_path(std::string path);
 
-	class FileError : public std::exception { 
-		std::string m_message;
-	public:
-		FileError(std::string msg) : m_message(msg) {};
-		const char *what() const noexcept { return m_message.c_str(); } 
+	struct file_err : public std::exception { 
+		const char *err_message;
+		file_err(const char *msg) {
+			formatter::warn(msg, formatter::WARN_FILE);
+			err_message = msg;
+		}
+		const char *what() const noexcept override { return err_message; } 
 	};
 };
 
-// Combined perlin noise struct
-struct WorldNoise
+// Global object for game data
+struct voxel_global
 {
-	WorldNoise() noexcept = default;
-	WorldNoise(WorldPerlin::NoiseSpline *splines);
-	WorldNoise(WorldPerlin::NoiseSpline *splines, std::int64_t *seeds);
-	
-	enum NoiseEnums : int { Elevation, Flat, Depth, Temperature, Humidity, MAX };
+	void init() noexcept;
 
-	WorldPerlin elevation;
-	WorldPerlin flatness;
-	WorldPerlin depth;
-	WorldPerlin temperature;
-	WorldPerlin humidity;
-};
-
-struct GameGlobal
-{
-	void Init() noexcept;
-
-	GLFWwindow *window;
-	ShadersObject shaders;
+	GLFWwindow *window_ptr;
+	struct global_cleaner { ~global_cleaner(); } cleaner;
+	shaders_obj shaders;
 	
-	int windowX = 0, windowY = 0;
-	int width = 0, height = 0, fwidth = 0, fheight = 0;
-	int updateInterval = 1, refreshRate = 60;
-	float aspect = 1.0f;
+	int window_xpos, window_ypos, default_window_xpos, default_window_ypos;
+	int window_width, window_height, default_window_width, default_window_height;
+	int frame_update_interval = 1, screen_refresh_rate;
+	float window_wh_aspect;
+	
+	vector4d runtime_test_vec = vector4d(1.0);
+	double game_tick_speed = 1.0;
+	double ticked_delta_time = 0.016;
+	double global_time = 0.0;
+	double cycle_day_seconds = 0.0;
 
-	int numThreads;
-	glm::ivec3 workGroupCountMax, workGroupSizeMax;
-	int workGroupInvocsMax;
+	int available_threads, generation_thread_count;
+	vector3i max_wkgp_count, max_wkgp_size;
+	union { int max_wkgp_invocations; int error_code; };
 	
-	glm::dvec4 testvals = glm::dvec4(1.0);
-	bool testbool = false;
-	
-	bool anyKeyPressed = false;
-	bool mainLoopActive = false;
-	bool libsInitialized = false;
-	bool focusChanged = true;
+	bool any_key_active = false;
+	bool libraries_inited = false;
+	bool taking_screenshot = false;
+	bool window_focus_changed = true;
 	bool chatting = false;
-	bool ignoreChatStart = false;
-	bool isChatCommand = false;
-	bool minimized = false;
-	bool isServer = false;
-	bool noGeneration = false;
-	bool showGUI = true;
-	bool vsyncFPS = true;
-	bool wireframe = false;
-	bool fullscreen = false;
-	bool debugText = true;
-	bool chunkBorders = false;
-	bool hideFog = false;
-	
-	double tickSpeed = 1.0;
-	double tickedDeltaTime = 0.016;
-	double daySeconds = 0.0;
-	
-	std::int64_t worldDay{};
-	std::uint64_t gameFrame{};
+	bool ignore_initial_chat_char = false;
+	bool is_normal_chat = false;
+	bool is_window_iconified = false;
+	bool is_game_server = false;
+	bool do_generate_signal = true;
+	bool is_synced_fps = true;
+	bool show_any_gui = true;
+	bool is_wireframe_view = false;
+	bool is_window_fullscreen = false;
+	bool is_active = true;
+	bool is_loop_active = false;
+	bool DB_exit_on_loaded = false;
+	bool display_debug_text = true;
+	bool display_chunk_borders = false;
+	bool hide_world_fog = false;
+	bool is_first_open = true;
 
-	std::time_t startTime{};
+	float twilight_colour_trnsp = -1.0f;
 	
-	double mouseX = 0.0, mouseY = 0.0, sensitivity = 0.1;
-	double deltaTime = 0.016;
-	
-	std::string currentDirectory;
-	std::string texturesFolder, shadersFolder, computesFolder;
-	
-	WorldNoise noiseGenerators;
-	
-	ImageInfo blocksTextureInfo;
-	ImageInfo textTextureInfo;
-	ImageInfo inventoryTextureInfo;
-	
-	bool holdingCtrl, holdingShift, holdingAlt;
-	
-	std::unordered_map<int, int> keyboardState;
-	
-	std::thread *genThreads;
+	intmax_t world_day_counter = 0;
+	uintmax_t game_frame_counter = 0;
 
-	struct GameConstants { 
-		WorldPosition worldDirections[6] = {
-			{  1,  0,  0  },	// X+
-			{ -1,  0,  0  },	// X-
-			{  0,  1,  0  },	// Y+
-			{  0, -1,  0  },	// Y-
-			{  0,  0,  1  },	// Z+
-			{  0,  0, -1  } 	// Z-
-		};
-		glm::ivec3 worldDirectionsInt[6] = {
-			{  1,  0,  0  },	// X+
-			{ -1,  0,  0  },	// X-
-			{  0,  1,  0  },	// Y+
-			{  0, -1,  0  },	// Y-
-			{  0,  0,  1  },	// Z+
-			{  0,  0, -1  } 	// Z-
-		};
-		WorldPosition worldDirectionsXZ[4] = {
-			{  1,  0,  0  },	// X+
-			{ -1,  0,  0  },	// X-
-			{  0,  0,  1  },	// Z+
-			{  0,  0, -1  } 	// Z-
-		};
+	tm game_started_time;
+	
+	double rel_mouse_xpos = 0.0, rel_mouse_ypos = 0.0, rel_mouse_sens = 0.1;
+	double frame_delta_time = 0.016;
+	
+	union { std::string current_exec_dir{}; std::string error_msg; };
+	const std::string def_title = "Voxels 1.0.0";
+	std::string resources_dir;
+	
+	bool is_ctrl_held, is_shift_held, is_alt_held;
+	std::unordered_map<int, int> glob_keyboard_state;
 
-		std::uint8_t charSizes[95] = {
-		//	!  "  #  $  %  &  '  (  )  *  +  ,  -  .  /
-			1, 3, 6, 5, 9, 6, 1, 2, 2, 5, 5, 2, 5, 1, 3,
-		//	0  1  2  3  4  5  6  7  8  9
-			5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-		//	:  ;  <  =  >  ?  @
-			1, 2, 4, 5, 4, 5, 6,
-		//	A  B  C  D  E  F  G  H  I  J  K  L  M
-			5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-		//	N  O  P  Q  R  S  T  U  V  W  X  Y  Z
-			5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-		//	[  \  ]  ^  _  `
-			2, 3, 2, 5, 5, 2,
-		//	a  b  c  d  e  f  g  h  i  j  k  l  m
-			4, 4, 4, 4, 4, 4, 4, 4, 1, 3, 4, 3, 5,
-		//	n  o  p  q  r  s  t  u  v  w  x  y  z
-			4, 4, 4, 4, 4, 4, 3, 4, 5, 5, 5, 4, 4,
-		//	{  |  }  ~
-			3, 1, 3, 6,
-		//	Background character (custom)
-			1
-		};
-
-		typedef const char *DirText;
-		DirText directionText[6] = { "East", "West", "Up", "Down", "North", "South" };
-	} constants{};
-
-	struct PerfTest
-	{
-		PerfTest(const char* name) noexcept : name(name) {}
-		
-		std::string name;
-		double total = 0.0;
-		std::uintmax_t count{};
-
-		void Start() noexcept { currentTime = glfwGetTime(); }
-		void End() noexcept { total += glfwGetTime() - currentTime; ++count; }
-	private:
-		double currentTime;
+	const uint8_t ascii_char_sizes[95] = {
+	// !  "  #  $  %  &  '  (  )  *  +  ,  -  .  /
+	   1, 3, 6, 5, 9, 6, 1, 2, 2, 5, 5, 2, 5, 1, 3,
+	// 0  1  2  3  4  5  6  7  8  9
+	   5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+	// :  ;  <  =  >  ?  @
+	   1, 2, 4, 5, 4, 5, 6,
+	// A  B  C  D  E  F  G  H  I  J  K  L  M
+	   5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+	// N  O  P  Q  R  S  T  U  V  W  X  Y  Z
+	   5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+	// [  \  ]  ^  _  `
+	   2, 3, 2, 5, 5, 2,
+	// a  b  c  d  e  f  g  h  i  j  k  l  m
+	   4, 4, 4, 4, 4, 4, 4, 4, 1, 3, 4, 3, 5,
+	// n  o  p  q  r  s  t  u  v  w  x  y  z
+	   4, 4, 4, 4, 4, 4, 3, 4, 5, 5, 5, 4, 4,
+	// {  |  }  ~
+	   3, 1, 3, 6,
+	// Background character (custom)
+	   1
 	};
 
-	struct PerfObject
+	struct perf_list
 	{
-		PerfTest movement = "Movement",
-		         textUpdate = "TextUpdate",
-		         frameCols = "FrameCols",
-		         renderSort = "RenderSort",
-		         invUpdate = "InvUpdate"
-		;
+		struct perf_obj
+		{
+			perf_obj(const char *_name) noexcept : name(_name) {}
+
+			std::string name;
+			double total = 0.0;
+			uintmax_t count = 0;
+
+			void start_timer() noexcept { m_start_time = glfwGetTime(); }
+			void end_timer() noexcept { total += glfwGetTime() - m_start_time; ++count; }
+		private:
+			double m_start_time;
+		};
+
+		#define PERF_DEF(name) perf_obj name = #name
+		PERF_DEF(movement);
+		PERF_DEF(text_update);
+		PERF_DEF(frame_cols);
+		PERF_DEF(render_sort);
+		PERF_DEF(buf_update);
+		#undef PERF_DEF
 	} perfs;
 
-	PerfTest *perfPointers[sizeof(PerfObject) / sizeof(PerfTest)];
-	std::size_t perfPointersCount;
-
-	struct GameUBOs { GLuint matricesUBO, timesUBO, coloursUBO, positionsUBO, sizesUBO; } ubos;
-
-	void Cleanup() noexcept;
+	const perf_list::perf_obj *perf_leaderboard[sizeof(perf_list) / sizeof(perf_list::perf_obj)];
+	~voxel_global();
 } extern game;
 
 #endif // _SOURCE_APPLICATION_DEFS_HDR_

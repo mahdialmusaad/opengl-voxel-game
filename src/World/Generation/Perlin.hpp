@@ -3,69 +3,59 @@
 #define _SOURCE_GENERATION_PERLIN_HDR_
 
 #include <random>
+#include "World/Generation/Vector.hpp"
 
-// Editable settings to do with terrain generation and noise calculations.
-namespace NoiseValues {
-	constexpr double defaultY = 0.64847273; // Default Y value for noise calculation
-	constexpr double defaultZ = 0.23569347; // Default Z value for noise calculation
-
-	constexpr double noiseStep = 0.01; // How much to traverse in the 'noise map' per block.
-
-	constexpr float maxTerrain = 200.0f; // Maximum height for terrain (structures can still be higher).
-	constexpr float minSurface = 50.0f; // Minimum height for surface (including underwater surface).
-
-	constexpr float terrainRange = maxTerrain - minSurface; // Do not change
-
-	struct LookupVec2 { float x, y; } constexpr noiseLookupVec2[4] = {
-		{ 1.0f, 1.0f }, { -1.0f, 1.0f }, { -1.0f, -1.0f }, { 1.0f, -1.0f }
-	};
+namespace noise_def_vals {
+	constexpr double default_y_noise = 0.64847273; // Default Y value for noise calculation
+	constexpr double default_z_noise = 0.23569347; // Default Z value for noise calculation
 }
 
-struct WorldPerlin {
-	struct NoiseResult {
-		NoiseResult() noexcept = default;
-		NoiseResult(double x, double z, float cont, float flat, float temp, float hum) noexcept :
-			posX(x), posZ(z), landHeight(cont), flatness(flat), temperature(temp), humidity(hum) {};
-		double posX, posZ;
-		float landHeight, flatness, temperature, humidity;
+struct noise_object {
+	struct block_noise {
+		block_noise(float cont, float flat, float temp, float hum) noexcept :
+			height(cont), flatness(flat), temperature(temp), humidity(hum) {};
+		float height, flatness, temperature, humidity;
 	};
 
-	struct NoiseSpline {
-		struct Spline {
-			Spline() noexcept = default;
-			constexpr Spline(float location, float heightmod) noexcept : normalizedLocation(location), heightModifier(heightmod) {};
-			float normalizedLocation = 0.0f;
-			float heightModifier = 0.0f;
+	struct spline_list_obj {
+		struct spline_obj {
+			constexpr spline_obj(float rel_location, float noise_mult_) noexcept :
+			   norm_loc(rel_location), noise_mult(noise_mult_) {};
+			float norm_loc = 0.0f;
+			float noise_mult = 0.0f;
 		};
 
-		NoiseSpline() noexcept = default;
-		NoiseSpline(Spline *_splines) noexcept;
-		float GetNoiseHeight(float noise) const noexcept;
+		float spline_noise_at(float noise) const noexcept;
 
-		enum { maxSplines = 10 };
-		Spline splines[maxSplines];
+		enum { max_splines = 5 };
+		spline_obj splines[max_splines];
 	};
+	
+	int64_t seed;
 
-	NoiseSpline noiseSplines;
-	std::int64_t seed = 0;
+	noise_object(int64_t new_seed);
+	noise_object() noexcept = default;
 
-	void ChangeSeed();
-	void ChangeSeed(std::int64_t newSeed);
-
-	float GetNoise(double x, double y, double z) const noexcept;
-	float GetOctave(double x, double y, double z, int octaves) const noexcept;
+	float noise(double x, double y, double z) const noexcept;
+	float octave(double x, double y, double z, int octaves) const noexcept;
 private:
-	static float lerp(float a, float b, float t) noexcept { return a + (b - a) * t; };
-	float getDot(const NoiseValues::LookupVec2 &vec, int permVal) const noexcept {
-		const NoiseValues::LookupVec2 &lv2 = NoiseValues::noiseLookupVec2[permVal & 3];
-		return vec.x * lv2.x + vec.y * lv2.y;
+	inline float grad(uint8_t hash, float x, float y, float z) const noexcept {
+		return ((hash & 1) ? x : -x) + ((hash & 2) ? y : -y) + ((hash & 4) ? z : -z);
 	}
-	float grad(std::uint8_t hash, float x, float y, float z) const noexcept;
 
-	float fade(float x) const noexcept { return x * x * (3.0f - 2.0f * x); }
-	float RemapNoise(float result) const noexcept { return (result * 0.5f) + 0.5f; }
+	inline float fade(float x) const noexcept { return x * x * (3.0f - 2.0f * x); }
+	inline float remap01(float result) const noexcept { return (result * 0.5f) + 0.5f; }
 
-	std::uint8_t m_permutationTable[512] {};
+	uint8_t m_permutations[512];
+};
+
+// Combined noise struct
+struct noise_obj_list
+{
+	enum noise_ind_en { ne_elevation, ne_flatness, ne_depth, ne_temperature, ne_humidity, ne_last };
+	noise_obj_list(const int64_t (&seeds)[ne_last]) noexcept;
+	noise_obj_list() noexcept = default;
+	noise_object elevation, flatness, depth, temperature, humidity;
 };
 
 #endif // _SOURCE_GENERATION_PERLIN_HDR_

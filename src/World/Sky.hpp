@@ -4,27 +4,27 @@
 
 #include "Application/Definitions.hpp"
 
-class Skybox
+class skybox_elems_obj
 {
 public:
-	Skybox() noexcept;
-	void RenderSkyboxElements() noexcept;
+	skybox_elems_obj() noexcept;
+	void draw_skybox_elements() noexcept;
 
-	const float fullDaySeconds = 1200.0f;
-	static const int numStars = 100000;
-	static const int numClouds = 300;
+	static constexpr double day_seconds = 1200.0;
+	static constexpr int stars_count = 20000;
+	static constexpr int clouds_count = 300;
 
-	~Skybox() noexcept;
+	~skybox_elems_obj();
 private:
-	GLuint m_cloudsVAO, m_cloudsInstVBO, m_cloudsVBO, m_cloudsEBO;
-	GLuint m_skyboxVAO, m_skyboxVBO, m_skyboxEBO;
-	GLuint m_starsVAO, m_starsVBO;
-	GLuint m_planetsVAO, m_planetsVBO, m_planetsEBO;
+	GLuint m_clouds_vao, m_clouds_inst_vbo, m_clouds_vbo, m_clouds_ebo;
+	GLuint m_skybox_vao, m_skybox_vbo;
+	GLuint m_stars_vao, m_stars_vbo;
+	GLuint m_planets_vao, m_planets_vbo, m_planets_ebo;
 
-	void CreateClouds() noexcept;
-	void CreateStars() noexcept;
-	void CreateSkybox() noexcept;
-	void CreatePlanets() noexcept;
+	void generate_clouds(std::mt19937 *gen, std::uniform_real_distribution<float> *dist) noexcept;
+	void generate_stars(float init_random) noexcept;
+	void generate_skybox() noexcept;
+	void generate_planets() noexcept;
 };
 
 #endif

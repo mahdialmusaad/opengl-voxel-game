@@ -1,697 +1,872 @@
 #include "Game.hpp"
 
-// Although the 'Callbacks' struct is also part of the 'GameObject' class (seen in the Application.hpp),
-// they are still two distinct objects and including both the class and the 'Callbacks' struct would make
-// the other .cpp file very large, a pain to debug and scroll through and take a long time to compile.
-
-// The 'Callbacks' struct still needs to be inside the Application header as it requires access to its members
-// and functions (e.g. resizing window needs to update the perspective matrix, which is in the GameObject class)
-
-GameObject::Callbacks::Callbacks(GameObject *appPtr) : m_app(appPtr)
+game_callbacks::game_callbacks(main_game_obj *app_ptr) : m_app(app_ptr)
 {
-	glfwGetWindowPos(game.window, &game.windowX, &game.windowY);
-	glfwGetWindowSize(game.window, &game.width, &game.height);
+	// Set window event callbacks
+	callbacks_wrappers::cb_wr = this;
+	glfwSetFramebufferSizeCallback(game.window_ptr, callbacks_wrappers::window_resize_cb);
+	glfwSetWindowCloseCallback(game.window_ptr, callbacks_wrappers::window_close_cb);
+	glfwSetMouseButtonCallback(game.window_ptr, callbacks_wrappers::mouse_event_cb);
+	glfwSetWindowPosCallback(game.window_ptr, callbacks_wrappers::window_move_cb);
+	glfwSetCursorPosCallback(game.window_ptr, callbacks_wrappers::mouse_move_cb);
+	glfwSetScrollCallback(game.window_ptr, callbacks_wrappers::scroll_event_cb);
+	glfwSetCharCallback(game.window_ptr, callbacks_wrappers::char_event_cb);
+	glfwSetKeyCallback(game.window_ptr, callbacks_wrappers::key_event_cb);
 }
 
-// The window is already defined, so no need for the first argument
-void GameObject::Callbacks::KeyPressCallback(int key, int, int action, int)
+// The window is already defined in the global, so no need for the first argument
+void game_callbacks::key_event(int key, int, int action, int)
 {
-	// Adding text to chat is handled by CharCallback
+	// Adding text to chat is handled by char_event_cb
 	if (game.chatting) {
 		if (action == GLFW_RELEASE) {
-			game.keyboardState.erase(GLFW_KEY_SLASH);
+			game.glob_keyboard_state.erase(GLFW_KEY_SLASH);
 			return;
 		}
 
-		const auto ExitChat = [&](TextRenderer::TextType chatType) {
-			m_app->world.textRenderer.ChangeText(m_app->m_commandText, ""); // Empty player input
-			m_app->m_commandText->textType = TextRenderer::TextType::Hidden; // Hide command text
-			m_app->m_chatText->textType = chatType; // Set chat text type
-			game.chatting = false; // Exit chat mode
-			m_chatHistorySelector = -1; // Rest chat history selector
+		const auto exit_chat = [&](bool do_fading) {
+			m_app->m_command_text.set_text(""); // Empty player input
+			m_app->m_command_text.set_visibility(false); // Hide command text
+			// Change chat visibility
+			if (do_fading) m_app->m_chat_txt.fade_after_time();
+			else m_app->m_chat_txt.set_visibility(false);
+			m_chat_history_ind = -1; // Reset chat history selector
+			game.chatting = false;
 		};
 
 		// See if the player want to confirm chat message/command rather than adding more text to it
 		if (key == GLFW_KEY_ENTER) {
-			ApplyCommand(); // Either add player message or execute command
-			// Chat log temporarily stays visible if the player actually typed something
-			if (m_app->m_commandText->GetText().size()) {
-				ExitChat(m_app->m_chatText->textType = TextRenderer::TextType::TemporaryShow);
-				m_app->m_chatText->ResetTextTime();
-			} else ExitChat(TextRenderer::TextType::Hidden);
+			apply_cmd_text(); // Either add player message or execute command
+			exit_chat(m_app->m_chat_txt.get_text().size()); // Temporarily visible if chat has text
 		}
 		// Exit chat if escape is pressed - hide chat instantly
-		else if (key == GLFW_KEY_ESCAPE) ExitChat(TextRenderer::TextType::Hidden);
-		// Chat message editing is done by CharCallback but it does not include backspace
+		else if (key == GLFW_KEY_ESCAPE) {
+			exit_chat(false);
+			return; // Avoid triggering 'ESC' in input function to exit the game
+		}
+		// Chat message editing is done by below function but it does not include/detect backspace
 		else if (key == GLFW_KEY_BACKSPACE) {
-			std::string chatText = m_app->m_commandText->GetText();
-			if (chatText.size()) { // Check if there is any text present
-				chatText.erase(chatText.end() - 1); // Remove last char
-				m_app->world.textRenderer.ChangeText(m_app->m_commandText, chatText);
+			std::string chat_text = m_app->m_command_text.get_text();
+			if (chat_text.size()) { // Check if there is any text present
+				chat_text.erase(chat_text.end() - 1); // Remove last char
+				m_app->m_command_text.set_text(chat_text);
 			}
 		}
 		// Set current message to the previous one if there is one
-		else if (key == GLFW_KEY_UP && m_previousChats.size() > static_cast<std::size_t>(m_chatHistorySelector + 1)) {
-			m_app->world.textRenderer.ChangeText(m_app->m_commandText, m_previousChats[++m_chatHistorySelector]);
+		else if (key == GLFW_KEY_UP && m_previous_chats.size() > static_cast<size_t>(m_chat_history_ind) + 1) {
+			m_app->m_command_text.set_text(m_previous_chats[static_cast<size_t>(++m_chat_history_ind)]);
 		}
 		// Set current message to the next one if the selector is more than -1 (default text if going to present)
-		else if (key == GLFW_KEY_DOWN && m_chatHistorySelector > -1) {
-			const std::string newCommandText = --m_chatHistorySelector == -1 ? (game.isChatCommand ? "/" : "") : m_previousChats[m_chatHistorySelector];
-			m_app->world.textRenderer.ChangeText(m_app->m_commandText, newCommandText);
+		else if (key == GLFW_KEY_DOWN && m_chat_history_ind > -1) {
+			const std::string new_cmd_text = 
+				--m_chat_history_ind == -1 ? 
+				(game.is_normal_chat ? "/" : "") :
+				m_previous_chats[static_cast<size_t>(m_chat_history_ind)];
+			m_app->m_command_text.set_text(new_cmd_text);
 		}
-		// Handle text pasting
-		else if (game.holdingCtrl && key == GLFW_KEY_V) AddCommandText(glfwGetClipboardString(game.window));
+		// TODO: Handle text pasting
+		//else if (game.is_ctrl_held && key == GLFW_KEY_V) add_cmd_text(glfwGetClipboardString(game.window_ptr));
 	}
 
 	// Determine if the input has a linked function and execute if so 
-	ApplyInput(key, action);
+	apply_key_event(key, action);
 }
 
-void GameObject::Callbacks::CharCallback(unsigned codepoint)
+void game_callbacks::char_event(unsigned codepoint)
 {
 	// Ignore unwanted initial input
-	if (game.ignoreChatStart) {
-		game.ignoreChatStart = false;
+	if (game.ignore_initial_chat_char) {
+		game.ignore_initial_chat_char = false;
 		return;
 	}
 
 	// Add inputted char into chat message
 	if (game.chatting) {
 		const char character = static_cast<char>(codepoint);
-		if (game.holdingCtrl && (character == 'v' || character == 'V')) return; // CTRL+V is handled elsewhere
-		else AddCommandText(std::string(1, character));
+		//if (game.is_ctrl_held && (character == 'v' || character == 'V')) return; // CTRL+V is handled elsewhere
+		add_cmd_text(std::string(1, character));
 	}
 }
 
-void GameObject::Callbacks::MouseClickCallback(int button, int action, int) noexcept
+void game_callbacks::mouse_event(int button, int action, int) noexcept
 {
-	if (game.chatting) return;
-	// Re-capture mouse as some actions can free the mouse
-	if (!m_app->player.inventoryOpened) glfwSetInputMode(game.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
-	// Check if the mouse button is being pressed
-	if (action == GLFW_PRESS) {
-		// Left mouse to attempt block breaking,
-		if (button == GLFW_MOUSE_BUTTON_LEFT) m_app->playerFunctions.BreakBlock();
-		// right mouse to attempt block placing
-		else if (button == GLFW_MOUSE_BUTTON_RIGHT) m_app->playerFunctions.PlaceBlock();
+	if (game.chatting || m_app->m_player_inst.player.inventory_open) return;
+	if (action == GLFW_PRESS) { // (for now) LMB = block breaking, RMB = block placing.
+		if (button == GLFW_MOUSE_BUTTON_LEFT) m_app->m_player_inst.break_selected();
+		else if (button == GLFW_MOUSE_BUTTON_RIGHT) m_app->m_player_inst.place_selected();
 	}
 }
 
-void GameObject::Callbacks::ScrollCallback(double, double yoffset) noexcept
+void game_callbacks::scroll_event(double, double yoffset) noexcept
 {
 	if (game.chatting) return;
-	// Scroll through inventory
-	m_app->playerFunctions.UpdateScroll(static_cast<float>(yoffset));
+	m_app->m_player_inst.upd_inv_scroll_relative(static_cast<float>(yoffset)); // Scroll through inventory
 }
 
-void GameObject::Callbacks::ResizeCallback(int width, int height) noexcept
+void game_callbacks::window_resize(int width, int height) noexcept
 {
-	// No need to update or recalculate if the game has just been minimized,
+	// No need to update or recalculate if the game has just been minimized (dims = 0),
 	// lower the FPS instead to decrease unecessary usage
 	if (width + height <= 0) {
-		game.minimized = true;
-		glfwSwapInterval(game.refreshRate);
+		game.is_window_iconified = true;
+		glfwSwapInterval(game.screen_refresh_rate);
 		return;
-	}
-	else if (game.minimized) {
-		game.minimized = false;
-		glfwSwapInterval(static_cast<int>(game.vsyncFPS)); // Set to default game frame update state
+	} else if (game.is_window_iconified) { // Exiting out of minimized mode
+		game.is_window_iconified = false;
+		glfwSwapInterval(game.is_synced_fps); // Set to default game frame update state
 	}
 
 	// Update graphics viewport and settings
 	glViewport(0, 0, width, height);
 
-	// Save previous dimensions for exiting out of fullscreen
-	if (game.fullscreen) {
-		game.fwidth = game.width;
-		game.fheight = game.height;
-	}
-
-	game.width = width;
-	game.height = height;
+	game.window_width = width;
+	game.window_height = height;
 
 	// Scale GUI to accomodate the new window size
-	m_app->UpdateAspect();
+	m_app->aspect_changed();
 }
 
-void GameObject::Callbacks::MouseMoveCallback(double xpos, double ypos) noexcept
+void game_callbacks::mouse_move(double xpos, double ypos) noexcept
 {
 	if (game.chatting) return;
 
 	// Avoid large jumps in camera direction when window gains focus
-	if (game.focusChanged) {
-		game.mouseX = xpos;
-		game.mouseY = ypos;
-		game.focusChanged = false;
+	if (game.window_focus_changed) {
+		game.rel_mouse_xpos = xpos;
+		game.rel_mouse_ypos = ypos;
+		game.window_focus_changed = false;
 	}
 	else {
 		// Move player camera
-		m_app->playerFunctions.UpdateCameraDirection(xpos - game.mouseX, game.mouseY - ypos);
-		game.mouseX = xpos; game.mouseY = ypos;
+		m_app->m_player_inst.update_cam_dir_vars(xpos - game.rel_mouse_xpos, game.rel_mouse_ypos - ypos);
+		game.rel_mouse_xpos = xpos; game.rel_mouse_ypos = ypos;
 	}
 }
 
-void GameObject::Callbacks::WindowMoveCallback(int x, int y) noexcept
+void game_callbacks::window_move(int x, int y) noexcept
 {
-	if (game.fullscreen) return;
-	game.windowX = x;
-	game.windowY = y;
+	game.window_xpos = x;
+	game.window_ypos = y;
 }
 
-void GameObject::Callbacks::CloseCallback() noexcept { game.mainLoopActive = false; }
+void game_callbacks::window_close() noexcept { game.is_loop_active = false; }
 
-void GameObject::Callbacks::TakeScreenshot() noexcept
+void game_callbacks::take_screenshot() noexcept
 {
-	bool error = false;
-	const char *screenshotfolder = "Screenshots";
+	static const std::string rel_screenshot_path = "Screenshots";
+	bool file_error = false;
 
 	// Ensure screenshot folder is valid by either creating if non-existent or replacing invalid folder
 	try {
 		// Create if there is no folder
-		if (!FileManager::DirectoryExists(screenshotfolder)) FileManager::CreatePath(screenshotfolder);
+		if (!file_sys::check_dir_exists(rel_screenshot_path)) file_sys::create_path(rel_screenshot_path);
 		// Ensure it is a folder, not a file
-		else if (FileManager::FileExists(screenshotfolder)) {
-			FileManager::DeletePath(screenshotfolder);
-			FileManager::CreatePath(screenshotfolder);
+		else if (file_sys::check_file_exists(rel_screenshot_path)) {
+			file_sys::delete_path(rel_screenshot_path);
+			file_sys::create_path(rel_screenshot_path);
 		}
-	} catch (const FileManager::FileError &err) {
-		TextFormat::warn(err.what(), "File error");
-		error = true;
-	}
-	
-	const auto ScreenshotEnd = [&](const std::string &finalText) {
-		// Update chat with results
-		AddChatMessage(finalText);
-		// Temporarily show chat text
-		m_app->m_chatText->ResetTextTime();
-		m_app->m_chatText->textType = TextRenderer::TextType::TemporaryShow;
-	};
+	} catch (const file_sys::file_err &err) { file_error = true; }
 
-	static std::string failedText = "Failed to save screenshot";
+	static const std::string screenshot_fail_text = "Failed to save screenshot";
 
-	if (error) {
-		ScreenshotEnd(failedText);
+	if (file_error) {
+		add_chat_text(screenshot_fail_text);
+		m_app->m_chat_txt.fade_after_time();
 		return;
 	}
 
-	// Lodepng needs pixel array in vector - 3 per pixel for RGB values
-	const int w = game.width, h = game.height;
-	std::vector<unsigned char> pixels(static_cast<std::size_t>(3 * w * h));
+	const size_t main_width = static_cast<size_t>(game.window_width);
+	const size_t main_height = static_cast<size_t>(game.window_height);
+	const size_t main_pixels_bytes = 3 * main_width * main_height; // 3 bytes per pixel for RGB values
+	unsigned char *pixels = new unsigned char[main_pixels_bytes];
 
-	// Read pixels from screen to vector
+	// Read pixels from screen to vector (must be on main thread)
 	glReadBuffer(GL_FRONT);
-	glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+	glReadPixels(0, 0, game.window_width, game.window_height, GL_RGB, GL_UNSIGNED_BYTE, pixels);
 
-	// Get time in milliseconds (avoid name conflicts when taking screenshots in the same second)
-	const double currentSecs = glfwGetTime();
-	const int milliseconds = static_cast<int>((currentSecs - floor(currentSecs)) * 1000.0f);
+	// Complete rest of screenshot work on a separate thread to continue normal game logic
+	game.taking_screenshot = true;
+	std::thread([&](unsigned char *org_pixels, const vector2sz &dims, size_t total_bytes) {
+		// File name for displaying and creating directory path
+		const std::string screenshot_filename = fmt::format(
+			"Screenshot {:%Y-%m-%d %H-%M-%S}-{:03}.png",
+			formatter::get_cur_time(), formatter::get_cur_msecs()
+		);
+		// Get full path of image to save to
+		const std::string rel_dir_path = fmt::format("{}/{}", rel_screenshot_path, screenshot_filename);
 
-	// Get formatted time values
-	const std::tm timeValues = TextFormat::getTime();
-
-	// File name for displaying and creating directory path
-	const std::string filenamefmt = fmt::format("Screenshot {:%Y-%m-%d %H-%M-%S}-{:03}.png", timeValues, milliseconds);
-
-	// Get full path of image to save to
-	const std::string directoryfmt = fmt::format("{}/{}", screenshotfolder, filenamefmt);
-
-	// Flip Y axis as OGL uses opposite Y coordinates (bottom-top instead of top-bottom)
-	std::vector<unsigned char> flippedPixels(3u * w * h);
-	for (int x = 0; x < w; ++x) {
-		for (int y = 0; y < h; ++y) {
-			for (int s = 0; s < 3; ++s) {
-				flippedPixels[(x + y * w) * 3 + s] = pixels[(x + (h - 1 - y) * w) * 3 + s];
+		// Flip Y axis as OGL uses opposite Y coordinates (bottom-top instead of top-bottom)
+		// Can be done in parallel to speed up large images
+		unsigned char *flipped_pixels = new unsigned char[total_bytes];
+		thread_ops::split(game.available_threads, dims.x, [&](int, size_t x_ind, size_t x_end) {
+			for (; x_ind < x_end; ++x_ind) {
+				for (size_t y = 0; y < dims.y; ++y) {
+					const size_t base_flip_ind = (x_ind + y * dims.x) * 3;
+					const size_t base_data_ind = (x_ind + (dims.y - 1 - y) * dims.x) * 3;
+					flipped_pixels[base_flip_ind    ] = org_pixels[base_data_ind    ];
+					flipped_pixels[base_flip_ind + 1] = org_pixels[base_data_ind + 1];
+					flipped_pixels[base_flip_ind + 2] = org_pixels[base_data_ind + 2];
+				}
 			}
+		});
+		delete[] org_pixels; // No longer need original array
+
+		// Save to PNG file in the directory constructed previously
+		const bool success = lodepng_encode24_file(
+			rel_dir_path.c_str(),
+			flipped_pixels,
+			static_cast<unsigned>(game.window_width),
+			static_cast<unsigned>(game.window_height)
+		) == 0;
+		delete[] flipped_pixels;
+
+		// Wait for main thread to finish displaying previous messages or for an exit
+		while (main_clear_screenshot_txt) {
+			if (!game.is_loop_active) goto thread_screenshot_ending;
+			thread_ops::wait_avg_frame();
 		}
-	}
 
-	// Save to PNG file in directory constructed above (RGB colours, no alpha)
-	const bool success = lodepng::encode(directoryfmt, flippedPixels, w, h, LodePNGColorType::LCT_RGB) == 0u;
-
-	// Clear both vectors to save memory usage
-	flippedPixels.clear();
-	pixels.clear();
-
-	// Create result text to be displayed
-	if (success) {
-		ScreenshotEnd("Screenshot saved as " + filenamefmt);
-		TextFormat::log("Screenshot taken");
-	}
-	else ScreenshotEnd(failedText);
+		// Set result text to be displayed
+		if (success) {
+			if (game.is_loop_active) screenshot_res_strs.emplace_back("Screenshot saved as " + screenshot_filename);
+			formatter::log("Screenshot taken");
+		}
+		else {
+			if (game.is_loop_active) screenshot_res_strs.emplace_back(screenshot_fail_text);
+			formatter::log(screenshot_fail_text);
+		}
+	thread_screenshot_ending:
+		game.taking_screenshot = false;
+	}, pixels, vector2sz(main_width, main_height), main_pixels_bytes).detach();
 }
 
-void GameObject::Callbacks::ToggleInventory() noexcept
+void game_callbacks::toggle_full_inv_display() noexcept
 {
-	m_app->player.inventoryOpened = !m_app->player.inventoryOpened; // Determine if inventory elements should be rendered
-	glfwSetInputMode(game.window, GLFW_CURSOR, m_app->player.inventoryOpened ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED); // Free cursor if inventory is shown
-	glfwSetCursorPos(game.window, static_cast<double>(game.width) / 2.0, static_cast<double>(game.height) / 2.0); // Reset mouse position
+	// Determine if inventory elements should be rendered
+	invert(m_app->m_player_inst.player.inventory_open); 
+	// Free cursor if inventory is shown
+	glfwSetInputMode(game.window_ptr, GLFW_CURSOR,
+		m_app->m_player_inst.player.inventory_open ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED
+	);
+	// Set mouse position to center
+	glfwSetCursorPos(game.window_ptr,
+		static_cast<double>(game.window_width) / 2.0,
+		static_cast<double>(game.window_height) / 2.0
+	);
 
-	game.focusChanged = true;
-	game.showGUI = true;
+	game.window_focus_changed = true;
+	game.show_any_gui = true;
 }
 
-void GameObject::Callbacks::ToggleFullscreen() noexcept
+void game_callbacks::toggle_fullscreen() noexcept
 {
-	game.focusChanged = true;
+	// TODO: Make fullscreen NOT crash OS
+	return;
+	
+	game.window_focus_changed = true;
 
-	if (!revBool(game.fullscreen)) {
-		glfwSetWindowMonitor(game.window, NULL, game.windowX, game.windowY, game.fwidth, game.fheight, 0);
+	if (!invert(game.is_window_fullscreen)) {
+		glfwSetWindowMonitor(game.window_ptr, NULL,
+			game.default_window_xpos,
+			game.default_window_ypos,
+			game.default_window_width,
+			game.default_window_height, 0
+		);
 		return;
 	}
 
+	// Set fullscreen mode
 	GLFWmonitor *monitor = glfwGetPrimaryMonitor();
 	const GLFWvidmode *mode = glfwGetVideoMode(monitor);
-	glfwSetWindowMonitor(game.window, monitor, 0, 0, mode->width, mode->height, 0);
+	glfwSetWindowMonitor(game.window_ptr, monitor, 0, 0, mode->width, mode->height, 0);
 }
 
-void GameObject::Callbacks::ApplyInput(int key, int action) noexcept
+void game_callbacks::apply_key_event(int key, int action) noexcept
 {
 	// Select the corresponding inventory slot if a number is pressed (only if not chatting)
 	if (action == GLFW_PRESS && key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
-		if (!game.chatting) m_app->playerFunctions.UpdateScroll(key - GLFW_KEY_1);
+		if (!game.chatting) m_app->m_player_inst.upd_inv_selected(key - GLFW_KEY_1);
 		return;
+	}
+
+	// Add or remove from input information list
+	if (action == GLFW_RELEASE) {
+		game.glob_keyboard_state.erase(key);
+		game.any_key_active = game.glob_keyboard_state.size();
+		return;
+	}
+	else {
+		game.glob_keyboard_state.insert({ key, action });
+		game.any_key_active = true;
 	}
 	
 	// Determine modifier key status
 	switch (key)
 	{
-		case GLFW_KEY_LEFT_CONTROL:
-		case GLFW_KEY_RIGHT_CONTROL:
-			game.holdingCtrl = action != GLFW_RELEASE;
-			return;
-		case GLFW_KEY_LEFT_ALT:
-		case GLFW_KEY_RIGHT_ALT:
-			game.holdingAlt = action != GLFW_RELEASE;
-			return;
-		case GLFW_KEY_LEFT_SHIFT:
-		case GLFW_KEY_RIGHT_SHIFT:
-			game.holdingShift = action != GLFW_RELEASE;
-			return;
-	}
-
-	// Add or remove from input information list
-	if (action == GLFW_RELEASE) {
-		game.keyboardState.erase(key);
-		game.anyKeyPressed = game.keyboardState.size();
+	case GLFW_KEY_LEFT_CONTROL:
+	case GLFW_KEY_RIGHT_CONTROL:
+		game.is_ctrl_held = action != GLFW_RELEASE;
 		return;
-	}
-	else {
-		game.keyboardState.insert({ key, action });
-		game.anyKeyPressed = true;
+	case GLFW_KEY_LEFT_ALT:
+	case GLFW_KEY_RIGHT_ALT:
+		game.is_alt_held = action != GLFW_RELEASE;
+		return;
+	case GLFW_KEY_LEFT_SHIFT:
+	case GLFW_KEY_RIGHT_SHIFT:
+		game.is_shift_held = action != GLFW_RELEASE;
+		return;
+	default:
+		break;
 	}
 
 	// Input types
-	const int noCtrlInput = 1 << 3, noAltInput = 1 << 4, noShiftInput = 1 << 5;
-	const int bypassChatInput = 1 << 6;
+	constexpr int no_ctrl = 1 << 3, no_alt = 1 << 4, no_shift = 1 << 5;
+	constexpr int bypass_chat = 1 << 6;
 
-	const int repeatableInput = GLFW_PRESS | GLFW_REPEAT;
-	const int pressInput = GLFW_PRESS;
+	constexpr int press_bit = GLFW_PRESS;
+	constexpr int repeatable_bits = press_bit | GLFW_REPEAT;
 
 	// Get limit/clamp values
-	using namespace ValueLimits;
+	using namespace val_limits;
+
+	world_acc_player &plr = m_app->m_player_inst.player;
 
 	// Functions for 'value' inputs
-	const auto ChangeRender = [&](int change) {
-		m_app->world.UpdateRenderDistance(m_app->world.chunkRenderDistance + static_cast<std::int32_t>(change));
+	const auto add_render_dist = [&](int change) {
+		m_app->m_world.update_render_distance(m_app->m_world.get_rnd_dist() + change);
 	};
-	const auto ChangeFOV = [&](double change) {
-		m_app->player.fov = glm::clamp(m_app->player.fov + change, glm::radians(fovLimit.min), glm::radians(fovLimit.max));
-		m_app->playerFunctions.UpdateFrustum();
-		m_app->player.moved = true;
+	const auto add_cam_fov = [&](double change) {
+		plr.fov = math::clamp(plr.fov + change, math::radians(fov_limits.min), math::radians(fov_limits.max));
+		m_app->m_player_inst.update_frustum_vals();
+		plr.moved = true;
 	};
 	
-	struct InputData {
-		int key, inputType;
+	// Specific key callbacks
+	struct input_event {
+		int key, accept_bits;
 		std::function<void()> action;
-	} static const gameKeyFunctions[] = {
+	} static const all_key_events[] = {
+	
 	// Default controls
-	{ GLFW_KEY_SLASH, pressInput, [&]() { game.isChatCommand = true; BeginChat(); }},
-	{ GLFW_KEY_T, pressInput, [&]() { game.isChatCommand = false; game.ignoreChatStart = true; BeginChat(); }},
-	{ GLFW_KEY_ESCAPE, pressInput, [&]() { CloseCallback(); }},
+	{ GLFW_KEY_SLASH, press_bit, [&]{ game.is_normal_chat = true; begin_chatting(); }},
+	{ GLFW_KEY_T, press_bit, [&]{ game.is_normal_chat = false; game.ignore_initial_chat_char = true; begin_chatting(); }},
+	{ GLFW_KEY_ESCAPE, press_bit, [&]{ window_close(); }},
 	
 	// Toggle inputs
-	{ GLFW_KEY_X, pressInput, [&]() { glfwSwapInterval(revBool(game.vsyncFPS)); }},
-	{ GLFW_KEY_E, pressInput, [&]() { ToggleInventory(); }},
-	{ GLFW_KEY_F, pressInput, [&]() { revBool(game.hideFog); }},
-	{ GLFW_KEY_C, pressInput, [&]() { revBool(m_app->player.doGravity); }},
-	{ GLFW_KEY_N, pressInput, [&]() { revBool(m_app->player.noclip); }},
-	{ GLFW_KEY_V, pressInput, [&]() { revBool(game.noGeneration); }},
+	{ GLFW_KEY_X, press_bit, [&]{ glfwSwapInterval(invert(game.is_synced_fps)); }},
+	{ GLFW_KEY_E, press_bit, [&]{ toggle_full_inv_display(); }},
+	{ GLFW_KEY_F, press_bit, [&]{ invert(game.hide_world_fog); }},
+	{ GLFW_KEY_C, press_bit, [&]{ invert(plr.gravity_effects); }},
+	{ GLFW_KEY_N, press_bit, [&]{ invert(plr.ignore_collision); }},
+	{ GLFW_KEY_V, press_bit, [&]{ invert(game.do_generate_signal); }},
 
 	// Value inputs
 	// Render distance
-	{ GLFW_KEY_LEFT_BRACKET, pressInput, [&]() { ChangeRender(1); }},
-	{ GLFW_KEY_RIGHT_BRACKET, pressInput, [&]() { ChangeRender(-1); }},
+	{ GLFW_KEY_LEFT_BRACKET, press_bit, [&]{ add_render_dist(1); }},
+	{ GLFW_KEY_RIGHT_BRACKET, press_bit, [&]{ add_render_dist(-1); }},
 	// Speed
-	{ GLFW_KEY_COMMA, repeatableInput, [&]() { m_app->player.defaultSpeed += 1.0f; }},
-	{ GLFW_KEY_PERIOD, repeatableInput, [&]() { m_app->player.defaultSpeed -= 1.0f; }},
+	{ GLFW_KEY_COMMA, repeatable_bits, [&]{ plr.base_speed += 1.0; }},
+	{ GLFW_KEY_PERIOD, repeatable_bits, [&]{ plr.base_speed -= 1.0; }},
 	// FOV
-	{ GLFW_KEY_I, repeatableInput, [&]() { ChangeFOV(glm::radians( 1.0)); }},
-	{ GLFW_KEY_O, repeatableInput, [&]() { ChangeFOV(glm::radians(-1.0)); }},
+	{ GLFW_KEY_I, repeatable_bits, [&]{ add_cam_fov(math::radians( 1.0)); }},
+	{ GLFW_KEY_O, repeatable_bits, [&]{ add_cam_fov(math::radians(-1.0)); }},
 
 	// Debug inputs
-	{ GLFW_KEY_Z, pressInput, [&]() { glPolygonMode(GL_FRONT_AND_BACK, revBool(game.wireframe) ? GL_LINE : GL_FILL); }},
-	{ GLFW_KEY_R, pressInput, [&]() {
-		game.shaders.InitShaders();
-		m_app->world.textRenderer.UpdateShaderUniform();
-		m_app->world.DebugChunkBorders(false);
-		TextFormat::log("Reloaded shaders");
+	{ GLFW_KEY_Z, press_bit, [&]{ 
+		glPolygonMode(GL_FRONT_AND_BACK, invert(game.is_wireframe_view) ? GL_LINE : GL_FILL);
 	}},
-	{ GLFW_KEY_J, pressInput, [&]() { revBool(game.chunkBorders); m_app->world.DebugChunkBorders(false); }},
-	{ GLFW_KEY_U, pressInput, [&]() { revBool(game.testbool); m_app->world.DebugReset(); }},
+	{ GLFW_KEY_J, press_bit, [&]{ invert(game.display_chunk_borders); }},
 
 	// Function inputs
-	{ GLFW_KEY_F1, pressInput, [&]() { revBool(game.showGUI); }},
-	{ GLFW_KEY_F2, pressInput | bypassChatInput, [&]() { TakeScreenshot(); }},
-	{ GLFW_KEY_F3, pressInput | bypassChatInput, [&]() { glfwSetInputMode(game.window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); game.focusChanged = true; }},
-	{ GLFW_KEY_F4, pressInput | bypassChatInput, [&]() { revBool(game.debugText); }},
-	{ GLFW_KEY_F11, pressInput | bypassChatInput, [&]() { ToggleFullscreen(); }},
+	{ GLFW_KEY_F1, press_bit, [&]{ invert(game.show_any_gui); }},
+	{ GLFW_KEY_F2, press_bit | bypass_chat, [&]{ take_screenshot(); }},
+	{ GLFW_KEY_F3, press_bit | bypass_chat, [&]{ 
+		glfwSetInputMode(game.window_ptr, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		game.window_focus_changed = true;
+	}},
+	{ GLFW_KEY_F4, press_bit | bypass_chat, [&]{ invert(game.display_debug_text); }},
+	{ GLFW_KEY_F11, press_bit | bypass_chat, [&]{ toggle_fullscreen(); }},
+
 	};
 
 	// Check if any input struct uses the pressed key
-	const InputData *inputsEnd = gameKeyFunctions + Math::size(gameKeyFunctions);
-	const InputData *found = std::find_if(gameKeyFunctions, inputsEnd, [&](const InputData &id) { return id.key == key; });
+	const input_event *event_end_ptr = all_key_events + math::size(all_key_events);
+	const input_event *found = std::find_if(all_key_events, event_end_ptr, [&](const input_event &id) { return id.key == key; });
 
-	if (found != inputsEnd) {
+	if (found != event_end_ptr) {
 		// Check if input action matches (or disallows certain modifier) and run the associated function if it is
 		// Disallow modifiers CTRL, ALT and SHIFT
-		if ((found->inputType & noCtrlInput) && game.holdingCtrl) return; 
-		if ((found->inputType & noAltInput) && game.holdingAlt) return;
-		if ((found->inputType & noShiftInput) && game.holdingShift) return;
+		if ((found->accept_bits & no_ctrl) && game.is_ctrl_held) return; 
+		if ((found->accept_bits & no_alt) && game.is_alt_held) return;
+		if ((found->accept_bits & no_shift) && game.is_shift_held) return;
 
-		// Disallow whilst chatting
-		if (!(found->inputType & bypassChatInput) && game.chatting) return;
+		// Disallow whilst chatting unless bypass is specified
+		if (!(found->accept_bits & bypass_chat) && game.chatting) return;
 
-		if (action & found->inputType) found->action(); // Determine type of action
+		if (action & found->accept_bits) found->action(); // Determine type of action
 	}
 }
 
-void GameObject::Callbacks::AddChatMessage(std::string message, bool autonl) noexcept
+void game_callbacks::add_chat_text(std::string message, bool auto_new_line) noexcept
 {
-	if (!message.size()) { TextFormat::log("Empty chat message"); return; }
-
-	// Format text for chat
-	m_app->world.textRenderer.FormatChatText(message);
+	if (!message.size()) return;
+	to_chat_fmt_text(message); // Format text for chat
 
 	// Append formatted text to current chat - assume previous text is formatted already
-	std::string chatText = m_app->m_chatText->GetText();
-	if (autonl && chatText.size()) chatText += '\n';
-	chatText += message;
+	std::string cur_chat_text = m_app->m_chat_txt.get_text();
+	if (auto_new_line && cur_chat_text.size()) cur_chat_text += '\n';
+	cur_chat_text += message;
 
 	// Remove previous lines if the whole text has too many lines
-	const int linesToRemove = TextFormat::numChar(chatText, '\n') - m_app->world.textRenderer.maxChatLines;
-	if (linesToRemove > 0) chatText = chatText.substr(TextFormat::findNthOf(chatText, '\n', linesToRemove) + static_cast<std::size_t>(1u));
+	const int lines_to_remove = formatter::count_char(cur_chat_text, '\n') - glob_txt_rndr->chat_lines_limit;
+	if (lines_to_remove > 0) cur_chat_text = cur_chat_text.substr(formatter::get_nth_found(cur_chat_text, '\n', lines_to_remove) + 1);
 
 	// Update text with new message
-	m_app->world.textRenderer.ChangeText(m_app->m_chatText, chatText);
+	m_app->m_chat_txt.set_text(cur_chat_text);
 }
 
-void GameObject::Callbacks::BeginChat() noexcept
+void game_callbacks::to_chat_fmt_text(std::string &text) const noexcept
+{
+	const size_t line_char_limit = glob_txt_rndr->chat_line_char_limit;
+	size_t space_ind = 0;
+
+	// Traverse through each word of the text, replacing spaces with new lines so each line
+	// doesn't go beyond the line character limit. If a single word is larger than this limit,
+	// split it into multiple lines so it fits within this limit.
+	
+	bool loop = true;
+	while (loop) {
+		size_t next_space_ind = text.find(' ', space_ind);
+		loop = next_space_ind != std::string::npos;
+		if (!loop) next_space_ind = text.size();
+
+		if (next_space_ind - space_ind > line_char_limit) {
+			space_ind += line_char_limit;
+			for (; space_ind < next_space_ind; space_ind += line_char_limit) text.insert(space_ind, 1, '\n');
+		}
+		else if (next_space_ind - text.find_last_of('\n', next_space_ind) > line_char_limit) text.insert(space_ind, 1, '\n');
+
+		space_ind = ++next_space_ind;
+	}
+}
+
+void game_callbacks::begin_chatting() noexcept
 {
 	game.chatting = true;
-	game.showGUI = true;
-	m_app->player.inventoryOpened = false;
+	game.show_any_gui = true;
+	m_app->m_player_inst.player.inventory_open = false;
 
-	// Make command and chat log text visible (if chat log has text)
-	m_app->m_commandText->textType = TextRenderer::TextType::Default;
-	m_app->m_chatText->textType = m_app->m_chatText->GetText().size() ? TextRenderer::TextType::Default : TextRenderer::TextType::Hidden;
+	// Make command text and chat log visible (if chat log has text)
+	m_app->m_command_text.set_visibility(true);
+	m_app->m_chat_txt.set_visibility(m_app->m_chat_txt.get_text().size());
 }
 
-void GameObject::Callbacks::AddCommandText(std::string newText) noexcept
-{
-	m_app->world.textRenderer.ChangeText(
-		m_app->m_commandText, 
-		m_app->m_commandText->GetText() + newText
-	);
+void game_callbacks::add_cmd_text(std::string new_txt) noexcept {
+	m_app->m_command_text.set_text(m_app->m_command_text.get_text() + new_txt);
 }
 
-void GameObject::Callbacks::ApplyCommand()
+void game_callbacks::apply_cmd_text()
 {	
 	// Command struct
-	struct Command {
-		typedef std::vector<int> intvec;
-		Command(
+	struct command_handler_obj {
+		typedef std::vector<int> int_vec_t;
+		command_handler_obj(
 			const std::string &name,
-			const std::string &argsList,
-			const std::string &description,
-			const std::function<void()> &function,
-			const std::function<void()> &qFunc = nullptr,
-			const intvec givenNumArgs = { -2 }
-		) noexcept : name(name), description(description), argsListText(argsList), function(function), queryFunc(qFunc) {
+			const std::string &args_names_txt,
+			const std::string &action_description,
+			const std::function<void()> &action_func,
+			const std::function<void()> &value_query_func = nullptr,
+			const int_vec_t acceptable_any_num_args = { -2 }
+		) noexcept :
+		   cmd_base_name(name),
+		   description(action_description),
+		   arguments_names_list(args_names_txt),
+		   action_function(action_func),
+		   value_query_function(value_query_func)
+		{
 			// Determine number of arguments from arguments list:
 			// Empty with query function: 1 argument
 			// Empty without query function: -1 arguments (no argument checks)
 			// All normal (e.g. 'x y z'): Number of spaces + 1 -> 2 + 1 = 3
-			// Normal + optional (e.g. 'a b c *d *e *f'): Same as above but also includes another with optional argument(s) included -> 3, 4, 5, 6
+			// Normal + optional (e.g. 'a b c *d *e *f'):
+			//   Same as above but also includes another with optional argument(s) included -> 3, 4, 5, 6
 
-			// If the 'numArgs' argument is not the default (-2), use the given value instead
-			if (givenNumArgs.size() && givenNumArgs[0] != -2) {
-				numArgs = givenNumArgs;
+			// If the 'all_acceptable_num_args' argument is not the default (-2), use the given value instead
+			if (acceptable_any_num_args.size() && acceptable_any_num_args[0] != -2) {
+				all_acceptable_num_args = acceptable_any_num_args;
 				return;
 			}
 
-			bool isEmpty = !argsList.size();
-			if (isEmpty) numArgs = { queryFunc ? 1 : -1 };
-			else {
-				const int argcount = TextFormat::numChar(argsList, ' ') + 1, optionals = TextFormat::numChar(argsList, '*');
-				if (optionals) for (int i = argcount - optionals; i <= argcount; ++i) numArgs.emplace_back(i);
-				else numArgs = intvec{ argcount };
+			if (!args_names_txt.size()) {
+				all_acceptable_num_args = { value_query_function ? 1 : -1 };
+			} else {
+				const int arg_indesc_count = formatter::count_char(args_names_txt, ' ') + 1;
+				const int arg_optionals_count = formatter::count_char(args_names_txt, '*');
+				if (arg_optionals_count) {
+					for (int i = arg_indesc_count - arg_optionals_count; i <= arg_indesc_count; ++i) {
+						all_acceptable_num_args.emplace_back(i);
+					}
+				} else all_acceptable_num_args = int_vec_t{ arg_indesc_count };
 			}
 		}
 
-		const std::string name, description, argsListText;
+		const std::string cmd_base_name, description, arguments_names_list;
 		
-		const std::function<void()> function;
-		const std::function<void()> queryFunc;
+		const std::function<void()> action_function;
+		const std::function<void()> value_query_function;
 
-		std::vector<int> numArgs;
+		std::vector<int> all_acceptable_num_args;
 	};
 
-	static const std::string defQueryText = "*value";
+	const std::string default_query_txt = "*value";
 
-	const auto DisplayHelpCommand = [&](const Command* commands, std::size_t size, int page) {
+	const auto display_help_section = [&](const command_handler_obj *all_cmds_ptr, size_t size, int page) {
 		// Instead of storing the entire command text, it can be constructed at run-time
 		// to avoid taking up too much memory passively. The unique command syntax information
 		// text below still needs to be stored, however.
 
 		// Page 1 is the first page - advance through help text depending on text lines limit and page
-		static const std::string infoTxt =
-			"A command starts with the character '/' and is formatted as such: '/name arg1 arg2'...\n"
-			"If an argument has an asterik next to it, it is optional: '/name arg1 *arg2'.\n"
-			"Entering some commands without any arguments will return the current value(s): "
+		static const std::string base_info_txt =
+			"Commands start with the character '/' and are formatted as such: '/name arg1 arg2'...\n"
+			"An optional argument is marked with an asterik: '/name arg1 *arg2'.\n"
+			"Entering some commands without any arguments will return the current value(s), e.g: "
 			"'/time' returns the current in-game time in seconds. "
-			"A tilde (~) in some arguments is treated as the current value: /tp 0 ~ 0 -> the '~' is replaced with your Y position. "
-			"Numbers and negation can be included: /tp 0 -~5 0 -> tilde expression replaced with -(Y position + 5).\n";
+			"A tilde (~) in some arguments is treated as the current value: /tp 0 ~ 0 -> '~' is replaced with your Y position. "
+			"Numbers and negation can be used: /tp 0 -~5 0 -> tilde expression becomes -(Ypos + 5).\n";
 
-		std::string finalText = infoTxt;
-		page = glm::max(--page, 0); // Page 1 is the start, decrement for zero-indexing
+		std::string display_txt = base_info_txt;
+		page = math::max(--page, 0); // Page 1 is the start, decrement for zero-indexing
 
 		// Add descriptions and arguments of all commands
 		while (size--) {
-			const Command *cmd = &commands[size];
+			const command_handler_obj *cmd = &all_cmds_ptr[size];
 			if (cmd->description[0] == '_') continue; // Ignore debug commands
-			const std::string &argsText = cmd->argsListText.size() ? cmd->argsListText : (cmd->queryFunc == nullptr ? "(None)" : defQueryText);
-			finalText += fmt::format("\n/{} {} -- Arguments: {}", cmd->name, cmd->description, argsText);
+			const std::string &args_txt = cmd->arguments_names_list.size() ?
+			      cmd->arguments_names_list :
+			      (cmd->value_query_function == nullptr ? "(None)" : default_query_txt);
+			display_txt += fmt::format("\n/{} {} -- Arguments: {}", cmd->cmd_base_name, cmd->description, args_txt);
 		}
 		
 		// Determine section to show depending on the page using chat-formatted version of the help text
-		m_app->world.textRenderer.FormatChatText(finalText);
-		const std::size_t start = TextFormat::findNthOf(finalText, '\n', page * m_app->world.textRenderer.maxChatLines);
-		const std::size_t end = TextFormat::findNthOf(finalText, '\n', (page + 1) * m_app->world.textRenderer.maxChatLines);
-		finalText = finalText.substr(start, end - start) + " ";
+		to_chat_fmt_text(display_txt);
+		const size_t start = formatter::get_nth_found(display_txt, '\n', page * glob_txt_rndr->chat_lines_limit);
+		const size_t end = formatter::get_nth_found(display_txt, '\n', (page + 1) * glob_txt_rndr->chat_lines_limit);
+		display_txt = display_txt.substr(start, end - start) + " ";
 		
-		AddChatMessage(finalText, false); // Add help message to chat
+		add_chat_text(display_txt, false); // Add help message to chat
 	};
 
 	// Shortcut variables
-	World &world = m_app->world;
-	WorldPlayer &plr = m_app->player;
-	const glm::dvec3 &plrpos = plr.position;
-	const WorldPosition plrposInt = ChunkValues::ToWorld(plrpos);
-	Player &plrFuncs = m_app->playerFunctions;
+	world_obj &world = m_app->m_world;
+	world_acc_player &plr = m_app->m_player_inst.player;
+	const vector3d &plr_pos = plr.position;
+	const world_pos plr_block_pos = chunk_vals::to_block_pos(&plr_pos);
+	player_inst &plr_funcs_obj = m_app->m_player_inst;
 
 	// Determine if a query should display a message
-	queryChat = true;
-	bool noQueryConversion = false;
+	m_query_chat = true;
+	bool no_query_conv = false;
 
-	Command* allCommands;
-	std::size_t commandsSize;
+	command_handler_obj *all_cmds_ptr;
+	size_t all_cmds_count;
 	
-	using namespace ValueLimits;
+	using namespace val_limits;
+	const auto IArg = [&](int i){ return int_arg<pos_t>(i); };
 
-	static Command commandsList[] = {
+	static command_handler_obj cmds_list[] = {
 	// Function commands
 
-	{ "tp", "x y z *yaw *pitch", "Teleports you to the specified x, y, z position. Optionally also sets the camera's direction", [&]() {
-		CMDConv({ tcv(0, plrpos.x), tcv(1, plrpos.y), tcv(2, plrpos.z), tcv(3, plr.yaw), tcv(4, plr.pitch) });
-		const glm::dvec3 pos = { DblArg(0), DblArg(1), DblArg(2) };
-		plrFuncs.SetPosition(pos);
-		if (HasArgument(3)) {
-			plr.yaw = DblArg(3);
-			if (HasArgument(4)) plr.pitch = DblArg(4);
-			plrFuncs.UpdateCameraDirection();
+	{ "tp",
+		"x y z *yaw *pitch",
+		"Teleports you to the specified x, y, z position. Optionally also sets the camera's direction", 
+	[&]{
+		conv_cmd({ tcv(0, plr_pos.x), tcv(1, plr_pos.y), tcv(2, plr_pos.z), tcv(3, plr.yaw), tcv(4, plr.pitch) });
+		const vector3d pos = { dbl_arg(0), dbl_arg(1), dbl_arg(2) };
+		plr_funcs_obj.set_new_position(pos);
+		if (has_arg(3)) {
+			plr.yaw = dbl_arg(3);
+			if (has_arg(4)) plr.pitch = dbl_arg(4);
+			plr_funcs_obj.update_cam_dir_vars();
 		}
-	}, [&]() {
-		queryMult("position is", plrpos);
-		queryMult("camera direction is", glm::dvec2(plr.yaw, plr.pitch), 3);
-		noQueryConversion = true;
+	}, [&]{
+		query_mult("position is", plr_pos);
+		query_mult("camera direction is", vector2d(plr.yaw, plr.pitch), 3);
+		no_query_conv = true;
 	}},
-	{ "fill", "xFrom yFrom zFrom xTo yTo zTo block", "Fills from the 'from' position to the 'to' position with the specified block ID", [&]() {
-		CMDConv({ tcv(0, plrposInt.x), tcv(1, plrposInt.y), tcv(2, plrposInt.z), tcv(3, plrposInt.x), tcv(4, plrposInt.y), tcv(5, plrposInt.z) });
-		const auto IArg = [&](int i){ return IntArg<PosType>(i); };
-		const std::uintmax_t changed = world.FillBlocks({IArg(0), IArg(1), IArg(2)}, { IArg(3), IArg(4), IArg(5) }, IntArg<ObjectIDTypeof, ObjectID>(6));
-		if (changed) AddChatMessage(fmt::format("Too many blocks to change ({} > 32768). Try filling a smaller area.", changed));
+	{ "fill",
+		"xFrom yFrom zFrom xTo yTo zTo block",
+		"Fills from the 'from' position to the 'to' position with the specified block ID",
+	[&]{
+		conv_cmd({
+			tcv(0, plr_block_pos.x), tcv(1, plr_block_pos.y), tcv(2, plr_block_pos.z),
+			tcv(3, plr_block_pos.x), tcv(4, plr_block_pos.y), tcv(5, plr_block_pos.z) 
+		});
+		const uintmax_t changed = world.fill_blocks(
+			{ IArg(0), IArg(1), IArg(2) },
+			{ IArg(3), IArg(4), IArg(5) },
+			int_arg<block_id_t, block_id>(6)
+		);
+		if (changed) add_chat_text(fmt::format(
+			"Too many blocks to change ({} > 32768). Try filling a smaller area.",
+			changed));
 	}},
-	{ "set", "x y z block", "Sets the given position to the given block.", [&]() {
-		world.SetBlock({ IntArg<PosType>(0), IntArg<PosType>(1), IntArg<PosType>(2) }, IntArg<ObjectIDTypeof, ObjectID>(3), true);
+	{ "set",
+		"x y z block",
+		"Sets the given position to the given block.",
+	[&]{
+		const world_pos set_block_pos = { int_arg<pos_t>(0), int_arg<pos_t>(1), int_arg<pos_t>(2) };
+		world.set_block_at_to(&set_block_pos, int_arg<block_id_t, block_id>(3));
 	}},
-	{ "dcmp", "id", "_Creates a new file on the same directory with the ASM code for a given shader program ID", [&]() {
+	{ "rr",
+		"intervals",
+		"Sets the number of screen updates to wait before swapping buffers.",
+	[&]{
+		glfwSwapInterval(int_arg<int>(0));
+	}},
+	{ "dcmp",
+		"id",
+		"_Creates a new file on the same directory with the ASM code for a given shader program ID",
+	[&]{
 		std::vector<char> binary(65535);
-		GLenum format{}; GLint length{};
-		glGetProgramBinary(IntArg<GLsizei>(0), 65535, &length, &format, binary.data());
+		GLenum format = 0; GLsizei length = 0;
+		glGetProgramBinary(int_arg<GLuint>(0), 65535, &length, &format, binary.data());
 		std::ofstream("shaderbinary.txt").write(binary.data(), length); 
-	}, [&]() {
-		noQueryConversion = true;
-		if (!queryChat) return;
-
+	}, [&]{
+		no_query_conv = true;
+		if (!m_query_chat) return;
 		std::string result = "Programs: ";
-		game.shaders.EachProgram([&](ShadersObject::Program &prog) { result += fmt::format("'{}': {}, ", prog.name, prog.program); });
-		AddChatMessage(result.substr(std::size_t{}, result.size() - static_cast<std::size_t>(2u)));
+		const shaders_obj::shader_prog *const progs_ptr = reinterpret_cast<shaders_obj::shader_prog*>(&game.shaders.programs);
+		constexpr size_t progs_count = sizeof game.shaders.programs / sizeof *progs_ptr;
+		for (size_t i = 0; i < progs_count; ++i) result += fmt::format("'{}': {}, ", progs_ptr[i].base_name, progs_ptr[i].program);
+		add_chat_text(result.substr(0, result.size() - 2)); // Remove trailing space and comma
 	}},
-	{ "test", "*x *y *z *w", "_Sets 4 values for run-time testing", [&]() {
-		for (int i=0;i<4;++i) if (HasArgument(i)) game.testvals[i] = DblArg(i); 
-	}, [&]() { queryMult("debug values are", game.testvals); }},
 
 	// Set/query commands
 
-	{ "time",  "", "Changes the in-game time (in seconds)",
-		[&]() { m_app->EditTime(true, DblArg(0)); }, [&]() { query("time", m_app->EditTime(false)); }
+	{ "time", 
+		"",
+		"Changes the in-game time (in seconds)",
+	[&]{ m_app->manage_game_time(true, dbl_arg(0)); },
+	[&]{ query("time", m_app->manage_game_time(false)); }
 	},
 	{ "speed", "", "Changes movement speed",
-		[&]() { plr.defaultSpeed = DblArg(0); }, [&]() { query("speed", plr.currentSpeed); }
+		[&]{ plr.base_speed = dbl_arg(0); }, [&]{ query("speed", plr.active_speed); }
 	},
-	{ "tick", "", fmt::format("Changes the tick speed (how fast natural events occur) [{}, {}]", tickLimit.min, tickLimit.max),
-		[&]() { game.tickSpeed = DblArg(0, -100.0, 100.0); }, [&]() { query("tick", game.tickSpeed); }
+	{ "tick", "", fmt::format("Changes the tick speed (how fast natural events occur) [{}, {}]", tick_limits.min, tick_limits.max),
+		[&]{ game.game_tick_speed = dbl_arg(0, -100.0, 100.0); }, [&]{ query("tick", game.game_tick_speed); }
 	},
-	{ "rd", "", fmt::format("Changes the world's render distance [{}, {}]", renderLimit.min, renderLimit.max),
-		[&]() { world.UpdateRenderDistance(IntArg<int>(0, renderLimit.min, renderLimit.max)); }, [&]() { query("render distance", m_app->world.chunkRenderDistance); }
+	{ "sens", "", "Sets the in-game mouse sensitivity.",
+		[&]{ game.rel_mouse_sens = dbl_arg(0); }, [&]{ query("sensitivity", game.rel_mouse_sens); }
 	},
-	{ "fov", "", fmt::format("Sets the camera FOV. [{}, {}]", fovLimit.min, fovLimit.max),
-		[&]() { plr.fov = glm::radians(DblArg(0, fovLimit.min, fovLimit.max)); }, [&]() { query("FOV", glm::degrees(plr.fov)); }
+	{ "rd",
+		"",
+		fmt::format("Changes the world's render distance [{}, {}]", render_limits.min, render_limits.max),
+	[&]{ world.update_render_distance(int_arg<int32_t>(0, render_limits.min, render_limits.max)); },
+	[&]{ query("render distance", m_app->m_world.get_rnd_dist()); }
+	},
+	{ "fov",
+		"",
+		fmt::format("Sets the camera FOV. [{}, {}]", fov_limits.min, fov_limits.max),
+	[&]{
+		plr.fov = math::radians(dbl_arg(0, fov_limits.min, fov_limits.max));
+		m_app->m_player_inst.update_frustum_vals();
+		plr.moved = true;
+	},
+	[&]{ query("FOV", math::degrees(plr.fov)); }
+	},
+	{ "test",
+		"*x *y *z *w",
+		"_Sets 4 values for run-time testing", 
+	[&]{ for (int i=0;i<4;++i) if (has_arg(i)) game.runtime_test_vec[i] = dbl_arg(i); },
+	[&]{ query_mult("debug values are", game.runtime_test_vec); }
 	},
 
 	// No argument commands
 
-	{ "clear", "", "Clears the chat.", [&]() { world.textRenderer.ChangeText(m_app->m_chatText, ""); }},
-	{ "trytxt", "", "_Used to test the text renderer.", [&]() { std::string msg; for (char x = '!'; x <= '~'; ++x) { msg += x; } AddChatMessage(msg); }},
-	{ "exit", "", "Exits the game.", [&]() { CloseCallback(); }},
-	{ "help", "*page", "Prints out some helpful text depending on the given page.", [&]() { DisplayHelpCommand(allCommands, commandsSize, HasArgument(0) ? IntArg<int>(0) : 0); }},
+	{ "clear",
+		"",
+		"Clears the chat.",
+	[&]{ m_app->m_chat_txt.set_text(""); }
+	},
+	{ "trytxt",
+		"",
+		"_Used to test the text renderer.",
+	[&]{ std::string msg; for (char x = '!'; x <= '~'; ++x) { msg += x; } add_chat_text(msg); }
+	},
+	{ "exit",
+		"",
+		"Exits the game.",
+	[&]{ window_close(); }
+	},
+
+	// Other commands
+
+	{ "help",
+		"*page",
+		"Prints out some helpful text depending on the given page.",
+	[&]{ display_help_section(all_cmds_ptr, all_cmds_count, has_arg(0) ? int_arg<int>(0) : 0); }
+	},
 	};
 
-	allCommands = commandsList;
-	commandsSize = Math::size(commandsList);
-	Command* found;
+	all_cmds_ptr = cmds_list;
+	all_cmds_count = math::size(cmds_list);
+	command_handler_obj* found;
 
 	{
 		// Check if there is any text in the first place
-		std::string chatCommand = m_app->m_commandText->GetText();
-		if (!chatCommand.size()) return;
+		std::string cur_usr_cmd = m_app->m_command_text.get_text();
+		if (!cur_usr_cmd.size()) return;
 	
 		// Add current chat input to history - 50 max for now
-		m_previousChats.insert(m_previousChats.begin(), chatCommand);
-		if (m_previousChats.size() > 50u) m_previousChats.pop_back();
+		m_previous_chats.insert(m_previous_chats.begin(), cur_usr_cmd);
+		if (m_previous_chats.size() > 50) m_previous_chats.pop_back();
 	
 		// Determine if it is a chat message or command
-		if (chatCommand[0] != '/') {
-			AddChatMessage("[YOU] " + chatCommand);
+		if (cur_usr_cmd[0] != '/') {
+			add_chat_text("[YOU] " + cur_usr_cmd);
 			return;
 		}
 		
-		const std::size_t one = static_cast<std::size_t>(1u);
-		const std::string cmd = chatCommand.substr(one, chatCommand.find(' ') - one); // Get command name
-		const std::size_t startIndex = chatCommand.find(' ');
+		const std::string cmd_name = cur_usr_cmd.substr(1, cur_usr_cmd.find(' ') - 1); // Get command name
+		const size_t arg_ind = cur_usr_cmd.find(' ');
 
 		// Remove 'name' section and trailing spaces
-		chatCommand = chatCommand.substr((startIndex == std::string::npos ? cmd.size() : startIndex) + one, chatCommand.find_last_not_of(' ')); 
-
+		cur_usr_cmd = cur_usr_cmd.substr(
+			(arg_ind == std::string::npos ? cmd_name.size() : arg_ind) + 1,
+			cur_usr_cmd.find_last_not_of(' ')
+		); 
 		// Search command list to see if the given command name matches
-		found = std::find_if(commandsList, commandsList + commandsSize, [&](const Command &c) { return c.name == cmd; });
-		if (found == commandsList + commandsSize) {
-			AddChatMessage(fmt::format("/{} is not a valid command. Type /help for help.", cmd)); // Warn for invalid commands
+		found = std::find_if(
+			cmds_list,
+			cmds_list + all_cmds_count,
+			[&](const command_handler_obj &c) { return c.cmd_base_name == cmd_name; }
+		);
+		// Warn for invalid commands
+		if (found == cmds_list + all_cmds_count) {
+			add_chat_text(fmt::format("/{} is not a valid command. Type /help for help.", cmd_name)); 
 			return;
 		}
 
-		CMD_args.clear(); // Clear arguments list
+		m_cmd_args.clear(); // Clear arguments list
 
 		// Get each argument from the command given using spaces
-		if (chatCommand.size()) TextFormat::strsplit(CMD_args, chatCommand, ' ');
+		if (cur_usr_cmd.size()) formatter::split_str(m_cmd_args, cur_usr_cmd, ' ');
 		
 		// Remove any invalid/empty arguments
-		CMD_args.erase(std::remove_if(CMD_args.begin(), CMD_args.end(), [&](const std::string &v) { return v.find_first_not_of(' ') == std::string::npos; }), CMD_args.end());
+		m_cmd_args.erase(std::remove_if(
+			m_cmd_args.begin(),
+			m_cmd_args.end(),
+			[&](const std::string &v) { return v.find_first_not_of(' ') == std::string::npos; }
+		), m_cmd_args.end());
 	}
 
-	const int numCmdArgs = static_cast<int>(CMD_args.size());
+	const int num_cmd_args = static_cast<int>(m_cmd_args.size());
 
 	// Attempt to execute command
 	try {
 		// Check for value query
-		bool isHelp = numCmdArgs == 1 && CMD_args[0] == "?";
-		bool hasQuery = found->queryFunc != nullptr;
-		bool isQuery = !isHelp && hasQuery;
+		bool is_specifc_help = num_cmd_args == 1 && m_cmd_args[0] == "?";
+		bool cmd_has_query = found->value_query_function != nullptr;
+		bool should_do_query = !is_specifc_help && cmd_has_query;
 
-		if (isQuery && numCmdArgs == 0) { found->queryFunc(); return; } // Print out current value(s) -> queryChat = true
+		// Print out current value(s)
+		if (should_do_query && num_cmd_args == 0) {
+			found->value_query_function();
+			return;
+		}
 
 		// Check for correct arguments amount (-1 means ignore check)
-		if (isHelp || (found->numArgs[0] != -1 && std::find(found->numArgs.begin(), found->numArgs.end(), numCmdArgs) == found->numArgs.end())) {
-			AddChatMessage(fmt::format("Usage: /{} {}", found->name, hasQuery && !found->argsListText.size() ? defQueryText : found->argsListText));
+		if (is_specifc_help || (
+			found->all_acceptable_num_args[0] != -1 &&
+			std::find(
+				found->all_acceptable_num_args.begin(),
+				found->all_acceptable_num_args.end(),
+				num_cmd_args
+			) == found->all_acceptable_num_args.end())
+		) {
+			add_chat_text(fmt::format("Usage: /{} {}", found->cmd_base_name,
+				cmd_has_query && !found->arguments_names_list.size() ?
+					default_query_txt :
+					found->arguments_names_list
+			));
 			return;
 		}
 		
-		queryChat = false; // Using query to convert rather than display value(s)
-		if (hasQuery) found->queryFunc();
-		if (hasQuery && !noQueryConversion) {
-			// Use query string to convert specific arguments
-			// Example: { i, "12.3", true } is returned, only one conversion is made, using 'i' as the starting argument index.
-			// If { 2, "12.3 64.5 7.2", true } is returned, 3 conversions are done (3 numbers) starting from the 2nd argument index.
-			int i = cvd.index;
-			std::vector<std::string> eachConv;
-			TextFormat::strsplit(eachConv, cvd.strarg, ' ');
-			for (const std::string &str : eachConv) CMDConv({ i++, cvd.decimal, str });
-		}
+		m_query_chat = false; // Using query to convert rather than display value(s)
+		if (cmd_has_query) found->value_query_function();
+		if (cmd_has_query && !no_query_conv) {
+			/*
+			   Use query string to convert specific arguments:
 
-		found->function();
+			   Example: { i, "12.3", true } is returned, only one conversion is made,
+			   using 'i' as the starting argument index.
+			   
+			   If { 2, "12.3 64.5 7.2", true } is returned,
+			   3 conversions are done (3 numbers) starting from the 2nd argument index.
+			*/
+			int i = cvd.index;
+			std::vector<std::string> each_conv;
+			formatter::split_str(each_conv, cvd.str_arg, ' ');
+			for (const std::string &str : each_conv) conv_cmd({ str, i++, cvd.decimal });
+		}
+		found->action_function();
 	}
 	// Warn about found invalid argument if any
-	catch (const std::invalid_argument&) { AddChatMessage(fmt::format("Unexpected '{}' at command argument {}", GetArg(currentCMDInd), currentCMDInd + 1)); }
+	catch (const std::invalid_argument&) {
+		add_chat_text(fmt::format(
+			"Unexpected '{}' at command argument {}",
+			get_arg(m_current_cmd_index),
+			m_current_cmd_index + 1)
+		);
+	}
 	// Warn about converting extremely large numbers
-	catch (const std::out_of_range&) { AddChatMessage(fmt::format("Argument {} ({:.5}...) is too large", currentCMDInd + 1, GetArg(currentCMDInd))); }
+	catch (const std::out_of_range&) {
+		add_chat_text(fmt::format(
+			"Argument {} ({:.5}...) is too large",
+			m_current_cmd_index + 1,
+			get_arg(m_current_cmd_index))
+		);
+	}
 }
 
-double GameObject::Callbacks::DblArg(int index, double min, double max) { return glm::clamp(std::stod(GetArg(index)), min, max); }
-void GameObject::Callbacks::CMDConv(const std::vector<ConversionData> &argsConversions) { for (const auto &val : argsConversions) CMDConv(val); }
+bool game_callbacks::has_arg(int index) { return static_cast<int>(m_cmd_args.size()) > index; }
 
-void GameObject::Callbacks::CMDConv(const ConversionData &data)
+std::string &game_callbacks::get_arg(int index)
 {
-	if (!HasArgument(data.index)) return; // Check if argument is in range
+	m_current_cmd_index = index;
+	return m_cmd_args[static_cast<size_t>(index)];
+}
+
+void game_callbacks::conv_cmd(const std::vector<tilde_conversion_data> &args_convs) {
+	for (const auto &val : args_convs) conv_cmd(val);
+}
+void game_callbacks::conv_cmd(const tilde_conversion_data &data)
+{
+	if (!has_arg(data.index)) return; // Check if argument is in range
 	
-	std::string &arg = GetArg(data.index); // Get the command argument
-	const std::string &actual = data.strarg; // Get the current value as a string
+	std::string &arg = get_arg(data.index); // Get the command argument
+	const std::string &actual = data.str_arg; // Get the current value as a string
 	if (!actual.size()) return;
 
-	const std::size_t one = static_cast<std::size_t>(1u);
-	if (TextFormat::numChar(arg, '~') != 1) return; // Convert if only 1 tilde is found
-	const std::size_t tildeIndex = arg.find('~'); // Index of tilde
-	if (tildeIndex > one) throw std::invalid_argument(""); // A tilde index of >1 is invalid
+	if (formatter::count_char(arg, '~') != 1) return; // Convert if only 1 tilde is found
+	const size_t tilde_index = arg.find('~'); // Index of tilde
+	if (tilde_index > 1) throw std::invalid_argument(""); // A tilde index of >1 is invalid
 
-	std::string afterTildeNumber = arg.substr(tildeIndex + one); // Text after tilde character
-	if (!afterTildeNumber.size()) afterTildeNumber = "0"; // Default to "0" if empty
-	const char beforeTildeVal = tildeIndex ? arg[0] : '\0'; // Character before tilde character
+	std::string after_tilde_text = arg.substr(tilde_index + 1); // Text after tilde character
+	if (!after_tilde_text.size()) after_tilde_text = "0"; // Default to "0" if empty
+	const char before_tilde_char = tilde_index ? arg[0] : '\0'; // Character before tilde character
 
 	// Check for a possible negative symbol before the tilde or for empty text
-	const bool isNegative = beforeTildeVal == '-';
-	if (!isNegative && static_cast<int>(beforeTildeVal)) throw std::invalid_argument(""); // No other non-zero character before the tilde is allowed
+	const bool is_neg = before_tilde_char == '-';
+
+	// No other non-zero character before the tilde is allowed
+	if (!is_neg && static_cast<int>(before_tilde_char)) throw std::invalid_argument("");
 
 	// Combine all parts of the argument into one number (add number after tilde, use negation if found)
-	if (data.decimal) arg = fmt::to_string((std::stod(actual) + std::stod(afterTildeNumber)) * (isNegative ? -1.0 : 1.0));
-	else arg = fmt::to_string(TextFormat::strtoimax(actual) + TextFormat::strtoimax(afterTildeNumber) * static_cast<std::intmax_t>(isNegative ? -1 : 1));
+	if (data.decimal) arg = fmt::to_string((std::stod(actual) + std::stod(after_tilde_text)) * (is_neg ? -1.0 : 1.0));
+	else arg = fmt::to_string(
+		 formatter::strtoimax(actual) +
+		(formatter::strtoimax(after_tilde_text) *
+		 static_cast<intmax_t>(is_neg ? -1 : 1))
+	);
 }

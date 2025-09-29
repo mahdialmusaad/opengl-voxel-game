@@ -2,57 +2,49 @@
 #ifndef _SOURCE_WORLD_CHUNK_HDR_
 #define _SOURCE_WORLD_CHUNK_HDR_
 
-#include "Generation/Settings.hpp"
+#include "World/Generation/Perlin.hpp"
+#include "World/Generation/Settings.hpp"
 
-struct Chunk
+struct world_full_chunk;
+
+struct world_chunk
 {
 public:
-	typedef std::unordered_map<WorldPosition, Chunk*, Math::WPHash> WorldMapDef;
-
-	enum class ChunkState : std::uint8_t
-	{
-		Normal,
-		Modified,
-		UpdateRequest
-	};
-
-	struct FaceAxisData {
-		std::uint32_t *instancesData;
-		std::uint32_t dataIndex;
-		std::uint16_t faceCount;
-		std::uint16_t translucentFaceCount;
-		template<typename T> T TotalFaces() const noexcept { return static_cast<T>(faceCount) + static_cast<T>(translucentFaceCount); }
-	};
-
-	struct BlockQueue {
-		BlockQueue(glm::ivec3 pos, ObjectID id, bool natural) noexcept : pos(glm::i8vec3(pos)), blockID(id), natural(natural) {}
-		glm::i8vec3 pos;
-		ObjectID blockID;
-		bool natural;
-	};
-
-	typedef std::vector<BlockQueue> BlockQueueVector;
-	typedef std::unordered_map<WorldPosition, BlockQueueVector, Math::WPHash> BlockQueueMap;
-	typedef BlockQueueMap::value_type BlockQueuePair;
-
-	ChunkValues::BlockArray *chunkBlocks = nullptr;
-	FaceAxisData chunkFaceData[6];
-
-	const WorldPosition *offset;
-	ChunkState gameState = ChunkState::Normal;
+	typedef std::unordered_map<world_xzpos, world_full_chunk*, vec_hash> world_map;
+	chunk_vals::blocks_array *blocks = nullptr;
 	
-	void ConstructChunk(const WorldPerlin::NoiseResult *perlinResults, BlockQueueMap &blockQueue, const WorldPosition offset) noexcept;
-	void AttemptGenerateTree(BlockQueueMap &treeBlocksQueue, int x, int y, int z, const WorldPerlin::NoiseResult &noise, ObjectID log, ObjectID leaves) noexcept;
+	quad_data_t *quads_ptr[6];
+	uint32_t glob_data_inds[6];
+	struct face_counts_obj {
+		uint32_t opaque_count, translucent_count;
+		inline uint32_t total_faces() const noexcept { return opaque_count + translucent_count; }
+	} face_counters[6];
 
-	void AddBlockQueue(BlockQueueMap &map, const WorldPosition &offset, const BlockQueue &queue);
-	
-	static bool NoiseValueRand(const WorldPerlin::NoiseResult &noise, int oneInX) noexcept;
-	
-	void CalculateTerrainData(WorldMapDef &chunksMap) noexcept;
-	void CalculateTerrainData(WorldMapDef &chunksMap, std::uint32_t *resultArray) noexcept;
-	void AllocateChunkBlocks() noexcept;
+	struct structure_info { structure_id id; vector3i8 start; vector3i32 extents; };
+	std::vector<structure_info> structures;
+	enum states_en : uint8_t {
+		has_data_before = 1,
+		use_tmp_data = 2
+	};
+	uint8_t state = 0;
 
-	~Chunk();
+	chunk_vals::blocks_array *allocate_blocks();
+	void construct_blocks(const noise_object::block_noise *perlin_list, int local_y_offset);
+	void mesh_faces(
+		const world_map &chunks_map,
+		const world_full_chunk *full_chunk,
+		const world_xzpos *const xz_offset,
+		face_counts_obj *const result_counters,
+		int y_offset,
+		quad_data_t *const quads_results_ptr
+	);
+};
+
+struct world_full_chunk {
+	enum state_en : uint8_t { generation_mark = 1 };
+	uint8_t full_state = 0;
+	world_chunk subchunks[chunk_vals::y_count];
+	~world_full_chunk();
 };
 
 #endif
