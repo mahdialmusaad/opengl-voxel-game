@@ -77,7 +77,7 @@ private:
 	GLuint m_world_ssbo, m_world_dib;
 	GLsizei m_indirect_calls;
 
-	int32_t m_render_distance = 2;
+	int32_t m_render_distance = 0;
 
 	enum gen_state_en : uint8_t {
 		both_finish,

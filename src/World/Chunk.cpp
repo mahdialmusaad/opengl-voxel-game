@@ -55,15 +55,12 @@ void world_chunk::mesh_faces(
 	const world_full_chunk *,
 	const world_xzpos *const xz_offset,
 	face_counts_obj *const result_counters,
-	int y_offset,
+	pos_t y_offset,
 	quad_data_t *const quads_results_ptr
 ) {
 	if (!blocks) return; // Don't calculate air chunks
-
-	// Reset all quad data and counters
-	::memset(&quads_ptr, 0, sizeof quads_ptr);
-	::memset(&face_counters, 0, sizeof face_counters);
-
+	::memset(&quads_ptr, 0, sizeof quads_ptr); // Reset all quad data
+	
 	const block_id *const block_start_ptr = blocks[0][0][0]; // Use 1D array access instead of 3D for speed
 
 	// Store nearby chunks in an array for easier access (last index is current chunk)

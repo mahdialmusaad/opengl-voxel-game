@@ -3,8 +3,8 @@
 #define _SOURCE_GENERATION_VECTOR_HDR_
 
 #include <type_traits>
-#include <string.h>
 #include <limits.h>
+#include <limits>
 #include <math.h>
 
 // Mathematical functions
@@ -40,7 +40,8 @@ namespace math {
 
 	template<typename T> T lerp(T a, T b, T t) noexcept { return a + (b - a) * t; }
 
-	template<typename T> constexpr T round_up_to_x(T val, T x) noexcept { return val + (val % x); }
+	template<typename T> constexpr T round_up_to_x(T val, T x) noexcept { return val + (x - (val % x)); }
+	template<typename T> constexpr T round_down_to_x(T val, T x) noexcept { return val - (val % x); }
 
 	template<typename T> constexpr T sqrt_impl(T x, T c, T p = T{}) noexcept {
 		return (c == p) ? c : sqrt_impl(x, static_cast<T>(0.5f) * (c + x / c), c);

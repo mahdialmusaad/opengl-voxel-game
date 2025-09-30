@@ -3,20 +3,19 @@ cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 project(voxel-game)
 
+# CMake settings
+set(CMAKE_VERBOSE_MAKEFILE 0)
+set(CMAKE_SUPPRESS_REGENERATION TRUE)
+
 # Default compile flags
 if(MSVC)
 	set(PEDANTIC_COMPILE_FLAGS /W3)
 else()
-	if(UNIX)
-		# Extra libraries for linux
-		set(LINK_LIBS ${CMAKE_DL_LIBS} GL pthread Xi X11)
-	endif()
-
 	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ggdb -fno-omit-frame-pointer -O0")
 	set(PEDANTIC_COMPILE_FLAGS "-Wall -Wextra -pedantic -Wconversion -Wundef ")
 endif()
 
-# Compiler warning flags from FMT
+# Compiler warning flags
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
 	string(CONCAT PEDANTIC_COMPILE_FLAGS "${PEDANTIC_COMPILE_FLAGS}"
 		"-Wold-style-cast -Wredundant-decls -Wwrite-strings -Wpointer-arith "
@@ -44,64 +43,41 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
 endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 	set(PEDANTIC_COMPILE_FLAGS "${PEDANTIC_COMPILE_FLAGS} -Wshadow -Wdeprecated -Wweak-vtables -Wno-gnu-zero-variadic-macro-arguments ")
-	check_cxx_compiler_flag(-Wzero-as-null-pointer-constant HAS_NULLPTR_WARNING)
-	if(HAS_NULLPTR_WARNING)
-		set(PEDANTIC_COMPILE_FLAGS "${PEDANTIC_COMPILE_FLAGS} -Wzero-as-null-pointer-constant ")
-	endif()
 endif()
 
 # Set determined compile flags
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${PEDANTIC_COMPILE_FLAGS}")
 
-# Find OpenGL package
-find_package(OpenGL REQUIRED)
+# Include OpenGL
+find_package(OpenGL)
+include_directories(${OPENGL_INCLUDE_DIRS})
 
 # GLFW CMake settings
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE) # Prefer X11 over Wayland for Linux
+set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-
-# fmt CMake settings
-set(FMT_INSTALL OFF CACHE BOOL "" FORCE)
-set(FMT_OS OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 
 # Get external libraries
 include(FetchContent)
 set(LIB_DIR "${PROJECT_SOURCE_DIR}/libraries/")
 
-if (NOT EXISTS ${LIB_DIR}/lodepng/lodepng.h)
-	FetchContent_Declare(
-		ext_lodepng
-		GIT_REPOSITORY https://github.com/lvandeve/lodepng
-		GIT_TAG master
-		SOURCE_DIR "${LIB_DIR}/lodepng"
-	)
-	FetchContent_MakeAvailable(ext_lodepng)
-endif()
-if (NOT EXISTS ${LIB_DIR}/fmt/include/base.h)
-	FetchContent_Declare(
-		ext_fmt
-		GIT_REPOSITORY https://github.com/fmtlib/fmt
-		GIT_TAG master
-		SOURCE_DIR "${LIB_DIR}/fmt"
-	)
-	FetchContent_MakeAvailable(ext_fmt)
-else()
-	add_subdirectory(${LIB_DIR}/fmt)
-endif()
-if (NOT EXISTS ${LIB_DIR}/glfw/include/GLFW/glfw3.h)
-	FetchContent_Declare(
-		ext_glfw
-		GIT_REPOSITORY https://github.com/glfw/glfw
-		GIT_TAG master
-		SOURCE_DIR "${LIB_DIR}/glfw"
-		FIND_PACKAGE_ARGS NAMES glfw3
-	)
-	FetchContent_MakeAvailable(ext_glfw)
-else()
-	add_subdirectory(${LIB_DIR}/glfw)
-endif()
+FetchContent_Declare(
+	ext_lodepng
+	GIT_REPOSITORY https://github.com/lvandeve/lodepng.git
+	GIT_TAG master
+	SOURCE_DIR "${LIB_DIR}/lodepng"
+)
+FetchContent_MakeAvailable(ext_lodepng)
+FetchContent_Declare(
+	ext_glfw
+	GIT_REPOSITORY https://github.com/glfw/glfw.git
+	GIT_TAG master
+	SOURCE_DIR "${LIB_DIR}/glfw"
+	FIND_PACKAGE_ARGS NAMES glfw3
+)
+FetchContent_MakeAvailable(ext_glfw)
 
 if(EXISTS ${LIB_DIR}/lodepng/lodepng.cpp)
 	file(RENAME ${LIB_DIR}/lodepng/lodepng.cpp ${LIB_DIR}/lodepng/lodepng.c)
@@ -159,9 +135,9 @@ target_include_directories(
 # External libraries to link
 target_link_libraries(
 	${PROJECT_NAME} PUBLIC
-	${LINK_LIBS}
+	${OPENGL_LIBRARIES}
+	${CMAKE_DL_LIBS}
 	glfw
-	fmt
 )
 
 # Shortcut to resulting directory

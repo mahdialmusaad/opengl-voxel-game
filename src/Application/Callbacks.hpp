@@ -36,10 +36,10 @@ struct game_callbacks
 private:
 	struct tilde_conversion_data {
 		tilde_conversion_data(
-			const std::string &s,
-			int i,
-			bool b
-		) noexcept : str_arg(s), index(i), decimal(b) {}
+			const std::string &conv_str,
+			int conv_ind,
+			bool decs_state
+		) noexcept : str_arg(conv_str), index(conv_ind), decimal(decs_state) {}
 		std::string str_arg;
 		int index;
 		bool decimal;
@@ -61,27 +61,27 @@ private:
 	template<typename T, typename C = T> C int_arg(int index,
 		T min = math::lims<T>::lowest(),
 		T max = math::lims<T>::max()
-	) { return static_cast<C>(math::clamp(static_cast<T>(formatter::strtoimax(get_arg(index))), min, max)); }
+	) { return static_cast<C>(math::clamp(static_cast<T>(formatter::conv_to_imax(get_arg(index))), min, max)); }
 	double dbl_arg(int index,
 		double min = math::lims<double>::lowest(),
 		double max = math::lims<double>::max()
-	) { return math::clamp(std::stod(get_arg(index)), min, max); }
+	) { return math::clamp(strtod(get_arg(index).c_str(), nullptr), min, max); }
 	float flt_arg(int index,
 		float min = math::lims<float>::lowest(),
 		float max = math::lims<float>::max()
-	) { return math::clamp(std::stof(get_arg(index)), min, max); }
+	) { return math::clamp(strtof(get_arg(index).c_str(), nullptr), min, max); }
 
 	void conv_cmd(const std::vector<tilde_conversion_data> &args_convs);
 	void conv_cmd(const tilde_conversion_data &data);
 
 	template<typename T> bool isdec() const noexcept { return math::lims<T>::is_iec559; } 
 	template<typename T> tilde_conversion_data tcv(int index, T val) const noexcept {
-		return { fmt::to_string(val), index, isdec<T>() };
+		return { std::to_string(val), index, isdec<T>() };
 	}
 
 	template<typename T> void query(const std::string &name, T value) noexcept {
-		const std::string as_str = fmt::format(std::is_integral<T>::value ? "{}" : "{:.3f}", value);
-		if (m_query_chat) add_chat_text(fmt::format("Current {} is {}", name, as_str));
+		const std::string as_str = formatter::fmt(formatter::specific<T>(), value);
+		if (m_query_chat) add_chat_text(formatter::fmt("Current %s is %s", name.c_str(), as_str.c_str()));
 		cvd = tilde_conversion_data(as_str, 0, isdec<T>());
 	}
 
@@ -91,8 +91,9 @@ private:
 		int start_ind = 0
 	) noexcept {
 		std::string fmt_str;
-		for (int i = 0, m = L - 1; i < L; ++i) fmt_str += fmt::format("{:.3f}{}", value[i], i != m ? " " : "");
-		if (m_query_chat) add_chat_text(fmt::format("Current {}: {}", name, fmt_str));
+		const std::string fmt_type = formatter::specific<T>() + "%s";
+		for (int i = 0, m = L - 1; i < L; ++i) fmt_str += formatter::fmt(fmt_type, value[i], (i != m ? " " : ""));
+		if (m_query_chat) add_chat_text(formatter::fmt("Current %s: %s", name.c_str(), fmt_str.c_str()));
 		cvd = tilde_conversion_data(fmt_str, start_ind, isdec<T>());
 	}
 };
@@ -112,7 +113,7 @@ namespace callbacks_wrappers {
 
 	inline APIENTRY void gl_debug_out(GLenum source, GLenum type, unsigned id, GLenum severity, GLsizei, const char *message, const void*) {
 		if (id == 131185 || id == 131154) return;
-		formatter::warn(fmt::format("{} (ID {}) - {}{}{}", message, id,
+		formatter::warn(formatter::fmt("%s (ID %u) - %s%s%s", message, id,
 			ogl::err_src_str(source), ogl::err_typ_str(type), ogl::err_svt_str(severity))
 		);
 	}

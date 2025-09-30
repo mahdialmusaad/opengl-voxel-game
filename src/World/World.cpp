@@ -275,7 +275,7 @@ void world_obj::update_render_distance(int32_t new_rnd_dist) noexcept
 	// Signal generation thread to run if it is waiting for an event
 	if (game.is_loop_active) {
 		signal_generation_thread();
-		formatter::log(fmt::format("Render distance changed ({})", m_render_distance));
+		formatter::log(formatter::fmt("Render distance changed (%d)", m_render_distance));
 	}
 
 	m_do_arrays_update = true; // Update indirect, translucent and ssbo arrays
@@ -297,8 +297,6 @@ void world_obj::generation_loop(bool ismain) noexcept
 
 	switch (m_gen_thread_state)
 	{
-	case gen_state_en::active:  // Generation thread still working, do nothing
-		break;
 	case gen_state_en::both_finish: // No work currently, main and generation finished
 		if (m_do_gen_update) goto gen_update; // Start thread and set state to active if an update is requested
 		break;
@@ -405,7 +403,7 @@ do { // I'd prefer if I didn't have to indent the whole generation logic for thi
 		meshing_data *local_mesh_ptr = affected_ptr + index;
 		const meshing_data *const local_end_ptr = affected_ptr + end;
 	mesh_subchunks_loop:
-		for (int y_offset = 0; y_offset < chunk_vals::y_count; ++y_offset) {
+		for (pos_t y_offset = 0; y_offset < chunk_vals::y_count; ++y_offset) {
 			if (!game.is_active) goto immediate_end;
 			local_mesh_ptr->full_chunk->subchunks[y_offset].mesh_faces(
 				rendered_map,
@@ -452,10 +450,9 @@ void world_obj::update_inst_buffer_data() noexcept
 				if (!(chunk->state & world_chunk::states_en::has_data_before)) continue;
 				else chunk->state |= world_chunk::states_en::use_tmp_data;
 			}
-			chunk->state |= world_chunk::states_en::has_data_before; // Mark as 'has been updated before'
 
 			// Accumulate counters from each chunk face
-			const uint32_t prev_existing_count = existing_quads_count;
+			const size_t prev_existing_count = existing_quads_count;
 			for (int i = 0; i < 6; ++i) existing_quads_count += chunk->face_counters[i].total_faces();
 			if (prev_existing_count == existing_quads_count) continue; // No faces present, ignore this chunk
 			active_chunks.emplace_back(active_chunk_obj{ chunk, &it.first, y_offset }); // Add to active list
@@ -490,6 +487,7 @@ void world_obj::update_inst_buffer_data() noexcept
 				it.chunk->quads_ptr[i] = nullptr;
 			}
 
+			it.chunk->state |= world_chunk::states_en::has_data_before; // Mark as 'has been updated before'
 			*saved_data_index = new_index; // Set index for used data
 			new_index += dir_faces;
 		}

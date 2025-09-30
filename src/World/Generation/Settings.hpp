@@ -229,7 +229,6 @@ namespace chunk_vals
 		{  0, -1  }    // Z-
 	};
 	
-	// TODO: fast replacement with no lookup to reduce exe size
 	extern uint32_t faces_lookup[total_faces];  // First 3 bits of each represent face index, rest determine block index
 
 	typedef block_id (blocks_array[chunk_vals::size][chunk_vals::size][chunk_vals::size]);
@@ -245,7 +244,7 @@ namespace chunk_vals
 	
 	template<typename T> pos_t world_to_offset_one(T x) noexcept {
 		const pos_t v = to_block_pos_one(x);
-		const pos_t a = v < pos_t{} ? v - static_cast<pos_t>(less) : v;
+		const pos_t a = v < 0 ? v - static_cast<pos_t>(less) : v;
 		return (a - (a % static_cast<pos_t>(size))) / static_cast<pos_t>(size);
 	}
 	template<typename T> world_pos world_to_offset(const vector<T, 3> *pos) noexcept {

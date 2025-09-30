@@ -188,12 +188,16 @@ void game_callbacks::take_screenshot() noexcept
 	game.taking_screenshot = true;
 	std::thread([&](unsigned char *org_pixels, const vector2sz &dims, size_t total_bytes) {
 		// File name for displaying and creating directory path
-		const std::string screenshot_filename = fmt::format(
-			"Screenshot {:%Y-%m-%d %H-%M-%S}-{:03}.png",
-			formatter::get_cur_time(), formatter::get_cur_msecs()
+		const int cur_msecs = formatter::get_cur_msecs();
+		const tm ct = formatter::get_cur_time();
+		const std::string screenshot_filename = formatter::fmt(
+			"Screenshot %02d-%02d-%d %02d-%02d-%02d-%03d.png",
+			ct.tm_mday, ct.tm_mon + 1, ct.tm_year + 1900,
+			ct.tm_hour, ct.tm_min, ct.tm_sec,
+			cur_msecs
 		);
 		// Get full path of image to save to
-		const std::string rel_dir_path = fmt::format("{}/{}", rel_screenshot_path, screenshot_filename);
+		const std::string rel_dir_path = formatter::fmt("%s/%s", rel_screenshot_path, screenshot_filename);
 
 		// Flip Y axis as OGL uses opposite Y coordinates (bottom-top instead of top-bottom)
 		// Can be done in parallel to speed up large images
@@ -518,7 +522,7 @@ void game_callbacks::apply_cmd_text()
 		std::vector<int> all_acceptable_num_args;
 	};
 
-	const std::string default_query_txt = "*value";
+	const char *default_query_txt = "*value";
 
 	const auto display_help_section = [&](const command_handler_obj *all_cmds_ptr, size_t size, int page) {
 		// Instead of storing the entire command text, it can be constructed at run-time
@@ -544,7 +548,12 @@ void game_callbacks::apply_cmd_text()
 			const std::string &args_txt = cmd->arguments_names_list.size() ?
 			      cmd->arguments_names_list :
 			      (cmd->value_query_function == nullptr ? "(None)" : default_query_txt);
-			display_txt += fmt::format("\n/{} {} -- Arguments: {}", cmd->cmd_base_name, cmd->description, args_txt);
+			display_txt += formatter::fmt(
+				"\n/%s %s -- Arguments: %s",
+				cmd->cmd_base_name.c_str(),
+				cmd->description.c_str(),
+				args_txt.c_str()
+			);
 		}
 		
 		// Determine section to show depending on the page using chat-formatted version of the help text
@@ -606,9 +615,10 @@ void game_callbacks::apply_cmd_text()
 			{ IArg(3), IArg(4), IArg(5) },
 			int_arg<block_id_t, block_id>(6)
 		);
-		if (changed) add_chat_text(fmt::format(
-			"Too many blocks to change ({} > 32768). Try filling a smaller area.",
-			changed));
+		if (changed) add_chat_text(formatter::fmt(
+				"Too many blocks to change (%ju > 32768). Try filling a smaller area.",
+				changed
+			));
 	}},
 	{ "set",
 		"x y z block",
@@ -637,7 +647,7 @@ void game_callbacks::apply_cmd_text()
 		std::string result = "Programs: ";
 		const shaders_obj::shader_prog *const progs_ptr = reinterpret_cast<shaders_obj::shader_prog*>(&game.shaders.programs);
 		constexpr size_t progs_count = sizeof game.shaders.programs / sizeof *progs_ptr;
-		for (size_t i = 0; i < progs_count; ++i) result += fmt::format("'{}': {}, ", progs_ptr[i].base_name, progs_ptr[i].program);
+		for (size_t i = 0; i < progs_count; ++i) result += formatter::fmt("'%s': %u, ", progs_ptr[i].base_name.c_str(), progs_ptr[i].program);
 		add_chat_text(result.substr(0, result.size() - 2)); // Remove trailing space and comma
 	}},
 
@@ -652,7 +662,7 @@ void game_callbacks::apply_cmd_text()
 	{ "speed", "", "Changes movement speed",
 		[&]{ plr.base_speed = dbl_arg(0); }, [&]{ query("speed", plr.active_speed); }
 	},
-	{ "tick", "", fmt::format("Changes the tick speed (how fast natural events occur) [{}, {}]", tick_limits.min, tick_limits.max),
+	{ "tick", "", formatter::fmt("Changes the tick speed (how fast natural events occur) [%.1f, %.1f]", tick_limits.min, tick_limits.max),
 		[&]{ game.game_tick_speed = dbl_arg(0, -100.0, 100.0); }, [&]{ query("tick", game.game_tick_speed); }
 	},
 	{ "sens", "", "Sets the in-game mouse sensitivity.",
@@ -660,13 +670,13 @@ void game_callbacks::apply_cmd_text()
 	},
 	{ "rd",
 		"",
-		fmt::format("Changes the world's render distance [{}, {}]", render_limits.min, render_limits.max),
+		formatter::fmt("Changes the world's render distance [%d, %d]", render_limits.min, render_limits.max),
 	[&]{ world.update_render_distance(int_arg<int32_t>(0, render_limits.min, render_limits.max)); },
 	[&]{ query("render distance", m_app->m_world.get_rnd_dist()); }
 	},
 	{ "fov",
 		"",
-		fmt::format("Sets the camera FOV. [{}, {}]", fov_limits.min, fov_limits.max),
+		formatter::fmt("Sets the camera FOV. [%.1f, %.1f]", fov_limits.min, fov_limits.max),
 	[&]{
 		plr.fov = math::radians(dbl_arg(0, fov_limits.min, fov_limits.max));
 		m_app->m_player_inst.update_frustum_vals();
@@ -743,7 +753,7 @@ void game_callbacks::apply_cmd_text()
 		);
 		// Warn for invalid commands
 		if (found == cmds_list + all_cmds_count) {
-			add_chat_text(fmt::format("/{} is not a valid command. Type /help for help.", cmd_name)); 
+			add_chat_text(formatter::fmt("/%s is not a valid command. Type /help for help.", cmd_name.c_str())); 
 			return;
 		}
 
@@ -784,10 +794,10 @@ void game_callbacks::apply_cmd_text()
 				num_cmd_args
 			) == found->all_acceptable_num_args.end())
 		) {
-			add_chat_text(fmt::format("Usage: /{} {}", found->cmd_base_name,
+			add_chat_text(formatter::fmt("Usage: /%s %s", found->cmd_base_name.c_str(),
 				cmd_has_query && !found->arguments_names_list.size() ?
 					default_query_txt :
-					found->arguments_names_list
+					found->arguments_names_list.c_str()
 			));
 			return;
 		}
@@ -813,16 +823,16 @@ void game_callbacks::apply_cmd_text()
 	}
 	// Warn about found invalid argument if any
 	catch (const std::invalid_argument&) {
-		add_chat_text(fmt::format(
-			"Unexpected '{}' at command argument {}",
-			get_arg(m_current_cmd_index),
+		add_chat_text(formatter::fmt(
+			"Unexpected '%s' at command argument %d",
+			get_arg(m_current_cmd_index).c_str(),
 			m_current_cmd_index + 1)
 		);
 	}
 	// Warn about converting extremely large numbers
 	catch (const std::out_of_range&) {
-		add_chat_text(fmt::format(
-			"Argument {} ({:.5}...) is too large",
+		add_chat_text(formatter::fmt(
+			"Argument %d (%.5s...) is too large",
 			m_current_cmd_index + 1,
 			get_arg(m_current_cmd_index))
 		);
@@ -863,10 +873,13 @@ void game_callbacks::conv_cmd(const tilde_conversion_data &data)
 	if (!is_neg && static_cast<int>(before_tilde_char)) throw std::invalid_argument("");
 
 	// Combine all parts of the argument into one number (add number after tilde, use negation if found)
-	if (data.decimal) arg = fmt::to_string((std::stod(actual) + std::stod(after_tilde_text)) * (is_neg ? -1.0 : 1.0));
-	else arg = fmt::to_string(
-		 formatter::strtoimax(actual) +
-		(formatter::strtoimax(after_tilde_text) *
-		 static_cast<intmax_t>(is_neg ? -1 : 1))
-	);
+	if (data.decimal) arg = std::to_string(
+			(::strtod(actual.c_str(), nullptr) + ::strtod(after_tilde_text.c_str(), nullptr)) *
+			(is_neg ? -1.0 : 1.0)
+		);
+	else arg = std::to_string(
+			formatter::conv_to_imax(actual) +
+			(formatter::conv_to_imax(after_tilde_text) *
+			static_cast<intmax_t>(is_neg ? -1 : 1))
+		);
 }

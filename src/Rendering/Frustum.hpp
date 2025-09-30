@@ -9,13 +9,13 @@ struct camera_frustum
 	camera_frustum() noexcept = default;
 	static constexpr double far_plane = 10000.0, near_plane = 0.05;
 
-	struct plane
+	struct frust_plane
 	{
 		vector3d normal = { 0.0f, 1.0f, 0.0f };
 		double distance;
 
-		plane() noexcept = default;
-		plane(const vector3d &dist_vec, const vector3d &norm) noexcept;
+		frust_plane() noexcept = default;
+		frust_plane(const vector3d &dist_vec, const vector3d &norm) noexcept;
 		
 		inline float neg_dist_to_plane(const vector3d &point) const noexcept {
 			return static_cast<float>(distance - normal.dot(point));
@@ -33,7 +33,7 @@ struct camera_frustum
 
 	// The 'far' plane would prevent rendering of chunks further away than it so
 	// it is not included in frustum checks. This also improves performance slightly.
-	plane top, near, left, right, bottom;
+	frust_plane top, near, left, right, bottom;
 };
 
 #endif // _SOURCE_RENDERING_FRUSTUM_HDR_

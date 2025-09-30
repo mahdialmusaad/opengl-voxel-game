@@ -64,6 +64,9 @@
 #define WIN32_LEAN_AND_MEAN
 // Thanks, Microsoft. (#1)
 #define getcwd _getcwd
+// I mean, seriously? A global min and max macro?
+// Did you really think there would be no name collisions?
+#define NOMINMAX
 #include <windows.h>
 #  if defined(_WIN64) || defined(VOXEL_CYGWIN)
 #  define VOXEL_WIN64
@@ -95,21 +98,16 @@ extern "C" {
 }
 #endif
 
-// fmt - Text formatting library
-// TODO: rem
-#include "fmt/include/fmt/format.h"
-#include "fmt/include/fmt/chrono.h"
-
 // Local vector header
 #include "World/Generation/Vector.hpp"
 
 // C libraries
 #include <time.h>
 #include <stdio.h>
-#include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
+#include <inttypes.h>
 #include <sys/stat.h>
-#include <sys/types.h>
 
 // C++ libraries
 #include <mutex>
@@ -117,13 +115,10 @@ extern "C" {
 #include <condition_variable>
 
 #include <string>
-#include <sstream>
 #include <fstream>
-#include <ostream>
 
 #include <random>
-#include <memory>
-#include <utility>
+#include <stdexcept>
 #include <algorithm>
 #include <functional>
 #include <unordered_map>
@@ -131,7 +126,7 @@ extern "C" {
 #ifndef PATH_MAX
 #define PATH_MAX 0x1000
 #endif
-#if defined(MAX_PATH)
+#if defined(MAX_PATH) && !defined(PATH_MAX)
 // Thanks, Microsoft. (#2)
 #define PATH_MAX MAX_PATH
 #endif
@@ -139,6 +134,9 @@ extern "C" {
 typedef int64_t pos_t; // Type used for positioning
 typedef vector<pos_t, 3> world_pos; // 3D position
 typedef vector<pos_t, 2> world_xzpos; // 2D position
+
+// For printing format
+#define VXF64 "%" PRIi64
 
 typedef uint32_t quad_data_t; // Data per world quad
 
@@ -179,6 +177,26 @@ namespace formatter
 	void init_abort(int code) noexcept;
 	void custom_abort(const std::string &err) noexcept;
 
+	template <class...A> std::string fmt(const std::string& fmt_string, A... args)
+	{
+		const ssize_t fmtd_sz = static_cast<ssize_t>(::snprintf(nullptr, 0, fmt_string.c_str(), args...) + 1);
+		if (fmtd_sz <= 0) return fmt_string; // Fallback on error
+		char *const fmt_buf = static_cast<char*>(malloc(static_cast<size_t>(fmtd_sz))); 
+		::snprintf(fmt_buf, fmtd_sz, fmt_string.c_str(), args...);
+		return fmt_buf;
+	}
+
+	template <typename T> std::string specific()
+	{
+		if (!std::is_integral<T>::value) return "%f";
+		if (std::is_same<T, intmax_t>::value) return "%ji";
+		if (std::is_same<T, uintmax_t>::value) return "%ju";
+		if (std::is_same<T, size_t>::value) return "%zi";
+		if (std::is_same<T, ssize_t>::value) return "%zd";
+		if (std::is_unsigned<T>::value) return "%u";
+		else return "%d";
+	}
+
 	int get_cur_msecs() noexcept;
 	tm get_cur_time() noexcept;
 
@@ -186,14 +204,26 @@ namespace formatter
 	bool str_ends_with(const std::string &str, const std::string &ending) noexcept;
 	void split_str(std::vector<std::string> &vec, const std::string &str, const char sp) noexcept;
 	size_t get_nth_found(const std::string &str, const char find, int nth) noexcept;
-	intmax_t strtoimax(const std::string &num_as_text);
+	intmax_t conv_to_imax(const std::string &num_as_text);
 	
-	template <typename T> std::string group_flt(T val, unsigned decimals = 3) noexcept
+	template <typename T> std::string group_num(T val, unsigned decimals = 3u) noexcept
 	{
-		const std::string as_str = fmt::to_string(val);
-		if (!std::is_floating_point<T>::value || as_str.size() <= decimals + 2) return as_str;
-		const std::string integer_part = as_str.substr(0, as_str.find('.', 1));
-		return integer_part + (as_str.substr(integer_part.size(), decimals + 1));
+		std::string as_str = std::to_string(val);
+		size_t decm_ind = as_str.find('.'); // Find decimal index (npos if none)
+
+		if (decm_ind == std::string::npos) decm_ind = as_str.size(); // no decimal found, use size for index calculation
+		else {
+			as_str = as_str.substr(0, decm_ind + ++decimals); // Remove any extra decimals
+			as_str.insert(as_str.size(), decimals - (as_str.size() - decm_ind), '0'); // Pad with 0s if there aren't enough
+		}
+		
+		const bool minus = as_str[0] == '-'; // Check for minus sign
+		if (decm_ind - minus < 4) return as_str; // Ignore small numbers with no separator needed
+		
+		// Add thousands separator every 3 digits while accounting for negative sign
+		for (ssize_t ind = static_cast<ssize_t>(decm_ind) - 3; ind > minus; ind -= 3) as_str.insert(ind, 1, ','); 
+
+		return as_str;
 	}
 };
 
@@ -376,6 +406,7 @@ struct voxel_global
 	void init() noexcept;
 
 	GLFWwindow *window_ptr;
+	uint32_t *faces_lk_ptr;
 	struct global_cleaner { ~global_cleaner(); } cleaner;
 	shaders_obj shaders;
 	

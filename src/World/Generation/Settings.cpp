@@ -46,9 +46,9 @@ void chunk_vals::fill_lookup() noexcept
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo);
 
 	// Set uniform variables in shader
-	constexpr int dir_size = math::size(chunk_vals::dirs_xyz);
+	constexpr size_t dir_size = math::size(chunk_vals::dirs_xyz);
 	vector3i32 compute_uniform_dirs[dir_size];
-	for (int i = 0; i < dir_size; ++i) compute_uniform_dirs[i] = chunk_vals::dirs_xyz[i];
+	for (size_t i = 0; i < dir_size; ++i) compute_uniform_dirs[i] = chunk_vals::dirs_xyz[i];
 
 	game.shaders.computes.faces.set_int("cz", chunk_vals::size);
 	game.shaders.computes.faces.set_int("qz", chunk_vals::squared);

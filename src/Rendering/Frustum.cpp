@@ -4,7 +4,7 @@
 // For now, only a sphere bounding box is used to simplify calculations done to determine visible chunks
 // Original source can be found in https://learnopengl.com/Guest-Articles/2021/Scene/Frustum-Culling
 
-camera_frustum::plane::plane(const vector3d &distance_vec, const vector3d &norm) noexcept
+camera_frustum::frust_plane::frust_plane(const vector3d &distance_vec, const vector3d &norm) noexcept
   : normal(norm.c_unit()), distance(normal.dot(distance_vec)) {}
 void camera_frustum::update_frustum_vals(
 	const vector3d &position,

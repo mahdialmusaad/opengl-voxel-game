@@ -1,8 +1,7 @@
 ## Overview
 A voxel game built for performance and efficiency.
 
-<img src="markdown/main.png"/>
-<br>
+<img src="markdown/main.png"></img><br>
 <sup>In-game screenshot during sunrise</sup>
 
 ## Features
@@ -91,14 +90,13 @@ Default controls are as follows:
 ### Value inputs*
 - Change speed _(repeatable)_: **COMMA** and **PERIOD**
 - Change FOV _(repeatable)_: **I** and **O**
-- Change render distance: **[** and **]**
+- Change render distance: **[** and **]** (square brackets)
 
 ### Function inputs
 - Toggle all GUI: **F1**
 - Take screenshot: **F2** (Saved into the `/Screenshots` directory)
 - Free cursor: **F3**
 - Toggle debug text: **F4**
-- Toggle fullscreen: **F11**
 
 ### Debug inputs
 - Wireframe: **Z**
@@ -115,11 +113,11 @@ cmake -E make_directory "build"
 cmake -E chdir "build" cmake -DCMAKE_BUILD_TYPE=Release ../
 cmake --build "build" --config Release
 ```
-Alternatively, you can download the ZIP file using the `Code` button above and use the CMake GUI.
+Alternatively, you can use the CMake GUI.<br>
+The resulting executable can be found in the `/game` directory in the root folder.
 ## Libraries
-This game makes use of a few libraries to work. They can be seen in the submodules in the [libraries](libraries/) folder or below. Make sure to support them as this game would not be possible without them!
+This game makes use of a few libraries to work. Make sure to support them as this game would not be possible without them!
 
 [lodepng](https://github.com/lvandeve/lodepng) - PNG encoder and decoder<br>
 [GLFW](https://github.com/glfw/glfw) - Window and input library<br>
 [glad](https://github.com/Dav1dde/glad) - OpenGL loader/generator<br>
-[fmt](https://github.com/fmtlib/fmt) - Formatting library

@@ -19,15 +19,15 @@ main_game_obj::main_game_obj() noexcept :
 	const float leftmost = -0.99f;
 
 	// Combine static text for less draw calls and memory
-	const std::string infofmt = fmt::format(
-		"{}\n{}\nSeed: {}",
+	const std::string info_fmt = formatter::fmt(
+		"%s\n%s\nSeed: " VXF64,
 		glfwGetVersionString(),
 		ogl::get_str(GL_RENDERER),
 		m_world.world_noise_objs.elevation.seed
 	);
 
 	const unsigned def_font_size = text_renderer_obj::text_obj::default_font_size;
-	m_glob_text_rndr_obj.init_text_obj(&m_static_info_txt, { leftmost, 0.99f }, infofmt, bg_shadow_dbg);
+	m_glob_text_rndr_obj.init_text_obj(&m_static_info_txt, { leftmost, 0.99f }, info_fmt, bg_shadow_dbg);
 
 	// Normal chat text
 	m_glob_text_rndr_obj.init_text_obj(&m_chat_txt, { leftmost, -0.15f }, "", bg_shadow, def_font_size, false);
@@ -116,7 +116,7 @@ void main_game_obj::init_game(int argc, const char *const *const argv)
 				full_path.c_str(),
 				tex_data->stored_col_fmt,
 				tex_data->bit_depth
-			)) throw file_sys::file_err(fmt::format("Could not find texture {}", full_path).c_str());
+			)) throw file_sys::file_err(formatter::fmt("Could not find texture %s", full_path.c_str()).c_str());
 		}
 	});
 
@@ -224,7 +224,7 @@ void main_game_obj::main_world_loop()
 void main_game_obj::upd_dynamic_text(int *fps_counters) noexcept
 {
 	// Update window title
-	const std::string fps_text = fmt::format("{} FPS | {} AVG | {} LOW", *fps_counters, fps_counters[1], fps_counters[2]);
+	const std::string fps_text = formatter::fmt("%d FPS | %d AVG | %d LOW", *fps_counters, fps_counters[1], fps_counters[2]);
 	glfwSetWindowTitle(game.window_ptr, (game.def_title + "  -  " + fps_text).c_str());
 
 	const world_acc_player &player = m_player_inst.player;
@@ -234,13 +234,13 @@ void main_game_obj::upd_dynamic_text(int *fps_counters) noexcept
 	
 	// Update dynamic information text
 	static const std::string game_info_txt =
-	"{}\n{} {} {} ({} {} {})\n"
-	"Velocity: {:.2f} {:.2f} {:.2f}\n"
-	"Yaw:{:.1f} Pitch:{:.1f} ({}, {})\n"
-	"FOV:{:.1f} Speed:{:.1f}\n"
-	"Flying: {} Noclip: {}";
-	m_game_info_txt.set_text(fmt::format(game_info_txt, fps_text,
-		formatter::group_flt(player.position.x), formatter::group_flt(player.position.y), formatter::group_flt(player.position.z),
+	"%s\n%s %s %s (" VXF64 " " VXF64 " " VXF64 ")\n"
+	"Velocity: %.2f %.2f %.2f\n"
+	"Yaw:%.1f Pitch:%.1f (%s, %s)\n"
+	"FOV:%.1f Speed:%.1f\n"
+	"Flying: %d Noclip: %d";
+	m_game_info_txt.set_text(formatter::fmt(game_info_txt, fps_text.c_str(),
+		formatter::group_num(player.position.x).c_str(), formatter::group_num(player.position.y).c_str(), formatter::group_num(player.position.z).c_str(),
 		player.offset.x, player.offset.y, player.offset.z,
 		vel.x, vel.y, vel.z,
 		player.yaw, player.pitch,
@@ -253,15 +253,14 @@ void main_game_obj::upd_dynamic_text(int *fps_counters) noexcept
 	if (do_text_y_update) m_world_info_txt.set_position_y_relativeto(&m_game_info_txt);
 
 	static const std::string world_info_txt =
-	"Chunks: {} (Rendered: {})\n"
-	"Triangles: {} (Rendered: {})\n"
-	"Rnd.Dist: {} Generating: {} Ind.Calls: {}\n"
-	"Time: {:.1f} (Cycle: {:.1f}, Day {})";
-
-	m_world_info_txt.set_text(fmt::format(world_info_txt, 
-		fmt::group_digits(m_world.rendered_map.size() * chunk_vals::y_count), fmt::group_digits(m_world.rendered_chunks_count),
-		fmt::group_digits(m_world.existing_quads_count * 2), fmt::group_digits(m_world.rendered_squares_count * 2),
-		m_world.get_rnd_dist(), game.do_generate_signal, fmt::group_digits(m_world.get_ind_calls()),
+	"Chunks: %s (Rendered: %s)\n"
+	"Triangles: %s (Rendered: %s)\n"
+	"Rnd.Dist: %d Generating: %d Ind.Calls: %d\n"
+	"Time: %.1f (Cycle: %.1f, Day " PRIiMAX ")";
+	m_world_info_txt.set_text(formatter::fmt(world_info_txt, 
+		formatter::group_num(m_world.rendered_map.size() * chunk_vals::y_count).c_str(), formatter::group_num(m_world.rendered_chunks_count).c_str(),
+		formatter::group_num(m_world.existing_quads_count * 2).c_str(), formatter::group_num(m_world.rendered_squares_count * 2).c_str(),
+		m_world.get_rnd_dist(), game.do_generate_signal, m_world.get_ind_calls(),
 		game.global_time, game.cycle_day_seconds, game.world_day_counter
 	)); // Update second text info box
 
@@ -272,9 +271,9 @@ void main_game_obj::upd_dynamic_text(int *fps_counters) noexcept
 	std::string perf_leaderboard_txt;
 	for (size_t i = 0; i < perfs_count; ++i) {
 		perf_obj curr_perf = game.perf_leaderboard[i];
-		perf_leaderboard_txt += fmt::format(
-			"{}. {} {:.3f}s R:{}{}",
-			i + 1, curr_perf->name, curr_perf->total, curr_perf->count, i == perfs_last ? "" : "\n"
+		perf_leaderboard_txt += formatter::fmt(
+			"%d. %s %.3fs R:%ju%s",
+			i + 1, curr_perf->name.c_str(), curr_perf->total, curr_perf->count, i == perfs_last ? "" : "\n"
 		);
 	}
 
@@ -410,12 +409,12 @@ void main_game_obj::DB_func_perf() noexcept
 	const world_pos zero_pos{};
 	for (int_fast32_t i = 0; i < times; ++i) m_world.find_chunk_at(&zero_pos);
 	const double end_time = glfwGetTime(), func_total_time = end_time - begin_time;
-	fmt::println(
-		"*** {}s at {} loop(s) - {} funcs/s ***",
+	formatter::log(formatter::fmt(
+		"*** %fs in %d loop(s) - %ffuncs/s ***",
 		func_total_time,
-		fmt::group_digits(times),
-		formatter::group_flt(times / func_total_time)
-	);
+		formatter::group_num(times),
+		formatter::group_num(times / func_total_time)
+	));
 }
 
 void main_game_obj::DB_perlin_png() const noexcept
@@ -425,12 +424,12 @@ void main_game_obj::DB_perlin_png() const noexcept
 	unsigned char *img_pixels = new unsigned char[img_len * img_len];
 	const double factor = 0.01;
 
-	float min = 100.0, max = -min;
+	double min = 100.0, max = -min;
 	bool octave = true;
 
 	for (unsigned i = 0; i < img_len; ++i) {
 		for (unsigned j = 0; j < img_len; ++j) {
-			const float res = octave ? m_world.world_noise_objs.elevation.octave(
+			const double res = octave ? m_world.world_noise_objs.elevation.octave(
 				static_cast<double>(i) * factor,
 				noise_def_vals::default_y_noise,
 				static_cast<double>(j) * factor, 3
@@ -439,12 +438,13 @@ void main_game_obj::DB_perlin_png() const noexcept
 				noise_def_vals::default_y_noise,
 				static_cast<double>(j) * factor
 			);
-			const unsigned char pix = static_cast<unsigned char>(res * 255.0f);
+			const unsigned char pix = static_cast<unsigned char>(res * 255.0);
 			img_pixels[(i * img_len) + j] = 255 - pix;
 			min = math::min(min, res); max = math::max(max, res);
 		}
 	}
 
-	fmt::println("Min: {} Max: {}", min, max);
+	formatter::log(formatter::fmt("Min: %f Max: %f", min, max));
 	lodepng_encode_file("perlin.png", img_pixels, img_len, img_len, LodePNGColorType::LCT_GREY, 8);
 }
+				

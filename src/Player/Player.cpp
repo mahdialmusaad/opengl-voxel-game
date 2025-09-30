@@ -571,15 +571,15 @@ void player_inst::update_selected_block_info_txt() noexcept
 
 	// Format string with block information text
 	const world_pos offset = chunk_vals::world_to_offset(&player.selected_block_pos);
-	const std::string ray_block_info_text = fmt::format(
+	const std::string ray_block_info_text = formatter::fmt(
 		"Selected:\n"
-		"{} {} {} ({} {} {})\n"
-		"\"{}\" (ID {})\n"
-		"Light emission: {}\n"
-		"Strength: {}\n"
-		"Solid: {}\n"
-		"Transparency: {}\n"
-		"Textures: {} {} {} {} {} {}", 
+		 VXF64 " " VXF64" " VXF64 " (" VXF64 " " VXF64 " " VXF64 ")\n"
+		"\"%s\" (ID %d)\n"
+		"Light emission: %d\n"
+		"Strength: %d\n"
+		"Solid: %d\n"
+		"Transparency: %d\n"
+		"Textures: %d %d %d %d %d %d", 
 		player.selected_block_pos.x, player.selected_block_pos.y, player.selected_block_pos.z,
 		offset.x, offset.y, offset.z,
 		block_data->name, static_cast<int>(block_data->mesh_info.id),
@@ -754,7 +754,7 @@ void player_inst::update_slot(int slot_ind, block_id b_id, uint8_t count)
 		needs_slot_upd = true; // Update block texture to none for air
 		if (mirror_to_hotbar) m_hotbar_text[slot_ind].set_visibility(false);
 	} else {
-		const std::string new_text = fmt::to_string(count);
+		const std::string new_text = std::to_string(count);
 		// Positive count and non-air object - update text and slot data
 		slot->held_id = b_id;
 		slot->count = count;

@@ -51,7 +51,7 @@ void thread_ops::wait_avg_frame() noexcept
 
 // -------------------- formatter -------------------- 
 
-void formatter::log(const std::string &t) noexcept { fmt::print("[ {:.3f}ms ] {}\n", glfwGetTime() * 1000.0, t); }
+void formatter::log(const std::string &t) noexcept { printf("[ %.3fms ] %s\n", glfwGetTime() * 1000.0, t.c_str()); }
 void formatter::warn(const std::string &t, unsigned warn_bits) noexcept
 {
 	// Different warning type prefixes from bitmap
@@ -163,14 +163,7 @@ size_t formatter::get_nth_found(const std::string &str, const char find, int nth
 	do index = str.find(find, ++index); while (--nth && index != std::string::npos);
 	return index;
 }
-intmax_t formatter::strtoimax(const std::string &number_str_text)
-{
-	intmax_t val;
-	std::istringstream value_str(number_str_text); // Create stringstream with a string of a number
-	value_str >> val; // Insert converted string into integer variable
-	if (value_str.fail()) throw std::invalid_argument("");
-	return val;
-}
+intmax_t formatter::conv_to_imax(const std::string &number_str_text) { return ::strtoimax(number_str_text.c_str(), NULL, 10); }
 
 // -------------------- ogl -------------------- 
 
@@ -444,7 +437,8 @@ void shaders_obj::init_shader_data()
 		"};"
 		"const int f=G%6;"
 		"const ivec3 N=C+D[f];"
-		"R[G]=(((L(N.x)*qz)+(L(N.y)*cz)+(L(N.z)))<<3)+((B(N.x)||B(N.y)||B(N.z))?f:6);"
+		"if(G<qz*cz*6)"
+			"R[G]=(((L(N.x)*qz)+(L(N.y)*cz)+(L(N.z)))<<3)+((B(N.x)||B(N.y)||B(N.z))?f:6);"
 	);
 	computes.stars.init("CM_stars",
 		// Outer code
@@ -824,7 +818,7 @@ void file_sys::read(const std::string &filename, std::string &contents, bool mes
 	file_stream.read(&contents[0], static_cast<std::streamsize>(file_size)); // Read file to contents string
 
 	// Log file read message if requested
-	if (message && game.is_active) formatter::log(fmt::format("File '{}' read from disk.", filename));
+	if (message && game.is_active) formatter::log(formatter::fmt("File '%s' read from disk.", filename.c_str()));
 }
 
 void file_sys::get_exec_path(std::string *exec_dir, const char *const argv_first)
@@ -950,6 +944,7 @@ void voxel_global::init() noexcept
 
 voxel_global::~voxel_global()
 {
+	delete[] faces_lk_ptr; // Clean memory from lookup table
 	// Possibly wait for screenshot to finish, but include a timeout just in case
 	int frame_counts = 0;
 	const int max_frames = game.screen_refresh_rate * 5;
@@ -962,5 +957,4 @@ voxel_global::global_cleaner::~global_cleaner()
 	// Therefore, this 'cleaner' object should be placed at the top to guarantee
 	// GLFW termination occurs at the very end, after buffers are deleted.
 	glfwTerminate(); // Terminate GLFW library
-	
 }

@@ -35,7 +35,7 @@ public:
 		const world_full_chunk *full_chunk,
 		const world_xzpos *const xz_offset,
 		face_counts_obj *const result_counters,
-		int y_offset,
+		pos_t y_offset,
 		quad_data_t *const quads_results_ptr
 	);
 };
