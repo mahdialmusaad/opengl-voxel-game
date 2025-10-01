@@ -14,18 +14,18 @@ void camera_frustum::update_frustum_vals(
 	double fov_y
 ) noexcept {
 	// Calculate frustum values
-	const double half_v_side = far_plane * tan(fov_y * 0.5);
+	const double half_v_side = far_plane * ::tan(fov_y * 0.5);
 	const double half_h_side = half_v_side * static_cast<double>(game.window_wh_aspect);
 	const vector3d front_end = cam_front * far_plane;
 
 	// Set each plane's values
-	right = { position, (front_end - cam_right * half_h_side).c_cross(cam_up) };
-	left = { position, cam_up.c_cross(front_end + cam_right * half_h_side) };
+	right_pl = { position, (front_end - cam_right * half_h_side).c_cross(cam_up) };
+	left_pl = { position, cam_up.c_cross(front_end + cam_right * half_h_side) };
 	
-	top = { position, cam_right.c_cross(front_end - cam_up * half_v_side) };
-	bottom = { position, (front_end + cam_up * half_v_side).c_cross(cam_right) };
+	top_pl = { position, cam_right.c_cross(front_end - cam_up * half_v_side) };
+	bottom_pl = { position, (front_end + cam_up * half_v_side).c_cross(cam_right) };
 
-	near = { position + cam_front * near_plane, cam_front };
+	near_pl = { position + cam_front * near_plane, cam_front };
 }
 
 bool camera_frustum::is_chunk_visible(const vector3d &corner) const noexcept
@@ -40,9 +40,9 @@ bool camera_frustum::is_chunk_visible(const vector3d &corner) const noexcept
 	constexpr vector3d center_offset = vector3d(0.5 * chunk_vals::size);
 	const vector3d center = corner + center_offset;
 	
-	return top   .neg_dist_to_plane(center) <= chunk_spherical_radius &&
-	       near  .neg_dist_to_plane(center) <= chunk_spherical_radius &&
-	       left  .neg_dist_to_plane(center) <= chunk_spherical_radius &&
-	       right .neg_dist_to_plane(center) <= chunk_spherical_radius &&
-	       bottom.neg_dist_to_plane(center) <= chunk_spherical_radius;
+	return top_pl   .neg_dist_to_plane(center) <= chunk_spherical_radius &&
+	       near_pl  .neg_dist_to_plane(center) <= chunk_spherical_radius &&
+	       left_pl  .neg_dist_to_plane(center) <= chunk_spherical_radius &&
+	       right_pl .neg_dist_to_plane(center) <= chunk_spherical_radius &&
+	       bottom_pl.neg_dist_to_plane(center) <= chunk_spherical_radius;
 }

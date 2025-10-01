@@ -1,5 +1,5 @@
-#ifndef _SOURCE_APPLICATION_CALLBACKS_HDR_
-#define _SOURCE_APPLICATION_CALLBACKS_HDR_
+#ifndef SOURCE_APPLICATION_CALLBACKS_VXL_HDR
+#define SOURCE_APPLICATION_CALLBACKS_VXL_HDR
 
 #include "Player/Player.hpp"
 #include "World/Sky.hpp"
@@ -111,12 +111,17 @@ namespace callbacks_wrappers {
 	inline void window_move_cb(GLFWwindow*, int x, int y) { cb_wr->window_move(x, y); }
 	inline void window_close_cb(GLFWwindow*) { cb_wr->window_close(); }
 
-	inline APIENTRY void gl_debug_out(GLenum source, GLenum type, unsigned id, GLenum severity, GLsizei, const char *message, const void*) {
-		if (id == 131185 || id == 131154) return;
-		formatter::warn(formatter::fmt("%s (ID %u) - %s%s%s", message, id,
-			ogl::err_src_str(source), ogl::err_typ_str(type), ogl::err_svt_str(severity))
-		);
-	}
+	// APIENTRY, on Windows, corresponds to __stdcall, which cannot be inline.
+	// More OGL debug info can be found at https://wikis.khronos.org/opengl/Debug_Output
+	APIENTRY void gl_debug_out(
+		GLenum source,
+		GLenum type,
+		unsigned id,
+		GLenum severity,
+		GLsizei,
+		const char *message,
+		const void*
+	);
 };
 
-#endif // _SOURCE_APPLICATION_CALLBACKS_HDR_
+#endif // SOURCE_APPLICATION_CALLBACKS_VXL_HDR

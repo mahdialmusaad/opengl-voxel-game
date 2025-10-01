@@ -1,4 +1,5 @@
 #include "Game.hpp"
+#include "Callbacks.hpp"
 
 game_callbacks::game_callbacks(main_game_obj *app_ptr) : m_app(app_ptr)
 {
@@ -422,7 +423,7 @@ void game_callbacks::add_chat_text(std::string message, bool auto_new_line) noex
 	cur_chat_text += message;
 
 	// Remove previous lines if the whole text has too many lines
-	const int lines_to_remove = formatter::count_char(cur_chat_text, '\n') - glob_txt_rndr->chat_lines_limit;
+	const int lines_to_remove = formatter::count_char(cur_chat_text, '\n') - ::glob_txt_rndr->chat_lines_limit;
 	if (lines_to_remove > 0) cur_chat_text = cur_chat_text.substr(formatter::get_nth_found(cur_chat_text, '\n', lines_to_remove) + 1);
 
 	// Update text with new message
@@ -431,7 +432,7 @@ void game_callbacks::add_chat_text(std::string message, bool auto_new_line) noex
 
 void game_callbacks::to_chat_fmt_text(std::string &text) const noexcept
 {
-	const size_t line_char_limit = glob_txt_rndr->chat_line_char_limit;
+	const size_t line_char_limit = ::glob_txt_rndr->chat_line_char_limit;
 	size_t space_ind = 0;
 
 	// Traverse through each word of the text, replacing spaces with new lines so each line
@@ -547,7 +548,7 @@ void game_callbacks::apply_cmd_text()
 			if (cmd->description[0] == '_') continue; // Ignore debug commands
 			const std::string &args_txt = cmd->arguments_names_list.size() ?
 			      cmd->arguments_names_list :
-			      (cmd->value_query_function == nullptr ? "(None)" : default_query_txt);
+			      (!cmd->value_query_function ? "(None)" : default_query_txt);
 			display_txt += formatter::fmt(
 				"\n/%s %s -- Arguments: %s",
 				cmd->cmd_base_name.c_str(),
@@ -558,11 +559,11 @@ void game_callbacks::apply_cmd_text()
 		
 		// Determine section to show depending on the page using chat-formatted version of the help text
 		to_chat_fmt_text(display_txt);
-		const size_t start = formatter::get_nth_found(display_txt, '\n', page * glob_txt_rndr->chat_lines_limit);
-		const size_t end = formatter::get_nth_found(display_txt, '\n', (page + 1) * glob_txt_rndr->chat_lines_limit);
+		const size_t start = formatter::get_nth_found(display_txt, '\n', page * ::glob_txt_rndr->chat_lines_limit);
+		const size_t end = formatter::get_nth_found(display_txt, '\n', (page + 1) * ::glob_txt_rndr->chat_lines_limit);
 		display_txt = display_txt.substr(start, end - start) + " ";
 		
-		add_chat_text(display_txt, false); // Add help message to chat
+		m_app->m_chat_txt.set_text(display_txt);
 	};
 
 	// Shortcut variables
@@ -882,4 +883,19 @@ void game_callbacks::conv_cmd(const tilde_conversion_data &data)
 			(formatter::conv_to_imax(after_tilde_text) *
 			static_cast<intmax_t>(is_neg ? -1 : 1))
 		);
+}
+
+APIENTRY void callbacks_wrappers::gl_debug_out(
+	GLenum source,
+	GLenum type,
+	unsigned id,
+	GLenum severity,
+	GLsizei,
+	const char *message,
+	const void*
+) {
+	if (id == 131185 || id == 131154) return; // Ignore not-so-useful debug outputs (e.g. buffer creation)
+	formatter::warn(formatter::fmt("%s (ID %u) - %s%s%s", message, id,
+		ogl::err_src_str(source), ogl::err_typ_str(type), ogl::err_svt_str(severity))
+	);
 }

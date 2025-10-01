@@ -420,7 +420,7 @@ do { // I'd prefer if I didn't have to indent the whole generation logic for thi
 	});
 
 	gen_thread_conditional_wait(gen_state_en::gen_finished); // Wait for a game exit or a generation event
-} while (game.is_active);
+} while (game.is_active); // End of 'do...while' loop 
 }
 
 bool world_obj::gen_thread_conditional_wait(gen_state_en new_state)

@@ -228,13 +228,13 @@ void tr_tx_obj::fade_after_time(double seconds) noexcept
 }
 
 float tr_tx_obj::get_sz_mult() const noexcept { return m_font_size / default_font_size; }
-float tr_tx_obj::get_char_spacing() const noexcept { return (glob_txt_rndr->text_width + m_extra_char_spacing) * get_sz_mult(); }
-float tr_tx_obj::get_line_spacing() const noexcept { return (glob_txt_rndr->text_height + m_extra_line_spacing) * get_sz_mult(); }
+float tr_tx_obj::get_char_spacing() const noexcept { return (::glob_txt_rndr->text_width + m_extra_char_spacing) * get_sz_mult(); }
+float tr_tx_obj::get_line_spacing() const noexcept { return (::glob_txt_rndr->text_height + m_extra_line_spacing) * get_sz_mult(); }
 float tr_tx_obj::get_spc_sz() const noexcept { return get_char_spacing() * 4.0f; }
 
-float tr_tx_obj::get_char_displ_height() const noexcept { return glob_txt_rndr->text_height * get_sz_mult(); }
+float tr_tx_obj::get_char_displ_height() const noexcept { return ::glob_txt_rndr->text_height * get_sz_mult(); }
 float tr_tx_obj::get_char_displ_width(int char_ind) const noexcept {
-	return static_cast<float>(game.ascii_char_sizes[char_ind]) * glob_txt_rndr->text_width * get_sz_mult();
+	return static_cast<float>(game.ascii_char_sizes[char_ind]) * ::glob_txt_rndr->text_width * get_sz_mult();
 }
 
 float tr_tx_obj::get_width() const noexcept
@@ -273,7 +273,7 @@ float tr_tx_obj::get_width() const noexcept
 float tr_tx_obj::get_height() const noexcept
 {
 	// Multiply line height (from font size and set line spacing) with number of lines
-	return get_sz_mult() * (glob_txt_rndr->text_height + m_extra_line_spacing) *
+	return get_sz_mult() * (::glob_txt_rndr->text_height + m_extra_line_spacing) *
 	       static_cast<float>(formatter::count_char(m_text, '\n') + 1); // Add 1 to include last line
 }
 
@@ -361,7 +361,7 @@ void tr_tx_obj::upd_text_buf() noexcept
 		if (has_shadow) {
 			const uint32_t black_colour_int_val = colour_int_val & 0xFF000000;
 			const buf_char_inst shadow_char_data = {
-				curr_pos.x + (glob_txt_rndr->text_width * 0.5f), 
+				curr_pos.x + (::glob_txt_rndr->text_width * 0.5f), 
 				curr_pos.y - texture_rel_height, char_width, height,
 				char_data.char_ind, black_colour_int_val
 			};

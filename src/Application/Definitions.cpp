@@ -51,7 +51,7 @@ void thread_ops::wait_avg_frame() noexcept
 
 // -------------------- formatter -------------------- 
 
-void formatter::log(const std::string &t) noexcept { printf("[ %.3fms ] %s\n", glfwGetTime() * 1000.0, t.c_str()); }
+void formatter::log(const std::string &t) noexcept { ::printf("[ %.3fms ] %s\n", glfwGetTime() * 1000.0, t.c_str()); }
 void formatter::warn(const std::string &t, unsigned warn_bits) noexcept
 {
 	// Different warning type prefixes from bitmap
@@ -65,13 +65,13 @@ void formatter::warn(const std::string &t, unsigned warn_bits) noexcept
 
 	// Log with warning text at the start so these messages are easily
 	// differentiable from normal logs
-	printf("%s", warn_prefix.c_str());
+	::printf("%s", warn_prefix.c_str());
 	log(t);
 }
 
 void formatter::_fmt_abort() noexcept
 {
-	printf("[ERROR] "); // Error output before timestamp to make it more noticeable
+	::printf("[ERROR] "); // Error output before timestamp to make it more noticeable
 	formatter::log(game.error_msg); // Print out stored error message
 	::exit(game.error_code); // Exit with given code
 }
@@ -80,19 +80,19 @@ void formatter::init_abort(int code) noexcept
 {
 	// Set global exit message with specific message depending on given fail code
 	game.error_code = code;
-	switch (game.frame_update_interval)
+	switch (game.error_code)
 	{
 	case VOXEL_ERR_GLFW_INIT:
-		game.current_exec_dir = "Failed to initialize GLFW";
+		game.error_msg = "Failed to initialize GLFW";
 		break;
 	case VOXEL_ERR_WINDOW_INIT:
-		game.current_exec_dir = "Failed to create window";
+		game.error_msg = "Failed to create window";
 		break;
 	case VOXEL_ERR_LOADER:
-		game.current_exec_dir = "Failed to initialize function loader";
+		game.error_msg = "Failed to initialize function loader";
 		break;
 	default:
-		game.current_exec_dir = "Unknown"; 
+		game.error_msg = "Unknown"; 
 		break;
 	}
 	_fmt_abort();
@@ -115,7 +115,7 @@ int formatter::get_cur_msecs() noexcept
 
 tm formatter::get_cur_time() noexcept
 {
-	const time_t time_secs = time(NULL); // Get current time as long
+	const time_t time_secs = ::time(NULL); // Get current time as long
 	tm time_vals_result; // Resulting time structure
 
 	#if defined(VOXEL_UNIX)
@@ -648,7 +648,7 @@ void shaders_obj::base_prog::set_uint(const char *name, GLuint val) const noexce
 void shaders_obj::base_prog::set_int(const char *name, GLint val) const noexcept { glUniform1i(get_loc(name), val); }
 
 void shaders_obj::base_prog::destroy_now() noexcept { glDeleteProgram(program); program = 0; }
-shaders_obj::base_prog::~base_prog() { if (program) glDeleteProgram(program); }
+shaders_obj::base_prog::~base_prog() { if (program && game.libraries_inited) glDeleteProgram(program); }
 
 // -------------------- shader_ubo_obj --------------------
 
@@ -720,7 +720,7 @@ void shaders_obj::shader_ubo_base::update_specific(size_t bytes, size_t offset) 
 	glBufferSubData(GL_UNIFORM_BUFFER, offset, bytes, get_data_ptr());
 }
 
-shaders_obj::shader_ubo_base::~shader_ubo_base() { glDeleteBuffers(1, &ubo); }
+shaders_obj::shader_ubo_base::~shader_ubo_base() { if (game.libraries_inited) glDeleteBuffers(1, &ubo); }
 
 // -------------------- shaders_obj::texture_obj -------------------- 
 
@@ -765,7 +765,7 @@ void shaders_obj::shader_texture_list::texture_obj::add_ogl_img() noexcept
 	::free(pixels); // No longer need image data - loaded for use in shaders
 }
 
-shaders_obj::shader_texture_list::texture_obj::~texture_obj() { glDeleteTextures(1, &bind_id); }
+shaders_obj::shader_texture_list::texture_obj::~texture_obj() { if (game.libraries_inited) glDeleteTextures(1, &bind_id); }
 
 // -------------------- file_sys -------------------- 
 
@@ -937,7 +937,7 @@ void voxel_global::init() noexcept
 	game_started_time = ct; // Set game start time
 
 	// Output current time
-	printf("Started on %02d/%02d/%d %02d:%02d:%02d\n",
+	::printf("Started on %02d/%02d/%d %02d:%02d:%02d\n",
 		ct.tm_mday, ct.tm_mon + 1, ct.tm_year + 1900, ct.tm_hour, ct.tm_min, ct.tm_sec
 	);
 }

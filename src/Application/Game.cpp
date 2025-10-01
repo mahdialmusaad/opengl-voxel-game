@@ -10,7 +10,7 @@ main_game_obj::main_game_obj() noexcept :
 	aspect_changed();
 	
 	// Initialize global text renderer object
-	glob_txt_rndr = &m_glob_text_rndr_obj;
+	::glob_txt_rndr = &m_glob_text_rndr_obj;
 	m_glob_text_rndr_obj.init_renderer(); 
 
 	// Text objects creation
@@ -30,7 +30,7 @@ main_game_obj::main_game_obj() noexcept :
 	m_glob_text_rndr_obj.init_text_obj(&m_static_info_txt, { leftmost, 0.99f }, info_fmt, bg_shadow_dbg);
 
 	// Normal chat text
-	m_glob_text_rndr_obj.init_text_obj(&m_chat_txt, { leftmost, -0.15f }, "", bg_shadow, def_font_size, false);
+	m_glob_text_rndr_obj.init_text_obj(&m_chat_txt, { leftmost, -0.12f }, "", bg_shadow, def_font_size, false);
 	m_glob_text_rndr_obj.init_text_obj(&m_command_text, { leftmost, -0.74f }, "",
 		bg_shadow | text_renderer_obj::ts_bg_full_width, def_font_size, false
 	); // Command text (takes up full width)

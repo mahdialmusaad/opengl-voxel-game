@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _SOURCE_PLAYER_PLRDEF_HDR_
-#define _SOURCE_PLAYER_PLRDEF_HDR_
+#ifndef SOURCE_PLAYER_PLRDEF_VXL_HDR
+#define SOURCE_PLAYER_PLRDEF_VXL_HDR
 
 #include "World/Chunk.hpp"
 #include "Rendering/Frustum.hpp"
@@ -40,4 +40,4 @@ struct world_acc_player
 	double base_speed = 1.0, active_speed = 1.0;
 };
 
-#endif // _SOURCE_PLAYER_PLRDEF_HDR_
+#endif // SOURCE_PLAYER_PLRDEF_VXL_HDR

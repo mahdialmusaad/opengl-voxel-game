@@ -105,7 +105,7 @@ void player_inst::init_text() noexcept
 	// Selected block information text - created in player class instead of
 	// with other text objects so it can be updated only when the selected block changes
 	const float default_size = text_renderer_obj::text_obj::default_font_size;
-	glob_txt_rndr->init_text_obj(&m_block_text,
+	::glob_txt_rndr->init_text_obj(&m_block_text,
 		{}, "", text_renderer_obj::ts_shadow | text_renderer_obj::ts_bg | text_renderer_obj::ts_is_debug
 	);
 	
@@ -118,7 +118,7 @@ void player_inst::init_text() noexcept
 		const std::string text = slot->count ? std::to_string(slot->count) : "";
 
 		// Position is determined in update_item_text_pos function, leave empty for now
-		glob_txt_rndr->init_text_obj(slot_text, {}, text,
+		::glob_txt_rndr->init_text_obj(slot_text, {}, text,
 			text_renderer_obj::ts_shadow | (text_renderer_obj::ts_in_inv),
 			default_size - 2.0f, slot->count
 		);
@@ -126,7 +126,7 @@ void player_inst::init_text() noexcept
 		// Also create copy of inventory hotbar for normal hotbar
 		if (slot_ind < 9) {
 			text_renderer_obj::text_obj *const linked_hotbar_text = m_hotbar_text + slot_ind;
-			glob_txt_rndr->init_text_obj(linked_hotbar_text, slot_text);
+			::glob_txt_rndr->init_text_obj(linked_hotbar_text, slot_text);
 		}
 	}
 
@@ -423,12 +423,13 @@ void player_inst::draw_inventory_gui()  noexcept
 	// Draw hotbar instances (crosshair only if inventory is closed)
 	glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, m_hotbar_instances - player.inventory_open);
 
-	for (int i = 0; i < 9; ++i) glob_txt_rndr->render_single(m_hotbar_text + i, !i, true); // Render hotbar text
+	for (int i = 0; i < 9; ++i) ::glob_txt_rndr->render_single(m_hotbar_text + i, !i, true); // Render hotbar text
 	if (!player.inventory_open) return; // Don't draw inventory elements if not open
 
 	game.shaders.programs.inventory.bind_and_use(m_inventory_vao); // Switch back to inventory drawing
-	glDrawArraysInstancedBaseInstance(GL_TRIANGLE_STRIP, 0, 4, m_inv_instances - m_hotbar_instances, m_hotbar_instances); // Draw rest of inventory
-	for (int i = 9; i < 36; ++i) glob_txt_rndr->render_single(m_slot_text + i, i == 9, true); // Render inventory text
+	// Draw rest of inventory (dark background, slots on the middle of the screen)
+	glDrawArraysInstancedBaseInstance(GL_TRIANGLE_STRIP, 0, 4, m_inv_instances - m_hotbar_instances, m_hotbar_instances);
+	for (int i = 9; i < 36; ++i) ::glob_txt_rndr->render_single(m_slot_text + i, i == 9, true); // Render inventory text
 }
 
 void player_inst::update_cam_dir_vars(double x, double y) noexcept
@@ -608,13 +609,13 @@ void player_inst::upd_cam_vectors() noexcept
 	// Trig values from yaw and pitch radians
 	const double yaw_radians = math::radians(player.yaw);
 	const double pitch_radians = math::radians(player.pitch);
-	const double pitch_radians_cosine = cos(pitch_radians);
+	const double pitch_radians_cosine = ::cos(pitch_radians);
 	
 	// Set front and right camera vectors
 	m_cam_front = vector3d(
-		cos(yaw_radians) * pitch_radians_cosine,
-		sin(pitch_radians),
-		sin(yaw_radians) * pitch_radians_cosine
+		::cos(yaw_radians) * pitch_radians_cosine,
+		::sin(pitch_radians),
+		::sin(yaw_radians) * pitch_radians_cosine
 	).to_unit();
 	m_cam_right = m_cam_front.c_cross({ 0.0, 1.0, 0.0 }).to_unit();
 

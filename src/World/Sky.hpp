@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _SOURCE_WORLD_SKY_HDR_
-#define _SOURCE_WORLD_SKY_HDR_
+#ifndef SOURCE_WORLD_SKY_VXL_HDR
+#define SOURCE_WORLD_SKY_VXL_HDR
 
 #include "Application/Definitions.hpp"
 
@@ -27,4 +27,4 @@ private:
 	void generate_planets() noexcept;
 };
 
-#endif
+#endif // SOURCE_WORLD_SKY_VXL_HDR

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _SOURCE_GENERATION_PERLIN_HDR_
-#define _SOURCE_GENERATION_PERLIN_HDR_
+#ifndef SOURCE_GENERATION_PERLIN_VXL_HDR
+#define SOURCE_GENERATION_PERLIN_VXL_HDR
 
 #include <random>
 #include "World/Generation/Vector.hpp"
@@ -58,4 +58,4 @@ struct noise_obj_list
 	noise_object elevation, flatness, depth, temperature, humidity;
 };
 
-#endif // _SOURCE_GENERATION_PERLIN_HDR_
+#endif // SOURCE_GENERATION_PERLIN_VXL_HDR

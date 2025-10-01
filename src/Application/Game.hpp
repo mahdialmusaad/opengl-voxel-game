@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _SOURCE_APPLICATION_GAME_HDR_
-#define _SOURCE_APPLICATION_GAME_HDR_
+#ifndef SOURCE_APPLICATION_GAME_VXL_HDR
+#define SOURCE_APPLICATION_GAME_VXL_HDR
 
 #include "Callbacks.hpp"
 
@@ -39,4 +39,4 @@ private:
 	double manage_game_time(bool is_changing_time, double t = 0.0) noexcept;
 };
 
-#endif // _SOURCE_APPLICATION_GAME_HDR_
+#endif // SOURCE_APPLICATION_GAME_VXL_HDR

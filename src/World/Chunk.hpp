@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _SOURCE_WORLD_CHUNK_HDR_
-#define _SOURCE_WORLD_CHUNK_HDR_
+#ifndef SOURCE_WORLD_CHUNK_VXL_HDR
+#define SOURCE_WORLD_CHUNK_VXL_HDR
 
 #include "World/Generation/Perlin.hpp"
 #include "World/Generation/Settings.hpp"
@@ -47,4 +47,4 @@ struct world_full_chunk {
 	~world_full_chunk();
 };
 
-#endif
+#endif // SOURCE_WORLD_CHUNK_VXL_HDR

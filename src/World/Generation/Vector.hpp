@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _SOURCE_GENERATION_VECTOR_HDR_
-#define _SOURCE_GENERATION_VECTOR_HDR_
+#ifndef SOURCE_GENERATION_VECTOR_VXL_HDR
+#define SOURCE_GENERATION_VECTOR_VXL_HDR
 
 #include <type_traits>
 #include <limits.h>
@@ -408,24 +408,24 @@ struct matrix<T, 4, 4> {
 	}
 
 	static mat_t rotate(const mat_t &mat, T angle, const vector<T, 3> &axis) noexcept {
-		const T c = cos(angle);
-		const T s = sin(angle);
+		const T c = ::cos(angle);
+		const T s = ::sin(angle);
 		
 		const vector<T, 3> ax = axis.c_unit();
 		const vector<T, 3> ot = axis * (static_cast<T>(1) - c);
 
 		mat_t rot;
-		rot.vx.x = fma(ax.x, ot.x, c);
+		rot.vx.x = ::fma(ax.x, ot.x, c);
 		rot.vx.y = ot.x * ax.y + s * ax.z;
 		rot.vx.z = ot.x * ax.z - s * ax.y;
 
 		rot.vy.x = ot.y * ax.x - s * ax.z;
-		rot.vy.y = fma(ax.y, ot.y, c);
+		rot.vy.y = ::fma(ax.y, ot.y, c);
 		rot.vy.z = ot.y * ax.z + s * ax.x;
 
 		rot.vz.x = ot.z * ax.x + s * ax.y;
 		rot.vz.y = ot.z * ax.y - s * ax.x;
-		rot.vz.z = fma(ax.z, ot.z, c);
+		rot.vz.z = ::fma(ax.z, ot.z, c);
 
 		mat_t result;
 		result.vx = (mat.vx * rot.vx.x) + (mat.vy * rot.vx.y) + (mat.vz * rot.vx.z);
@@ -436,7 +436,7 @@ struct matrix<T, 4, 4> {
 	}
 
 	static mat_t perspective(T fov_y, T aspect, T near_plane_dist, T far_plane_dist) noexcept {
-		const T half_tangent = tan(fov_y / static_cast<T>(2));
+		const T half_tangent = ::tan(fov_y / static_cast<T>(2));
 
 		mat_t result{};
 		result.vx.x = static_cast<T>(1) / (aspect * half_tangent);
@@ -451,4 +451,4 @@ struct matrix<T, 4, 4> {
 
 typedef matrix<float, 4, 4> matrixf4x4;
 
-#endif // _SOURCE_GENERATION_VECTOR_HDR_
+#endif // SOURCE_GENERATION_VECTOR_VXL_HDR

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _SOURCE_WORLD_WLD_HEADER_
-#define _SOURCE_WORLD_WLD_HEADER_
+#ifndef SOURCE_WORLD_WLD_VXL_HDR
+#define SOURCE_WORLD_WLD_VXL_HDR
 
 #include "Player/PlayerDef.hpp"
 #include "Rendering/TextRenderer.hpp"
@@ -77,7 +77,7 @@ private:
 	GLuint m_world_ssbo, m_world_dib;
 	GLsizei m_indirect_calls;
 
-	int32_t m_render_distance = 0;
+	int32_t m_render_distance = 4;
 
 	enum gen_state_en : uint8_t {
 		both_finish,
@@ -156,4 +156,4 @@ private:
 	} m_generator;
 };
 
-#endif
+#endif // SOURCE_WORLD_WLD_VXL_HDR

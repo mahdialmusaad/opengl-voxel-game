@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _SOURCE_RENDERING_FRUSTUM_HDR_
-#define _SOURCE_RENDERING_FRUSTUM_HDR_
+#ifndef SOURCE_RENDERING_FRUSTUM_VXL_HDR
+#define SOURCE_RENDERING_FRUSTUM_VXL_HDR
 
 #include "World/Generation/Settings.hpp"
 
@@ -33,7 +33,7 @@ struct camera_frustum
 
 	// The 'far' plane would prevent rendering of chunks further away than it so
 	// it is not included in frustum checks. This also improves performance slightly.
-	frust_plane top, near, left, right, bottom;
+	frust_plane top_pl, near_pl, left_pl, right_pl, bottom_pl;
 };
 
-#endif // _SOURCE_RENDERING_FRUSTUM_HDR_
+#endif // SOURCE_RENDERING_FRUSTUM_VXL_HDR

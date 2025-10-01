@@ -81,9 +81,10 @@ void world_chunk::mesh_faces(
  		const auto it = chunks_map.find(new_offset); // Look for a full chunk struct with the calculate offset
 		// Add possible adjacent chunk if one is found with valid blocks
 		if (it != chunks_map.end() && it->second->subchunks[y_offset].blocks)
-		nearby_ptrs[i + ((i >= wdir_up) * 2)] = it != chunks_map.end() && it->second->subchunks[y_offset].blocks ?
-		                 it->second->subchunks[y_offset].blocks[0][0][0] :
-		                 nullptr;
+		nearby_ptrs[i + ((i >= wdir_up) * 2)] =
+		        it != chunks_map.end() && it->second->subchunks[y_offset].blocks ?
+		              it->second->subchunks[y_offset].blocks[0][0][0] :
+		              nullptr;
 	}
 
 	// Saved lookup data and chunk indexes

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _SOURCE_GENERATION_SETTINGS_HDR_
-#define _SOURCE_GENERATION_SETTINGS_HDR_
+#ifndef SOURCE_GENERATION_SETTINGS_VXL_HDR
+#define SOURCE_GENERATION_SETTINGS_VXL_HDR
 
 #include "Application/Definitions.hpp"
 
@@ -287,4 +287,4 @@ namespace val_limits
 	constexpr lim_vec<double> tick_limits = { -200.0, 200.0 };
 }
 
-#endif // _SOURCE_GENERATION_SETTINGS_HDR_
+#endif // SOURCE_GENERATION_SETTINGS_VXL_HDR

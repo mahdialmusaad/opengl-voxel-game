@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _SOURCE_PLAYER_PLR_HDR_
-#define _SOURCE_PLAYER_PLR_HDR_
+#ifndef SOURCE_PLAYER_PLR_VXL_HDR
+#define SOURCE_PLAYER_PLR_VXL_HDR
 
 #include "World/World.hpp"
 
@@ -90,4 +90,4 @@ private:
 	vector3d m_velocity;
 };
 
-#endif
+#endif // SOURCE_PLAYER_PLR_VXL_HDR

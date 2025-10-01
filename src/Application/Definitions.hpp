@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _SOURCE_APPLICATION_DEFS_HDR_
-#define _SOURCE_APPLICATION_DEFS_HDR_
+#ifndef SOURCE_APPLICATION_DEFS_VXL_HDR
+#define SOURCE_APPLICATION_DEFS_VXL_HDR
 
 #if !defined(NDEBUG)
 #define VOXEL_DEBUG
@@ -11,6 +11,56 @@
 #else
 #define VOXEL_RESTRICT restrict
 #endif
+
+#define VOXEL_UNUSED(value) do { (void)(value); } while (0)
+
+#define VOXEL_ERR_GLFW_INIT -1
+#define VOXEL_ERR_WINDOW_INIT -2
+#define VOXEL_ERR_LOADER -3
+#define VOXEL_ERR_CUSTOM -4
+
+#if defined(VOXEL_CPP)
+#define LODEPNG_NO_COMPILE_CPP
+extern "C" {
+#endif
+
+// glad - OpenGL API function loader
+#include "glad/voxel_glad.h"
+
+// GLFW - Window and input library
+#include "glfw/include/GLFW/glfw3.h"
+
+// lodepng - PNG encoder and decoder
+#include "lodepng/lodepng.h"
+
+// C libraries
+#include <time.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <inttypes.h>
+#include <sys/stat.h>
+
+#if defined(VOXEL_CPP)
+}
+#endif
+
+// C++ libraries
+#include <mutex>
+#include <thread>
+#include <condition_variable>
+
+#include <string>
+#include <fstream>
+
+#include <random>
+#include <stdexcept>
+#include <algorithm>
+#include <functional>
+#include <unordered_map>
+
+// Local vector header
+#include "World/Generation/Vector.hpp"
 
 // Compiler directives
 #if defined(__MINGW32__)
@@ -63,72 +113,30 @@
 #define VOXEL_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 // Thanks, Microsoft. (#1)
-#define getcwd _getcwd
-// I mean, seriously? A global min and max macro?
-// Did you really think there would be no name collisions?
+// Who thought that #define-ing a bunch of macros with extremely
+// simple and common names like 'max' would be a good idea?
 #define NOMINMAX
 #include <windows.h>
+#include <direct.h>
+#define getcwd _getcwd
+#  if !defined(SSIZE_T)
+#  define SSIZE_T signed long long int
+#endif
+#define ssize_t SSIZE_T
 #  if defined(_WIN64) || defined(VOXEL_CYGWIN)
 #  define VOXEL_WIN64
 #  endif
 #endif
 
-#define VOXEL_UNUSED(value) do { (void)(value); } while (0)
-
-#define VOXEL_ERR_GLFW_INIT -1
-#define VOXEL_ERR_WINDOW_INIT -2
-#define VOXEL_ERR_LOADER -3
-#define VOXEL_ERR_CUSTOM -4
-
-// glad - OpenGL API function loader
-#include "glad/voxel_glad.h"
-
-// GLFW - Window and input library
-#include "glfw/include/GLFW/glfw3.h"
-
-// lodepng - PNG encoder and decoder
-#if defined(VOXEL_CPP)
-#define LODEPNG_NO_COMPILE_CPP
-extern "C" {
+#if !defined(PATH_MAX)
+#  if defined(MAX_PATH)
+   // Thanks, Microsoft. (#2)
+#  define PATH_MAX MAX_PATH
+#  endif
 #endif
 
-#include "lodepng/lodepng.h"
-
-#if defined(VOXEL_CPP)
-}
-#endif
-
-// Local vector header
-#include "World/Generation/Vector.hpp"
-
-// C libraries
-#include <time.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <inttypes.h>
-#include <sys/stat.h>
-
-// C++ libraries
-#include <mutex>
-#include <thread>
-#include <condition_variable>
-
-#include <string>
-#include <fstream>
-
-#include <random>
-#include <stdexcept>
-#include <algorithm>
-#include <functional>
-#include <unordered_map>
-
-#ifndef PATH_MAX
-#define PATH_MAX 0x1000
-#endif
-#if defined(MAX_PATH) && !defined(PATH_MAX)
-// Thanks, Microsoft. (#2)
-#define PATH_MAX MAX_PATH
+#if !defined(APIENTRY)
+#define APIENTRY
 #endif
 
 typedef int64_t pos_t; // Type used for positioning
@@ -516,4 +524,4 @@ struct voxel_global
 	~voxel_global();
 } extern game;
 
-#endif // _SOURCE_APPLICATION_DEFS_HDR_
+#endif // SOURCE_APPLICATION_DEFS_VXL_HDR

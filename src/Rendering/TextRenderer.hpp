@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _SOURCE_RENDERING_TEXTRENDERER_HDR_
-#define _SOURCE_RENDERING_TEXTRENDERER_HDR_
+#ifndef SOURCE_RENDERING_TEXTRENDERER_VXL_HDR
+#define SOURCE_RENDERING_TEXTRENDERER_VXL_HDR
 
 #include "Application/Definitions.hpp"
 
@@ -115,4 +115,4 @@ private:
 	GLuint m_text_vao, m_text_quad_vbo;
 } extern *glob_txt_rndr;
 
-#endif // _SOURCE_RENDERING_TEXTRENDERER_HDR_
+#endif // SOURCE_RENDERING_TEXTRENDERER_VXL_HDR
