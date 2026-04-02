@@ -3,7 +3,7 @@ A procedural open-world game written in C.
 
 <img src="markdown/main.png"></img>
 <br>
-<sup>In-game screenshot during sunrise</sup>
+<sup>In-game screenshot during the night</sup>
 
 ## Features
 - **64-bit** generation to allow worlds to span extreme distances
@@ -95,8 +95,8 @@ The command '**/help**' displays information on how commands are formatted. It a
 Writing any command with the only argument as `?` or with an invalid number of arguments will display help for that command.
 
 <hr>
+
 <img src="markdown/cmd.png"></img>
-<br>
 <sup>In-game screenshot with GUI enabled</sup>
 
 ## Controls
@@ -151,3 +151,10 @@ cmake -B ./build
 cmake --build build
 ```
 The resulting executable can be found in the `game` directory alongside required resources.
+
+## Changelog
+### v1.0.5:
+- Chat fixes
+- Windows compilation fixes
+- Scaling fixes for initialization
+- In-game warning fixes for duplicate face textures
