@@ -1,0 +1,103 @@
+# Entry format:
+#   @suffix                   <--- Blocks with this suffix are given this mesh
+#   %X 0 1 3 1 2 3            <--- %Axis index1 index2....
+#   0.0 0.0 0.0  0.0 0.0      <--- X Y Z U V
+#   0.0 0.0 0.0  0.0 0.0
+#   (more vertices...)
+#   %Y 0 1 2 3 0 1
+#   0.0 0.0 0.0  0.0 0.0
+#   0.0 0.0 0.0  0.0 0.0
+#   (and so on...)
+#
+#    @suffix:     The type of blocks that the given vertex data applies to.
+#                 See 'blocks.txt' for more information. Simply, blocks with their
+#                 names ending in an underscore and then 'suffix' or blocks with a
+#                 matching name will be impacted. The '@' is for easy recognition.
+#
+#  %Axis symbol:  The face direction that the given vertex data applies to. Similar
+#                 to those seen in blocks.txt, a capital letter (X, Y, Z) means the
+#                 positive directions and lowercase means the negative directions.
+#                 The '%' symbol is prefixed for easy recognition as well.
+# 
+#  Axis numbers:  The EBO indices to use for the below vertex data for the current
+#                 face vertices. The first vertex is index 0. Indices should be in
+#                 clockwise order as back face culling is used.
+#
+#  Decimal list:  The actual vertex data for each face direction. The first three
+#                 numbers are the 3D position of the vertex, and the other two are
+#                 the UV (texture) coordinates. Each number is in the range [0, 1].
+#
+# Spacing is arbitrary, but the lines must match,
+# and each number obviously needs to be separated.
+#
+# For correct ambient occlusion, vertices should be ordered by:
+# 1. Vertices near the top-left corner
+# 2. Vertices near the top-right corner
+# 4. Vertices near the bottom-right corner
+# 3. Vertices near the bottom-left corner
+# TODO: Auto-detect corner
+#
+# By default, the first entry is used.
+#
+@block
+%X 3 1 0 1 3 2
+1.0 1.0 1.0  0.0 0.0
+1.0 1.0 0.0  1.0 0.0
+1.0 0.0 0.0  1.0 1.0
+1.0 0.0 1.0  0.0 1.0
+%Y 1 0 2 0 3 2
+1.0 1.0 0.0  0.0 0.0
+1.0 1.0 1.0  1.0 0.0
+0.0 1.0 1.0  1.0 1.0
+0.0 1.0 0.0  0.0 1.0
+%Z 1 0 2 0 3 2
+0.0 1.0 1.0  0.0 0.0
+1.0 1.0 1.0  1.0 0.0
+1.0 0.0 1.0  1.0 1.0
+0.0 0.0 1.0  0.0 1.0
+%x 3 1 0 1 3 2
+0.0 1.0 0.0  0.0 0.0
+0.0 1.0 1.0  1.0 0.0
+0.0 0.0 1.0  1.0 1.0
+0.0 0.0 0.0  0.0 1.0
+%y 3 2 1 3 1 0
+0.0 0.0 0.0  0.0 0.0
+0.0 0.0 1.0  1.0 0.0
+1.0 0.0 1.0  1.0 1.0
+1.0 0.0 0.0  0.0 1.0
+%z 1 0 2 0 3 2
+1.0 1.0 0.0  0.0 0.0
+0.0 1.0 0.0  1.0 0.0
+0.0 0.0 0.0  1.0 1.0
+1.0 0.0 0.0  0.0 1.0
+@water
+%X 3 1 0 1 3 2
+1.0 1.0 1.0  0.0 0.0
+1.0 1.0 0.0  1.0 0.0
+1.0 0.0 0.0  1.0 1.0
+1.0 0.0 1.0  0.0 1.0
+%Y 1 0 2 0 3 2
+1.0 0.8 0.0  0.0 0.0
+1.0 0.8 1.0  1.0 0.0
+0.0 0.8 1.0  1.0 1.0
+0.0 0.8 0.0  0.0 1.0
+%Z 1 0 2 0 3 2
+0.0 1.0 1.0  0.0 0.0
+1.0 1.0 1.0  1.0 0.0
+1.0 0.0 1.0  1.0 1.0
+0.0 0.0 1.0  0.0 1.0
+%x 3 1 0 1 3 2
+0.0 1.0 0.0  0.0 0.0
+0.0 1.0 1.0  1.0 0.0
+0.0 0.0 1.0  1.0 1.0
+0.0 0.0 0.0  0.0 1.0
+%y 3 2 1 3 1 0
+0.0 0.0 0.0  0.0 0.0
+0.0 0.0 1.0  1.0 0.0
+1.0 0.0 1.0  1.0 1.0
+1.0 0.0 0.0  0.0 1.0
+%z 1 0 2 0 3 2
+1.0 1.0 0.0  0.0 0.0
+0.0 1.0 0.0  1.0 0.0
+0.0 0.0 0.0  1.0 1.0
+1.0 0.0 0.0  0.0 1.0

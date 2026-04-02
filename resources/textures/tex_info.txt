@@ -1,0 +1,8 @@
+All textures must be standard-conforming RGBA 16x16 PNG images.
+
+inventory.png and text.png are used for what you think.
+The rest are named according to resources/data/blocks.txt (block name + optional axis + .png).
+
+If your filesystem does not allow differing filenames by capitalization only
+(e.g. grassY and grassy give a filename conflict), you can just repeat the same
+axis to mitigate this (e.g. grassY and grassyy).

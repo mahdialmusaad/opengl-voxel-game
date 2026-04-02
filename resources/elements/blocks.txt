@@ -1,0 +1,32 @@
+# Entry format:
+#   name strength [-1, 32767]
+#
+# The shape of the block is determined by the name's suffix (e.g. grass_slab -> suffix = 'slab'),
+# and will default to the first entry in vertices.txt. If the entire name matches a vertex entry,
+# that will be used instead. 
+#
+# 'Strength' is a number in the above range and determines priorities.
+# A negative strength means the player does not collide with it.
+#
+# Textures should have appropriate names so they are automatically added to the block.
+# The characters after the *matching* block name (excluding the '.png') determines which faces are impacted.
+# They operate per axis (x,y,z), where a capital letter impacts the faces in the positive direction whereas
+# lowercase impacts those in the negative direction. No characters afterwards means all faces will be impacted.
+#
+# Textures example:
+#   dirtXYZ.png -> This texture is used for the X+ (right), Y+ (top) and Z+ (front) face of any 'dirt' block.
+#   dirtxyz.png -> This texture is used for the X- (left), Y- (bottom) and Z- (back) face of any 'dirt' block.
+#   dirt.png    -> This texture is used for all faces of any 'dirt' block.
+#
+# Textures with specific faces have a higher priority than a texture with 'all' faces (e.g. dirtXYZ.png has higher priority than dirt.png).
+# Any duplicates when specifying the faces will be ignored and a warning will be given.
+# Any missing faces will be seen as a black and pink grid texture.
+#
+air -1
+grass 10
+dirt 9
+stone 30
+sand 7
+water -1
+log 15
+leaves 5

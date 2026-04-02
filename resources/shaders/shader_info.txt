@@ -1,0 +1,52 @@
+All shaders are compiled with all textures and UBOs.
+GLSL compilers are usually smart enough to remove unused variables.
+
+Having a vertex and a fragment shader as 2 separate files also gets annoying,
+so instead they are both in the same file and separated by the character '@'.
+
+The version is also automatically added. No need to write "#version ...".
+
+As a result, any shader error messages will show that the error occurs on
+a line ahead of where it actually happened. You can also work out where the
+error is by looking at what variable or operation is actually causing it.
+You should be reading error messages anyways.
+
+To create UBOs or modify existing ones, you can modify src/shaders/ubo.h.
+Everything else is automatically handled. You can change the values using
+vxubo_list.<uboname>.<varname> and then update using the provided macros.
+
+To load in and be able to use a shader, add an entry to the shaders list in
+'src/shaders/programs.h' and then load it in from the initialization function
+in 'src/shaders/loader.c'.
+
+Afterwards, you can create a rendering context (include src/graphics/glctx.h)
+with the program using the provided function vxctx_init.
+
+Textures are formatted as such:
+    TX_filename
+
+    where 'filename' is the name as seen in resources/textures/gui/* without
+    the image extension. Block textures are loaded as the texture 'blocks',
+    and placed on top of each other to combine into a single image.
+
+UBOs are formatted as such:
+    type_name
+
+    where 'type' is the short version of the value's type (M4 = 4x4 matrix,
+    FLT = floating-point value and V4 = vec4 value) and 'name' is the given
+    name. They are completely optional as the names are directly set in the
+    UBO file, but it is best to remain consistent in terms of naming style.
+
+    Useful UBO variables:
+      FLT_ctime - The current relative day time. A triangle wave equation is
+                  used to calculate this (0=midday, 1=midnight, then loops).
+      FLT_gtime - The number of seconds since startup, set from GLFW's time.
+      M4_camera - Perspective multiplied by view matrix, for 3D positioning.
+
+The game needs to know which attributes are instanced so it can
+set appropriate attributes when a rendering context is created.
+This is done by writing an extra '0' before the location value.
+
+Example:
+layout (location = 0)  in vec2 normal_attribute;
+layout (location = 01) in vec2 instanced_attribute;
