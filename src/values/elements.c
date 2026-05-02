@@ -16,6 +16,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <stdio.h>
 
 #define VX_FILE_ID "elements.c"
@@ -75,7 +76,7 @@ static void vxelm_vert_determine_cull(vxelm_mesh *entry, vxelm_mesh_vertex *tri,
 
 static void vxelm_load_mesh(VX_NO_ARG)
 {
-	char *verts_file_path = vxfmt_concat_allocd(VX_FMT_CONCAT_DEFAULT, &vxfile_exec_dir, "resources/elements/vertices.txt");
+	char *verts_file_path = vxfmt_concat_allocd(VX_FMT_CONCAT_DEFAULT, &vxfile_exec_dir, "resources" VX_SEPERATOR "elements" VX_SEPERATOR "vertices.txt");
 	char *verts_file = vxfile_read(verts_file_path, VX_NULL);
 	if (!verts_file) VX_ELEMENT_ABORT("Could not open verts data file '%s'", verts_file_path);
 
@@ -206,7 +207,7 @@ static void vxelm_determine_block_mesh(vxelm_attribs *block_entry)
 
 static void vxelm_load_blocks(VX_NO_ARG)
 {
-	char *block_file_path = vxfmt_concat_allocd(VX_FMT_CONCAT_DEFAULT, &vxfile_exec_dir, "resources/elements/blocks.txt");
+	char *block_file_path = vxfmt_concat_allocd(VX_FMT_CONCAT_DEFAULT, &vxfile_exec_dir, "resources" VX_SEPERATOR "elements" VX_SEPERATOR "blocks.txt");
 	char *block_file = vxfile_read(block_file_path, VX_NULL);
 	if (!block_file) VX_ELEMENT_ABORT("Could not open block data file '%s'", block_file_path);
 
@@ -305,7 +306,7 @@ static void vxelm_add_block_texture(char *filename, size_t filename_size, unsign
 # define VX_TEX_DIR "resources/textures/blocks/"
 #else
 # include <windows.h>
-# define VX_TEX_DIR "resources\\textures\\blocks\\ "
+# define VX_TEX_DIR "resources\\textures\\blocks\\*"
 #endif
 
 static void vxelm_load_block_textures(VX_NO_ARG)
@@ -325,10 +326,10 @@ static void vxelm_load_block_textures(VX_NO_ARG)
 	vxtex_textures.blocks.width = VX_TEX_DIMS;
 
 #if VX_WINDOWS == 1
-	const size_t dirlen = strlen(textures_path) + sizeof VX_TEX_DIR - 2u;
 	WIN32_FIND_DATA found_item;
 	HANDLE tex_dir = FindFirstFile(textures_path, &found_item);
 	if (tex_dir == INVALID_HANDLE_VALUE) VX_ELEMENT_ABORT("Could not open textures folder %s", textures_path);
+	textures_path[strlen(textures_path) - 1] = '\0';
 
 	do {
 		if (found_item.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;

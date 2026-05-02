@@ -5,7 +5,7 @@
 struct vxstruct_gl_funcs gl;
 
 /* Load OpenGL function pointer. */
-#define VX_LOAD_GL(name, ret, ...) gl.name = VX_REINT_CAST(ret (APIENTRY *)(__VA_ARGS__), function_loader("gl" #name))
+#define VX_LOAD_GL(name, ret, ...) gl.name = VX_REINT_CAST(ret (VX_APIENTRY *)(__VA_ARGS__), function_loader("gl" #name))
 
 void vxgl_init_ogl(void (*(*function_loader)(const char *function_ascii_name))(VX_NO_ARG))
 {

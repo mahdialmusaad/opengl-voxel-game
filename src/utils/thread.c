@@ -7,6 +7,8 @@
 #if VX_WINDOWS == 1
 
 #include <windows.h>
+#include <processthreadsapi.h>
+#include <psapi.h>
 
 #include "directives/dcast.h"
 
@@ -63,10 +65,9 @@ void vxthr_wait_milli(unsigned int milliseconds)
 
 size_t vxthr_get_memusage(VX_NO_ARG)
 {
-	MEMORYSTATUSEX mem_state;
-	mem_state.dwLength = sizeof mem_state;
-	GlobalMemoryStatusEx(&mem_state);
-	return VX_CAST(size_t, mem_state.ullTotalPhys);
+	PROCESS_MEMORY_COUNTERS pmc;
+	GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof pmc);
+	return VX_CAST(size_t, pmc.WorkingSetSize);
 }
 
 int vxthr_get_threads(VX_NO_ARG)

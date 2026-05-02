@@ -33,6 +33,9 @@ extern struct vxstruct_global_state
 	/* Window scaling factor. */
 	float window_scale_x, window_scale_y;
 
+        /* OpenGL version identification. */
+        int ogl_major, ogl_minor;
+
 	/* Alpha of sunrise/sunset orange colour. */
 	float twilight_colour_trnsp;
 	/* Available threads on system. */

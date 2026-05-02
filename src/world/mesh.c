@@ -113,7 +113,7 @@ size_t vxwld_mesh_changes(VX_NO_ARG)
 #if VX_WLD_DEBUG - 0
 	const double mesh_elapsed = (glfwGetTime() - meshing_start) * 1000.0;
 	const double work_done = VX_CAST(double, total_actual_done + (total_actual_done == 0));
-	printf("[ MESHING ] Meshed %zu of which %zu were valid (%zu threads, %.2fms/chunk/thread, %.2fms total); %zu left\n",
+	wdbg_printf("[ MESHING ] Meshed %zu of which %zu were valid (%zu threads, %.2fms/chunk/thread, %.2fms total); %zu left\n",
 		target_work, total_actual_done, threads_used, mesh_elapsed / work_done, mesh_elapsed, vxwld_tomesh_queue.size
 	);
 #endif
@@ -136,30 +136,14 @@ static const intmax_t vxwld_dir_indices[6] = {
 /* Determines darkness from nearby blocks. */
 static inline void vxwld_determine_ambientocc(const vxblk *surrounding_blocks, intmax_t current_ind, int face, uint32_t *ao_corners_darkness)
 {
-	/* Add origin offset since the normal chunk index is given. */
-	#define B_IND(x, y, z) VX_INDEX_FROM_XYZ(x, y, z, VX_MESH_CHUNK_YBLKS, VX_MESH_CHUNK_ZBLKS) + VX_MESH_ORIGIN_INDEX
-	/* Can construct other positions from positive axis. */
-	static const int vxwld_ao_leftmost_base[6][4] = {
-		/* [0]=top left, [1]=top right, [2]=bottom right, [3]=bottom left. */
-		{ B_IND( 1,  0,  1), B_IND( 1,  1,  0), B_IND( 1,  0, -1), B_IND( 1, -1,  0) },
-		{ B_IND( 0,  1, -1), B_IND( 1,  1,  0), B_IND( 0,  1,  1), B_IND(-1,  1,  0) },
-		{ B_IND(-1,  0,  1), B_IND( 0,  1,  1), B_IND( 1,  0,  1), B_IND( 0, -1,  1) },
-		{ B_IND(-1,  0, -1), B_IND(-1,  1,  0), B_IND(-1,  0,  1), B_IND(-1, -1,  0) },
-		{ B_IND( 0, -1, -1), B_IND(-1, -1,  0), B_IND( 0, -1,  1), B_IND( 1, -1,  0) },
-		{ B_IND( 1,  0, -1), B_IND( 0,  1, -1), B_IND(-1,  0, -1), B_IND( 0, -1, -1) }
-	};
-	/* A corner's rightmost adjacent position is the same as the next corner's leftmost.
-	   The diagonal position is the sum of the leftmost and rightmost positions, but keeping the current axis. */
-	#define LM_IND(face, corner) (vxwld_ao_leftmost_base[face][corner])
-	#define RM_IND(face, corner) (LM_IND(face, corner == 3 ? 0 : corner + 1))
-	#define AO_IND(face, corner) { LM_IND(face, corner), RM_IND(face, corner), ((LM_IND(face, corner) + RM_IND(face, corner)) - vxwld_dir_indices[face]) }
+	/* Precalculated ambient occlusion adjacent offsets to improve compile times and support MSVC. */
 	static const struct vxwld_ao_data { int leftmost, rightmost, diagonal; } vxwld_ao_adjacent_positions[6][4] = {
-		{ AO_IND(0, 0), AO_IND(0, 1), AO_IND(0, 2), AO_IND(0, 3) },
-		{ AO_IND(1, 0), AO_IND(1, 1), AO_IND(1, 2), AO_IND(1, 3) },
-		{ AO_IND(2, 0), AO_IND(2, 1), AO_IND(2, 2), AO_IND(2, 3) },
-		{ AO_IND(3, 0), AO_IND(3, 1), AO_IND(3, 2), AO_IND(3, 3) },
-		{ AO_IND(4, 0), AO_IND(4, 1), AO_IND(4, 2), AO_IND(4, 3) },
-		{ AO_IND(5, 0), AO_IND(5, 1), AO_IND(5, 2), AO_IND(5, 3) }
+        	{ { 2348, 2381, 2382 }, { 2381, 2346, 2380 }, { 2346, 2313, 2312 }, { 2313, 2348, 2314 } },
+		{ { 1224, 2381, 2380 }, { 2381, 1226, 2382 }, { 1226, 69,   70   }, { 69,   1224, 68   } },
+		{ { 36,   1226, 70   }, { 1226, 2348, 2382 }, { 2348, 1158, 2314 }, { 1158, 36,   2    } },
+		{ { 34,   69,   68   }, { 69,   36,   70   }, { 36,   1,    2    }, { 1,    34,   0    } },
+		{ { 1156, 1,    0    }, { 1,    1158, 2    }, { 1158, 2313, 2314 }, { 2313, 1156, 2312 } },
+		{ { 2346, 1224, 2380 }, { 1224, 34,   68   }, { 34,   1156, 0    }, { 1156, 2346, 2312 } }
 	};
 
 	const struct vxwld_ao_data *ao_offset = vxwld_ao_adjacent_positions[face];
@@ -313,7 +297,7 @@ int vxwld_mesh(vxwld_mesh_result *result, vxblk *surrounding_blocks)
 				packed_pos.z = VX_CAST(uint64_t, 16.0f * (VX_CAST(float, region_pos.z) + vert->z)) & 0xFFFFFu;
 
 				cur->packed_pos_xy = VX_REINT_CAST(uint32_t *, &packed_pos)[0];
-				cur->packed_pos_yz = VX_REINT_CAST(uint32_t *, &packed_pos)[1];
+				cur->packed_pos_yz = VX_REINT_CAST(uint32_t *, &packed_pos)[1] & 0xFFFFFFFu;
 
 				cur->light_world = (15u - ao_corners_darkness[v]) & 0xFu;
 

@@ -7,16 +7,15 @@
 
 #include "graphics/gltypes.h" /* IWYU: export */
 
-#if !defined(APIENTRY)
-# if defined(__WIN32__) || defined(WIN32) || defined(__MINGW32__)
-#  define APIENTRY __stdcall
-# else
-#  define APIENTRY
-# endif
-#endif
-
 /* Load all OpenGL functions. */
 VX_C_FUNC void vxgl_init_ogl(void(*(*function_loader)(const char *function_ascii_name))(VX_NO_ARG));
+
+typedef void (VX_APIENTRY *DEBUGPROC)(
+	GLenum source, GLenum type,
+	GLuint id, GLenum severity,
+	GLsizei length, const GLchar *message,
+	const void *userparam
+);
 
 /* Macro collection of all OpenGL functions (base name, return type, variadic params). */
 #define VX_OPENGL_MASTER(operation)\
@@ -37,6 +36,7 @@ operation(CompileShader, void, GLuint shader);\
 operation(CreateProgram, GLuint, void);\
 operation(CreateShader, GLuint, GLenum type);\
 operation(CullFace, void, GLenum mode);\
+operation(DebugMessageCallback, void, DEBUGPROC callback, const void *userparam);\
 operation(DeleteBuffers, void, GLsizei n, const GLuint *buffers);\
 operation(DeleteProgram, void, GLuint program);\
 operation(DeleteShader, void, GLuint shader);\
@@ -89,7 +89,7 @@ operation(Viewport, void, GLint x, GLint y, GLsizei width, GLsizei height);\
 extern struct vxstruct_gl_funcs
 {
 /* Member definitions for all OpenGL functions. */
-#define VX_OPENGL_MEMBER(name, ret, ...) ret (APIENTRY *name)(__VA_ARGS__)
+#define VX_OPENGL_MEMBER(name, ret, ...) ret (VX_APIENTRY *name)(__VA_ARGS__)
 VX_OPENGL_MASTER(VX_OPENGL_MEMBER)
 #undef VX_OPENGL_MEMBER
 } gl;

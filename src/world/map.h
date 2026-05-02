@@ -197,10 +197,10 @@ void vxwld_destroy(VX_NO_ARG);
 
 #if VX_WLD_DEBUG - 0
 # include <stdio.h>
+# define wdbg_printf(...) printf(__VA_ARGS__)
 #else
-# define printf(...)
+# define wdbg_printf(...)
 #endif
-
 
 VX_C_END
 

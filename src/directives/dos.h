@@ -14,8 +14,14 @@
 # define VX_WINDOWS 1
 # define WIN32_LEAN_AND_MEAN
 # define NOMINMAX
+# define VX_SEPERATOR "\\"
 #else
 # define VX_WINDOWS 0
+# define VX_SEPERATOR "/"
+#endif
+
+#if defined (_MSC_VER)
+#define _CRT_SECURE_NO_WARNINGS
 #endif
 
 #endif

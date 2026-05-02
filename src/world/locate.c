@@ -4,7 +4,8 @@
 
 #include <math.h>
 
-#define VX_CHUNK_REGION(qualifier) (VX_REINT_CAST(qualifier vxwld_region *, chunk - chunk->region_index))
+#define VX_CHUNK_REGION (VX_REINT_CAST(vxwld_region *, chunk - chunk->region_index))
+#define VX_CHUNK_REGION_QUAL(qualifier) (VX_REINT_CAST(qualifier vxwld_region *, chunk - chunk->region_index))
 
 void vxwld_global_integral_position(const void *floating_position, wpos *global_position)
 {
@@ -29,7 +30,7 @@ void vxwld_regoff_globpos(const wpos *region_offset, wpos *region_global_positio
 }
 void vxwld_chunk_globpos(const vxwld_chunk *chunk, wpos *chunk_global_position)
 {
-	vxwld_regoff_globpos(&VX_CHUNK_REGION(const)->offset, chunk_global_position);
+	vxwld_regoff_globpos(&VX_CHUNK_REGION_QUAL(const)->offset, chunk_global_position);
 	chunk_global_position->x += VX_XPOS_FROM_INDEX(chunk->region_index, VX_WLD_REGION_YDIM, VX_WLD_REGION_ZDIM) * VX_WLD_CHUNK_XBLKS;
 	chunk_global_position->y += VX_YPOS_FROM_INDEX(chunk->region_index, VX_WLD_REGION_YDIM, VX_WLD_REGION_ZDIM) * VX_WLD_CHUNK_YBLKS;
 	chunk_global_position->z += VX_ZPOS_FROM_INDEX(chunk->region_index, VX_WLD_REGION_ZDIM) * VX_WLD_CHUNK_ZBLKS;
@@ -105,5 +106,5 @@ vxwld_chunk *vxwld_chunk_from_offset(const wpos *global_offset)
 
 vxwld_region *vxwld_region_from_chunk(vxwld_chunk *chunk)
 {
-	return VX_CHUNK_REGION();
+	return VX_CHUNK_REGION;
 }

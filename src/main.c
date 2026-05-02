@@ -1,4 +1,4 @@
-#define VX_GAME_TITLE "Voxels 1.0.5"
+#define VX_GAME_TITLE "Voxels 1.0.6"
 #define VX_COPYRIGHT_TITLE "Copyright (C) 2026 Mahdi Almusaad"
 /*
    This program is free software; you can redistribute it and/or modify
@@ -15,6 +15,7 @@
    with this program; if not, write to the Free Software Foundation, Inc.,
    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
+
 
 #include "directives/dcast.h"
 #include "directives/dmath.h"
@@ -260,11 +261,19 @@ static void vxmain_begin(VX_NO_ARG)
 	VX_EVENTS_HOOK_ADD(mouse_move, vxplr_cam_mouse_move);
 
 	vxplr_ray_init();
-	vxcb_window_resize(vxstate_vals.window_ptr,
+	vxplr_cam_dirs_update();
+
+#if VX_WINDOWS
+	vxcb_window_resize(vxstate_vals.window_ptr, vxstate_vals.window_width, vxstate_vals.window_height);
+#else
+	vxcb_window_resize(
+		vxstate_vals.window_ptr,
 		VX_CAST(int, VX_CAST(float, vxstate_vals.window_width) * vxstate_vals.window_scale_x),
 		VX_CAST(int, VX_CAST(float, vxstate_vals.window_height) * vxstate_vals.window_scale_y)
 	);
-	vxplr_cam_dirs_update();
+#endif
+
+	vxcb_window_resize(vxstate_vals.window_ptr, vxstate_vals.window_width, vxstate_vals.window_height);
 
 	/* Text objects creation. */
 	const uint8_t bg_shadow = vxen_txt_background | vxen_txt_shadow;
@@ -293,7 +302,7 @@ static void vxmain_begin(VX_NO_ARG)
 	while (vxtg_toggles.loop_active) {
 		glfwPollEvents();
 
-		vxmain_time_update();
+                vxmain_time_update();
 		vxplr_move_logic();
 		vxmain_update_ubos();
 
@@ -371,6 +380,17 @@ static int vxmain_handle_char_arg(char arg_char)
 	return 1;
 }
 
+static FILE *vxmain_fopen(const char *VX_RESTRICT filename, const char *VX_RESTRICT mode)
+{
+#if defined (_MSC_VER)
+	FILE *streamptr;
+	const errno_t e = fopen_s(&streamptr, filename, mode);
+	return e ? NULL : streamptr;
+#else
+	return fopen(filename, mode);
+#endif
+}
+
 /* Determine options from command-line arguments. */
 static void vxmain_get_argvs(int argc, char **argv)
 {
@@ -415,10 +435,10 @@ static void vxmain_get_argvs(int argc, char **argv)
 	char *concat_text = VX_NULL;
 	#define VX_FULL_PATH(suffix) (concat_text = vxfmt_concat_allocd(0, &vxfile_exec_dir, suffix))
 
-	if (log_file_name && vxlog_info.file_logging && !(vxlog_info.vxlog_stream = fopen(VX_FULL_PATH(log_file_name), log_mode))) {
+	if (log_file_name && vxlog_info.file_logging && !(vxlog_info.vxlog_stream = vxmain_fopen(VX_FULL_PATH(log_file_name), log_mode))) {
 		fprintf(stderr, "Creating/opening log file '%s' failed.\n", log_file_name);
 	}
-	else if (!log_file_name && vxlog_info.file_logging && !(vxlog_info.vxlog_stream = fopen(VX_FULL_PATH("default_log.txt"), log_mode))) {
+	else if (!log_file_name && vxlog_info.file_logging && !(vxlog_info.vxlog_stream = vxmain_fopen(VX_FULL_PATH("default_log.txt"), log_mode))) {
 		fprintf(stderr, "Creating/opening default log file failed.\n");
 	}
 
@@ -447,32 +467,62 @@ int main(int argc, char **argv)
 
 	glfwWindowHint(GLFW_POSITION_X, vxstate_vals.window_xpos);
 	glfwWindowHint(GLFW_POSITION_Y, vxstate_vals.window_ypos);
-	
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+
+	#define VX_GLVER(major, minor) ((major << 4) + minor)
+	static const uint8_t gl_versions[] = {
+		VX_GLVER(4, 6), VX_GLVER(4, 5), VX_GLVER(4, 4),
+		VX_GLVER(4, 3), VX_GLVER(4, 2), VX_GLVER(4, 1),
+		VX_GLVER(4, 0), VX_GLVER(3, 3)
+	};
 	
 #if defined(__APPLE__) && defined(__MACH__)
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
 #endif
 
-	if (!(vxstate_vals.window_ptr = glfwCreateWindow(
-		vxstate_vals.window_width,
-		vxstate_vals.window_height,
-		VX_GAME_TITLE,
-		VX_NULL,
-		VX_NULL
-	))) VX_ABORT("Window creation failed.");
-	
-	glfwMakeContextCurrent(vxstate_vals.window_ptr);
+	for (size_t i = 0; i < sizeof gl_versions; ++i) {
+		const int major = gl_versions[i] >> 4;
+		const int minor = gl_versions[i] & 0xF;
+
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, major);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, minor);
+
+		if ((vxstate_vals.window_ptr = glfwCreateWindow(
+			vxstate_vals.window_width,
+			vxstate_vals.window_height,
+			VX_GAME_TITLE,
+			VX_NULL, VX_NULL)
+		)) {
+			vxstate_vals.ogl_major = major;
+			vxstate_vals.ogl_minor = minor;
+			break;
+		}
+	}
+
+	if (!vxstate_vals.window_ptr) VX_ABORT("Window creation failed.");
+
+        glfwMakeContextCurrent(vxstate_vals.window_ptr);
 	
 	glfwSetWindowSizeLimits(vxstate_vals.window_ptr, 300, 200, GLFW_DONT_CARE, GLFW_DONT_CARE);
 	glfwGetWindowContentScale(vxstate_vals.window_ptr, &vxstate_vals.window_scale_x, &vxstate_vals.window_scale_y);
+#if VX_WINDOWS
+	glfwSetWindowSize(
+		vxstate_vals.window_ptr,
+		vxstate_vals.window_width = VX_CAST(int, VX_CAST(float, vxstate_vals.window_width) * vxstate_vals.window_scale_x),
+		vxstate_vals.window_height = VX_CAST(int, VX_CAST(float, vxstate_vals.window_height) * vxstate_vals.window_scale_y)
+	);
+#endif
 	glfwSwapInterval(1);
 
 	vxgl_init_ogl(glfwGetProcAddress);
-
 	vxlog_free(VX_LOG_DEFAULT_BIT, vxfmt_text("Libraries loaded - %s | %s", gl.GetString(GL_VERSION), glfwGetVersionString()));
+
+	if (gl.DebugMessageCallback) {
+		vxlog_msg(VX_LOG_DEFAULT_BIT, "OpenGL debug messages enabled");
+		gl.Enable(GL_DEBUG_OUTPUT);
+		gl.Enable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+		gl.DebugMessageCallback(vxlog_ogl_debugout, VX_NULL);
+	}
 
 	vxelm_load();
 	vxsd_init_all();

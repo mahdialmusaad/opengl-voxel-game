@@ -5,6 +5,8 @@
 
 #include "directives/dextern.h"
 
+#include "graphics/gltypes.h"
+
 #define VX_LOG_VERBOSE0_REQ (16384u)
 #define VX_LOG_VERBOSE3_REQ (8192u)
 #define VX_LOG_VERBOSE2_REQ (4096u)
@@ -45,13 +47,20 @@ void vxlog_free(unsigned int log_bit_options, char *msg);
 /* Warn of an error from GLFW. */
 void vxlog_glfw_err(int error_code, const char *error_message);
 
+/* Log OpenGL message. */
+void VX_APIENTRY vxlog_ogl_debugout(
+	GLenum source, GLenum type, GLuint id,
+	GLenum severity, GLsizei length,
+	const GLchar *msg, const void *userparam
+);
+
 /* Internal handler for aborting. */
 #if defined(_MSC_VER)
-__declspec(noreturn)
+    __declspec(noreturn)
 #else
-__attribute__((noreturn))
+    __attribute__((noreturn))
 #endif
-void vxlog_abort_impl(const char *msg, const char *file, int line);
+    void vxlog_abort_impl(const char *msg, const char *file, int line);
 
 VX_C_END
 

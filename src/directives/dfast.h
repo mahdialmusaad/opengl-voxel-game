@@ -25,10 +25,17 @@
 # define VX_FORCEINLINE inline
 #endif
 
+#if !defined (_MSC_VER)
 /* The given conditional is likely to be true. */
 #define VX_LIKELY(cond) __builtin_expect(!!(cond), 1)
 /* The given conditional is likely to be false. */
 #define VX_UNLIKELY(cond) __builtin_expect(!!(cond), 0)
+#else
+/* The given conditional is likely to be true. */
+#define VX_LIKELY(cond) (!!(cond))
+/* The given conditional is likely to be false. */
+#define VX_UNLIKELY(cond) (!!(cond))
+#endif
 
 
 #endif

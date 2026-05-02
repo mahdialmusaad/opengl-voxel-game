@@ -198,7 +198,7 @@ static size_t vxwld_apply_mesh_changes(VX_NO_ARG)
 		VX_FREE(result->overall_ebo);
 	}
 
-	printf("[ MAIN ] Applied %zu mesh changes of which %zu were empty\n", consume_count, empty_count);
+	wdbg_printf("[ MAIN ] Applied %zu mesh changes of which %zu were empty\n", consume_count, empty_count);
 
 	/* Overwrite applied changes. */
 	if (consume_count != vxwld_mesh_result_queue.size) {
@@ -284,7 +284,7 @@ static VX_THREAD_FUNCTION(vxwld_gthread_loop)
 		vxthr_exchange_unlock(&vxwld_result_exchange);
 
 		for (state->active = 0; world_active;) {
-			vxthr_wait_milli(VX_CAST(unsigned int, VX_WLD_MILLISECONDS_REST / ((work_done != 0) + 1)));
+			vxthr_wait_milli(VX_CAST(unsigned int, VX_WLD_MILLISECONDS_REST / VX_CAST(unsigned int, ((work_done != 0) + 1))));
 			if (!state->paused) break;
 		}
 		state->active = 1;

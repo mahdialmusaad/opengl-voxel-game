@@ -62,8 +62,8 @@ enum
 static int vxsd_shader_error_check(const char *base_name, GLuint id, int shader_type)
 {
 	const int is_program = shader_type == vxen_sdtype_program;
-	void (APIENTRY *get_iv_func_ptr)(GLuint, GLenum, GLint *) = is_program ? gl.GetProgramiv : gl.GetShaderiv;
-	void (APIENTRY *get_ilog_func_ptr)(GLuint, GLint, GLsizei *, GLchar *) = is_program ? gl.GetProgramInfoLog : gl.GetShaderInfoLog;
+	void (VX_APIENTRY *get_iv_func_ptr)(GLuint, GLenum, GLint *) = is_program ? gl.GetProgramiv : gl.GetShaderiv;
+	void (VX_APIENTRY *get_ilog_func_ptr)(GLuint, GLint, GLsizei *, GLchar *) = is_program ? gl.GetProgramInfoLog : gl.GetShaderInfoLog;
 
 	GLint result;
 	get_iv_func_ptr(id, is_program ? GL_LINK_STATUS : GL_COMPILE_STATUS, &result);

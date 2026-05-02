@@ -236,7 +236,7 @@ size_t vxwld_generate_around(VX_NO_ARG)
 #if VX_WLD_DEBUG - 0
 	if (num_created) {
 		const double generation_elapsed = (glfwGetTime() - generation_start) * 1000.0;
-		printf("[ GENERATION ] Generated %zu chunks (%.3fms/chunk, %.3fms total)\n",
+		wdbg_printf("[ GENERATION ] Generated %zu chunks (%.3fms/chunk, %.3fms total)\n",
 			num_created, generation_elapsed / VX_CAST(double, num_created), generation_elapsed
 		);
 	}

@@ -69,134 +69,134 @@ INPUT_FUNC(free_mouse) { glfwSetInputMode(vxstate_vals.window_ptr, GLFW_CURSOR, 
 INPUT_FUNC(toggle_dbg_text) { VX_FLIP(vxtg_toggles.debug_text); }
 INPUT_FUNC(toggle_fullscreen) { vxcb_toggle_fscreen(); }
 
-static const int press_bit = GLFW_PRESS;
-static const int bypass_chat = 1 << 6;
+#define VX_PRESS_BIT (GLFW_PRESS)
+#define VX_BYPASS_CHAT_BIT (1 << 6)
 
 const struct vxkey_input_event_obj vxkey_actions[] = {
 /* Standard inputs. */
 /* Movement keys are checked per frame elsewhere. */
 {
 	GLFW_KEY_SLASH,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_command_chat
 },
 {
 	GLFW_KEY_T,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_normal_chat
 },
 {
 	GLFW_KEY_ESCAPE,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_close_game
 },
 /* Toggle inputs. */
 {
 	GLFW_KEY_X,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_toggle_sync
 },
 {
 	GLFW_KEY_E,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_toggle_inv
 },
 {
 	GLFW_KEY_F,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_toggle_fog
 },
 {
 	GLFW_KEY_C,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_toggle_fly
 },
 {
 	GLFW_KEY_N,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_toggle_collide
 },
 {
 	GLFW_KEY_V,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_toggle_gen
 },
 /* Value inputs: */
 { 
 	GLFW_KEY_LEFT_BRACKET,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_inc_rnd_dist
 },
 {
 	GLFW_KEY_RIGHT_BRACKET,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_dec_rnd_dist
 },
 {
 	GLFW_KEY_COMMA,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_inc_speed
 },
 {
 	GLFW_KEY_PERIOD,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_dec_speed
 },
 {
 	GLFW_KEY_I,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_inc_fov
 },
 {
 	GLFW_KEY_O,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_dec_fov
 },
 /* Debug inputs. */
 {
 	GLFW_KEY_Z,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_toggle_polygon_mode
 },
 {
 	GLFW_KEY_R,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_reload_shaders
 },
 {
 	GLFW_KEY_J,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_toggle_borders
 },
 {
 	GLFW_KEY_K,
-	press_bit,
+	VX_PRESS_BIT,
 	kcb_simulate_mouse
 },
 /* Function key inputs. */
 {
 	GLFW_KEY_F1,
-	press_bit | bypass_chat,
+	VX_PRESS_BIT | VX_BYPASS_CHAT_BIT,
 	kcb_toggle_gui
 },
 {
 	GLFW_KEY_F2,
-	press_bit | bypass_chat,
+	VX_PRESS_BIT | VX_BYPASS_CHAT_BIT,
 	kcb_take_screenshot
 },
 {
 	GLFW_KEY_F3,
-	press_bit | bypass_chat,
+	VX_PRESS_BIT | VX_BYPASS_CHAT_BIT,
 	kcb_free_mouse
 },
 {
 	GLFW_KEY_F4,
-	press_bit | bypass_chat,
+	VX_PRESS_BIT | VX_BYPASS_CHAT_BIT,
 	kcb_toggle_dbg_text
 },
 {
 	GLFW_KEY_F11,
-	press_bit | bypass_chat,
+	VX_PRESS_BIT | VX_BYPASS_CHAT_BIT,
 	kcb_toggle_fullscreen
 }
 };

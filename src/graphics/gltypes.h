@@ -5,6 +5,12 @@
 
 #include <stdint.h>
 
+#if defined(__WIN32__) || defined(WIN32) || defined(__MINGW32__)
+#define VX_APIENTRY __stdcall
+#else
+#define VX_APIENTRY
+#endif
+
 #if defined(__SIZEOF_LONG__) && defined(__SIZEOF_POINTER__) && (__SIZEOF_POINTER__ > __SIZEOF_LONG__)
 typedef intptr_t GLintptr;
 #elif defined(_WIN64)

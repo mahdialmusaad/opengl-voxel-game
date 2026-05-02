@@ -5,6 +5,7 @@
 #include "directives/dcast.h"
 #include "directives/dos.h"
 
+#include "graphics/glenum.h"
 #include "graphics/glfw.h"
 
 #include <stdlib.h>
@@ -87,6 +88,45 @@ void vxlog_glfw_err(int error_code, const char *error_message)
 {
 	if (error_code == GLFW_FEATURE_UNAVAILABLE) return;
 	vxlog_msg(VX_LOG_GLFW3_BIT, vxfmt_text("%d - %s", error_code, error_message));
+}
+
+void VX_APIENTRY vxlog_ogl_debugout(
+	GLenum source, GLenum type, GLuint id,
+	GLenum severity, GLsizei length,
+	const GLchar *msg, const void *userparam
+) {
+	const char *source_str = VX_NULL, *type_str = VX_NULL, *severity_str = VX_NULL;
+	
+	(void)(userparam);
+	(void)(length);
+	
+	if (id == 131185) return;
+
+	switch (source) {
+	case GL_DEBUG_SOURCE_API: source_str = "API"; break;
+	case GL_DEBUG_SOURCE_WINDOW_SYSTEM: source_str = "Window"; break;
+	case GL_DEBUG_SOURCE_SHADER_COMPILER: source_str = "Shader"; break;
+	case GL_DEBUG_SOURCE_THIRD_PARTY: source_str = "External"; break;
+	case GL_DEBUG_SOURCE_APPLICATION: source_str = "App"; break;
+	default: source_str = "Other"; break;
+	}
+	switch (type) {
+	case GL_DEBUG_TYPE_ERROR: type_str = "Error"; break;
+	case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR: type_str = "Undefined"; break; 
+	case GL_DEBUG_TYPE_PORTABILITY: type_str = "Portability"; break; 
+	case GL_DEBUG_TYPE_PERFORMANCE: type_str = "Performance"; break; 
+	case GL_DEBUG_TYPE_MARKER: type_str = "Marker"; break; 
+	default: type_str = "Other"; break; 
+	}
+	switch (severity) {
+	case GL_DEBUG_SEVERITY_HIGH: severity_str = "High"; break;
+	case GL_DEBUG_SEVERITY_MEDIUM: severity_str = "Medium"; break;
+	case GL_DEBUG_SEVERITY_LOW: severity_str = "Low"; break;
+	case GL_DEBUG_SEVERITY_NOTIFICATION: severity_str = "Notification"; break;
+	default: severity_str = "Other"; break;
+	}
+
+	vxlog_free(VX_LOG_WARNING_BIT, vxfmt_text("[ %s ][ %s ][ %s ][ %u ] %s", severity_str, type_str, source_str, id, msg));
 }
 
 void vxlog_abort_impl(const char *msg, const char *file, int line)

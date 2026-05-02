@@ -3,6 +3,7 @@
 #include "directives/dcast.h"
 #include "directives/dword.h"
 #include "directives/dfree.h"
+#include "directives/dos.h"
 
 #include "io/files.h"
 
@@ -28,12 +29,17 @@ static inline uint32_t vxpng_swap32(uint32_t val)
 
 #if defined (__has_include)
 #define VX_HAS_INC(x) __has_include(x)
-#endif
-#if VX_HAS_INC(<zlib.h>)
-#define VX_EXT_ZLIB
+#else
+#define VX_HAS_INC(x) 0
 #endif
 
-#if defined(VX_EXT_ZLIB)
+#if VX_HAS_INC(<zlib.h>) && !VX_WINDOWS
+#define VX_EXT_ZLIB 1
+#else
+#define VX_EXT_ZLIB 0
+#endif
+
+#if VX_EXT_ZLIB
 /* Using external Zlib. */
 #include <zlib.h>
 
@@ -418,8 +424,7 @@ int vxpng_load(const char *path, uint8_t **pixels, uint32_t *VX_RESTRICT width, 
 
 /* Zlib compression algorithm. */
 
-
-#if defined(VX_EXT_ZLIB)
+#if VX_EXT_ZLIB
 
 static uint32_t vxpng_deflate(uint8_t *output_stream, uint8_t *input_stream, int32_t max_bytes)
 {
