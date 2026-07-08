@@ -83,6 +83,7 @@ add_executable(${PROJECT_NAME}
 	${VX_SRC_DIR}/io/logs.c
 
 	${VX_SRC_DIR}/player/camera.c
+	${VX_SRC_DIR}/player/edit.c
 	${VX_SRC_DIR}/player/frustum.c
 	${VX_SRC_DIR}/player/inventory.c
 	${VX_SRC_DIR}/player/movement.c

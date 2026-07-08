@@ -315,7 +315,6 @@ static void vxelm_load_block_textures(VX_NO_ARG)
 	if (!textures_path) VX_ABORT_ALLOCATION();
 	
 	uint8_t *total_pixels = VX_NULL;
-	#define VX_TEX_DIMS (16)
 	#define VX_TEX_BYTES (VX_TEX_DIMS * VX_TEX_DIMS * 4)
 	size_t num_textures = 0u;
 

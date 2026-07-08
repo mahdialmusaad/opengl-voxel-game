@@ -58,7 +58,7 @@ static int vxtxt_mgr_update(void *draw)
 
 	for (size_t i = 0u; i < vxtxt_manager.text_obj_array.size; ++i) {
 		vxtxt_obj *text_obj = VX_CAST(vxtxt_obj **, vxtxt_manager.text_obj_array.data)[i];
-		if (((text_obj->settings & vxen_txt_inventory_only) != 0) != is_inventory_text) continue;
+		if ((!!(text_obj->settings & vxen_txt_inventory_only)) != is_inventory_text) continue;
 		if (vxtxt_obj_update(text_obj)) any_update = 1;
 		total_bytes += sizeof *text_obj->data * text_obj->displayed_elements; 
 	}

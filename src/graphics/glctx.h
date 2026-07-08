@@ -31,8 +31,8 @@ enum /* Higher value = higher priority. */
 	vxen_ctxorder_outline,
 	vxen_ctxorder_border,
 	vxen_ctxorder_axis,
-	vxen_ctxorder_text,
 	vxen_ctxorder_inventory,
+	vxen_ctxorder_text,
 	vxen_ctxorder_text_inv
 };
 

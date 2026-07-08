@@ -54,5 +54,7 @@ int vxstate_init(VX_NO_ARG)
 	vxtg_toggles.debug_text = 1u;
 	vxtg_toggles.generation_active = 1u;
 	
+	vxtg_toggles.collision = 1u;
+
 	return 1;
 }

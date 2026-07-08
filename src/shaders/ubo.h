@@ -44,7 +44,7 @@ struct vxstruct_ubo_##name##_object {\
 #define VX_UBO_MASTER(operation)\
 /* ****** You can add or change UBO variables here, as well as create UBOs. ****** */\
 operation(mat4s, mat4, mat4, { 0 }, M4_camera,M4_origin,M4_stars,M4_planets,M4_axis)\
-operation(floats, float, float, 0.0f, FLT_ctime,FLT_fog_end,FLT_fog_range,FLT_stars_trnsp,FLT_gtime,FLT_clouds_col,FLT_aspect,FLT_padding)\
+operation(floats, float, float, 0.0f, FLT_ctime,FLT_fog_end,FLT_fog_range,FLT_stars_trnsp,FLT_gtime,FLT_clouds_col,FLT_aspect,FLT_blktex)\
 operation(vec4s, vec4, ubo_v4, { 0 }, V4_main_sky,V4_evening_sky,V4_raycast_lpos,V4_chunk_lpos,V4_region_lpos,V4_world_light,V4_clouds_offset)
 
 extern struct vxstruct_ubo_list { VX_UBO_MASTER(VX_UBO_CREATE) } vxubo_list;

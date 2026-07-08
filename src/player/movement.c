@@ -2,6 +2,7 @@
 #include "player/raycast.h"
 #include "player/camera.h"
 
+#include "values/elements.h"
 #include "values/state.h"
 
 #include "graphics/glfw.h"
@@ -20,7 +21,7 @@
 struct vxstruct_plr_instance vxplr_inst = {
 	{ VX_WLD_CHUNK_XBLKS / 2.0, VX_WLD_CHUNK_YBLKS / 2.0, VX_WLD_CHUNK_ZBLKS / 2.0 }, { 0.0, 0.0, 0.0 }, { 0, 0, 0 }, /* Position-related values. */
 	20.0, 0.0, 2.0, 0.5, /* Speed values (base, active, run mult, slow mult). */
-	0.2, -10.0, -0.9, /* Other values (jump, terminal, gravity). */
+	0.2, -4.0, -0.9, /* Other values (jump, terminal, gravity). */
 	0, 0, /* Relevant block IDs. */
 	0 /* Free space for later use. */
 };
@@ -42,12 +43,31 @@ static void vxplr_move_position_update(VX_NO_ARG)
 	VX_EVENTS_HOOK_EXECUTE(player_moved,);
 }
 
+/* Apply collision then add updated velocity to position. */
 static void vxplr_apply_velocity(VX_NO_ARG)
 {
-	dvec3_add(&vxplr_inst.pos, &vxplr_inst.pos, &vxplr_inst.vel);
 	/* Ignore very small velocities that have practically no impact. */
-	if (dvec3_dot(&vxplr_inst.vel, &vxplr_inst.vel) < 0.001) return;
+	if (dvec3_dot(&vxplr_inst.vel, &vxplr_inst.vel) < 0.001) {
+		vxplr_inst.vel.x = 0.0;
+		vxplr_inst.vel.y = 0.0;
+		vxplr_inst.vel.z = 0.0;
+		return;
+	}
 
+	/* Check for collision. */
+	if (vxtg_toggles.collision) {
+		const double player_sizes[3] = { 0.2, 0.2, 0.2 };
+		for (int i = 0; i < 3; ++i) {
+			#define VX_VEC_IND(v, i) (i == 0 ? &v.x : (i == 1 ? &v.y : &v.z))
+			wpos next_itg;
+			dvec3 next = { vxplr_inst.pos.x, vxplr_inst.pos.y, vxplr_inst.pos.z };
+			*VX_VEC_IND(next, i) += *VX_VEC_IND(vxplr_inst.vel, i) + (*VX_VEC_IND(vxplr_inst.vel, i) < 0.0 ? -player_sizes[i] : player_sizes[i]);
+			vxwld_global_integral_position(&next, &next_itg);
+			if (vxelm_elements[vxwld_get(&next_itg)].solid) *VX_VEC_IND(vxplr_inst.vel, i) = 0.0;
+		}
+	}
+
+	dvec3_add(&vxplr_inst.pos, &vxplr_inst.pos, &vxplr_inst.vel);
 	vxplr_move_position_update();
 }
 

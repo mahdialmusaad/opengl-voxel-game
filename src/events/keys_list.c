@@ -48,7 +48,7 @@ INPUT_FUNC(dec_fov) { vxplr_cam_update_fov(vxplr_cam.fov - VX_RADIAN_MULT); }
 
 INPUT_FUNC(toggle_polygon_mode) { gl.PolygonMode(GL_FRONT_AND_BACK, VX_FLIP(vxtg_toggles.wireframe) ? GL_LINE : GL_FILL); }
 INPUT_FUNC(reload_shaders) {
-	vxlog_msg(VX_LOG_WARNING_BIT, "Reloading elements...");
+	vxlog_msg(VX_LOG_DEFAULT_BIT, "Reloading elements...");
 	vxwld_pause_threads(1);
 	vxsd_destroy();
 	vxelm_destroy();
@@ -58,7 +58,7 @@ INPUT_FUNC(reload_shaders) {
 	vxwld_setup_uniform();
 	vxwld_queue_all_remesh();
 	vxwld_resume_threads();
-	vxlog_msg(VX_LOG_WARNING_BIT, "Finished reloading.");
+	vxlog_msg(VX_LOG_DEFAULT_BIT, "Finished reloading.");
 }
 INPUT_FUNC(toggle_borders) { VX_FLIP(vxtg_toggles.chunk_borders); }
 INPUT_FUNC(simulate_mouse) { vxcb_mouse_click(vxstate_vals.window_ptr, GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, -1); }

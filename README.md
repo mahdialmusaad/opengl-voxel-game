@@ -153,6 +153,10 @@ cmake --build build
 The resulting executable can be found in the `game` directory alongside required resources.
 
 ## Changelog
+### v1.0.7:
+- Fixed inventory display issues
+- Added block breaking and placing
+- Added crude collision
 ### v1.0.6:
 - Game now uses highest supported OpenGL version (still requires at least 3.3)
 - OpenGL debug messages are enabled if supported

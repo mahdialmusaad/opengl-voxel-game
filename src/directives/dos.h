@@ -24,4 +24,9 @@
 #define _CRT_SECURE_NO_WARNINGS
 #endif
 
+#ifdef __clang__
+# pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
+# pragma clang diagnostic ignored "-Wc11-extensions"
+#endif
+
 #endif

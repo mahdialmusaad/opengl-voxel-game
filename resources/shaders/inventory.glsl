@@ -20,7 +20,7 @@ void main()
 	if (is_block_texture == 1u) {
 		tex_coords = vec2(
 			base.x,
-			(base.z + float(tex_index)) * 16.0f
+			(base.z + float(tex_index)) * FLT_blktex
 		);
 	} else {
 		vec4 current_texture = inventory_texture_positions[tex_index];

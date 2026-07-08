@@ -16,6 +16,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 /* Maximum number of 'items' that can be held in a single inventory 'slot'. */
 #define VX_MAX_SLOT_COUNT (64)
@@ -55,9 +56,9 @@ void vxplr_inv_init(VX_NO_ARG)
 	for (size_t i = 0u; i < sizeof vxplr_gui.inv_text / sizeof *vxplr_gui.inv_text; ++i) {
 		vxtxt_obj_init(
 			vxplr_gui.inv_text + i,
-			0.0f, VX_TEXT_BOTTOMY_CORNER,
+			0.0f, 0.0f,
 			VX_NULL, 1,
-			((i < 9u) * vxen_txt_inventory_only) | vxen_txt_shadow,
+			((i >= 9u) * vxen_txt_inventory_only) | vxen_txt_shadow,
 			VX_TEXT_DEFAULT_FONT_SIZE, 0.0f
 		);
 	}
@@ -71,7 +72,7 @@ void vxplr_inv_toggle(int open)
 		glfwSetCursorPos(vxstate_vals.window_ptr, VX_CAST(double, vxstate_vals.window_width) * 0.5, VX_CAST(double, vxstate_vals.window_height) * 0.5);
 		glfwSetInputMode(vxstate_vals.window_ptr, GLFW_CURSOR, vxtg_toggles.inventory_open ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
 	}
-	
+
 	vxtg_toggles.window_focus_changed = 1;
 	vxtg_toggles.show_any_gui = 1;
 
@@ -92,7 +93,7 @@ void vxplr_inv_selected_scroll(double delta_x, double delta_y)
 }
 
 
-int vxplr_inv_item_slot(unsigned char id, int include_full_slots)
+int vxplr_inv_item_slot(unsigned short id, int include_full_slots)
 {
 	const struct vxplr_inv_item *end_slot = vxplr_inventory + (sizeof vxplr_inventory / sizeof *vxplr_inventory);
 	for (const struct vxplr_inv_item *cur_slot = vxplr_inventory; cur_slot != end_slot; ++cur_slot) {
@@ -103,21 +104,21 @@ int vxplr_inv_item_slot(unsigned char id, int include_full_slots)
 	return -1;
 }
 
-int vxplr_inv_free_slot(unsigned char id)
+int vxplr_inv_free_slot(unsigned short id)
 {
 	const int matching_slot_ind = vxplr_inv_item_slot(id, 0);
 	if (matching_slot_ind != -1) return matching_slot_ind;
 	return vxplr_inv_item_slot(0, 0);
 }
 
-void vxplr_inv_update_slot(int slot_ind, unsigned char id, int count)
+void vxplr_inv_update_slot(int slot_ind, unsigned short id, int count)
 {
 	if (slot_ind == -1) return;
 	if (count > VX_MAX_SLOT_COUNT) return;
-	
+
 	struct vxplr_inv_item *slot = vxplr_inventory + slot_ind;
 	vxtxt_obj *inv_text = vxplr_gui.inv_text + slot_ind;
-	
+
 	int needs_inv_upd = id != slot->held_id;
 
 	if (count == 0 || !id) {
@@ -128,8 +129,9 @@ void vxplr_inv_update_slot(int slot_ind, unsigned char id, int count)
 	} else {
 		slot->held_id = id;
 		slot->count = VX_CAST(unsigned char, count);
-		char slot_str[3] = { VX_CAST(char, (count / 10) % 10), VX_CAST(char, count % 10), 0 };
-		vxtxt_obj_set_text(inv_text, slot_str, 0);
+		char slot_str[3];
+		snprintf(slot_str, 3, "%d", count);
+		vxtxt_obj_set_text(inv_text, slot_str, 1);
 		vxtxt_obj_set_transparency(inv_text, 1.0f);
 	}
 
@@ -174,7 +176,7 @@ static void vxplr_gui_get_dims(float *result, int id, int is_block_tex)
 
 static void vxplr_inv_update_text(VX_NO_ARG)
 {
-	const float text_offset_x = 0.02f, text_offset_y = text_offset_x * vxstate_vals.aspect;
+	const float text_offset_x = 0.02f, text_offset_y = text_offset_x * 2.0f * vxstate_vals.aspect;
 
 	for (size_t i = 0u; i < sizeof vxplr_gui.inv_text / sizeof *vxplr_gui.inv_text; ++i) {
 		vxtxt_obj *cur_slot_txt = vxplr_gui.inv_text + i;
@@ -194,14 +196,11 @@ static void vxplr_gui_set_inst(vxplr_gui_elem **buffer_data, int id, int is_bloc
 	vxplr_gui_elem *cur_buf = *buffer_data;
 	vxplr_gui_get_dims(cur_buf->dims, id, is_block_tex);
 	cur_buf->texture_id = VX_CAST(uint32_t, is_block_tex + (texture_id << 1));
-	*buffer_data = ++cur_buf;
+	++*buffer_data;
 
 	if (is_block_tex) return;
 	const unsigned int slot_id = vxplr_inventory[id >= 9 ? id - 9 : id].held_id;
-	if (!slot_id) return;
-
-	vxplr_gui_set_inst(&cur_buf, id, 1, vxelm_elements[slot_id].textures[wdir_top]);
-	*buffer_data = ++cur_buf;
+	if (slot_id)vxplr_gui_set_inst(buffer_data, id, 1, vxelm_elements[slot_id].textures[wdir_top]);
 }
 
 
@@ -228,12 +227,11 @@ void vxplr_inv_update(int do_text)
 		const float ch_height = 0.025f, ch_width = ch_height / vxstate_vals.aspect;
 		const vxplr_gui_elem crosshair = { { -ch_width, -ch_height, ch_width, ch_height }, vxen_tex_crosshair * 2 };
 		*hotbar_data++ = crosshair;
-		goto update_immediate;
-	}
+	} else {
+		/* Calculate inventory slots. */
+		for (int id = 9; id < 45; ++id) vxplr_gui_set_inst(&hotbar_data, id, 0, vxen_tex_unequipped + ((id - 9) == vxplr_gui.selected_slot));
+        }
 
-	/* Calculate inventory slots. */
-	for (int id = 9; id < 45; ++id) vxplr_gui_set_inst(&hotbar_data, id, 0, vxen_tex_unequipped + ((id - 9) == vxplr_gui.selected_slot));
-update_immediate:
 	/* Buffer inventory data for use in the shader. */
 	vxctx_update_buffer(vxplr_gui_buffer, vxplr_gui_data, 0u, sizeof(vxplr_gui_elem) * VX_CAST(size_t, hotbar_data - vxplr_gui_data));
 	VX_FREE(vxplr_gui_data);

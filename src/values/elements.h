@@ -9,6 +9,9 @@
 
 #include <stddef.h>
 
+/* Width and height of a block texture. */
+#define VX_TEX_DIMS (16)
+
 /* Type to store a block ID. */
 typedef unsigned short vxblk;
 /* Type to store a texture ID. */

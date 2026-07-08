@@ -1,4 +1,4 @@
-#define VX_GAME_TITLE "Voxels 1.0.6"
+#define VX_GAME_TITLE "Voxels 1.0.7"
 #define VX_COPYRIGHT_TITLE "Copyright (C) 2026 Mahdi Almusaad"
 /*
    This program is free software; you can redistribute it and/or modify
@@ -16,7 +16,6 @@
    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-
 #include "directives/dcast.h"
 #include "directives/dmath.h"
 #include "directives/dfree.h"
@@ -30,6 +29,7 @@
 #include "player/movement.h"
 #include "player/raycast.h"
 #include "player/camera.h"
+#include "player/edit.h"
 
 #include "events/commands.h"
 #include "events/window.h"
@@ -259,6 +259,7 @@ static void vxmain_begin(VX_NO_ARG)
 	VX_EVENTS_HOOK_ADD(mouse_scroll, vxplr_inv_selected_scroll);
 	VX_EVENTS_HOOK_ADD(window_resize, vxmain_aspect_changed);
 	VX_EVENTS_HOOK_ADD(mouse_move, vxplr_cam_mouse_move);
+	VX_EVENTS_HOOK_ADD(mouse_click, vxplr_edit_general);
 
 	vxplr_ray_init();
 	vxplr_cam_dirs_update();
@@ -295,6 +296,8 @@ static void vxmain_begin(VX_NO_ARG)
 	vxtg_toggles.first_generate = 1;
 	vxtg_toggles.loop_active = !vxmain_args.exit_immediate;
 
+	vxubo_list.floats.FLT_blktex = vxelm_block_texture_y_pixel * VX_TEX_DIMS;
+
 	const double enter_time = glfwGetTime();
 	vxlog_free(VX_LOG_DEFAULT_BIT, vxfmt_text("World init complete (%.2fms), seed: %" PRIi64, (enter_time - main_begin_time) * 1000.0, vxwld_noise->seed));
 
@@ -302,7 +305,7 @@ static void vxmain_begin(VX_NO_ARG)
 	while (vxtg_toggles.loop_active) {
 		glfwPollEvents();
 
-                vxmain_time_update();
+		vxmain_time_update();
 		vxplr_move_logic();
 		vxmain_update_ubos();
 
